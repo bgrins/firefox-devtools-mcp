@@ -1,0 +1,33 @@
+{
+  "manifest_version": 2,
+  "name": "Firefox DevTools MCP (extension transport)",
+  "version": "0.0.1",
+  "description": "firefox-devtools-mcp tool surface served from inside Firefox over WebDriver BiDi — no Node, no Selenium",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fdm-extension@mozilla.org",
+      "strict_min_version": "128.0"
+    }
+  },
+  "experiment_apis": {
+    "bidi": {
+      "schema": "experiment/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiment/api.js",
+        "paths": [["bidi"]]
+      }
+    }
+  },
+  "permissions": ["<all_urls>", "tabs", "storage"],
+  "icons": { "64": "icons/icon.svg" },
+  "browser_action": {
+    "default_title": "BiDi Companion",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "popup/panel.html"
+  },
+  "background": {
+    "scripts": ["dist/background.global.js"],
+    "persistent": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "firefox-devtools-mcp-extension",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Toolchain for the in-browser (WebExtension) transport; the extension itself is built from ../src plus src/",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node test/parity.mjs",
+    "start": "node build.mjs && node run.mjs",
+    "xpi": "node build.mjs && web-ext build --source-dir=. --filename=firefox-devtools-mcp-extension.xpi --overwrite-dest --ignore-files 'src/**' 'test/**' '*.mjs' 'package*.json' 'README.md' 'dist/*.map'"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "web-ext": "^10.5.0"
+  }
+}

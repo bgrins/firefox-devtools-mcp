@@ -1,0 +1,163 @@
+[
+  {
+    "namespace": "bidi",
+    "description": "In-process WebDriver BiDi bridge + loopback MCP hosting",
+    "functions": [
+      {
+        "name": "send",
+        "type": "function",
+        "async": true,
+        "description": "Dispatch a BiDi command, e.g. send('browsingContext','getTree',{})",
+        "parameters": [
+          {
+            "name": "moduleName",
+            "type": "string"
+          },
+          {
+            "name": "commandName",
+            "type": "string"
+          },
+          {
+            "name": "params",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "subscribe",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "events",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contexts",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "unsubscribe",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "events",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      {
+        "name": "startServer",
+        "type": "function",
+        "async": true,
+        "description": "Start the loopback-only HTTP listener; returns the bound port",
+        "parameters": [
+          {
+            "name": "port",
+            "type": "integer"
+          }
+        ]
+      },
+      {
+        "name": "stopServer",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "getAutostartConfig",
+        "type": "function",
+        "async": true,
+        "description": "Read extensions.bidibridge.autostart / .port prefs (for headless test runs)",
+        "parameters": []
+      },
+      {
+        "name": "sendHttpResponse",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "requestId",
+            "type": "integer"
+          },
+          {
+            "name": "status",
+            "type": "integer"
+          },
+          {
+            "name": "headers",
+            "type": "any"
+          },
+          {
+            "name": "body",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "getPref",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "setPref",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "name": "onEvent",
+        "type": "function",
+        "description": "Fired for every subscribed BiDi protocol event: {name, data}",
+        "parameters": [
+          {
+            "name": "event",
+            "type": "any"
+          }
+        ]
+      },
+      {
+        "name": "onHttpRequest",
+        "type": "function",
+        "description": "Fired for each HTTP request to the loopback listener: {id, method, path, headers, body}",
+        "parameters": [
+          {
+            "name": "request",
+            "type": "any"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -176,3 +176,4 @@ docker-compose.override.yml
 # Test snapshots
 snapshot-*.txt
 temp/
+web-ext-artifacts/
