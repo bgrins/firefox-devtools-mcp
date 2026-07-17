@@ -4,6 +4,7 @@
 // are documented in README.md.
 
 import { formatSnapshotTree } from "../../src/firefox/snapshot/formatter.js";
+import { getSnapshotSource } from "./snapshot-source.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -349,8 +350,7 @@ export class ExtensionFirefoxClient {
 
   private async ensureInjected(): Promise<void> {
     if (!this.injectedScript) {
-      const url = browser.runtime.getURL("dist/snapshot.injected.global.js");
-      this.injectedScript = await (await fetch(url)).text();
+      this.injectedScript = await getSnapshotSource();
     }
     const present = await this.callFunction("function() { return typeof window.__createSnapshot === 'function'; }");
     if (!present) {
