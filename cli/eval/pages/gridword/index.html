@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gridword — daily word puzzle</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; text-align: center; }
+  header { border-bottom: 1px solid #ddd; padding: 10px 0; margin-bottom: 12px; }
+  header nav { font-size: 13px; color: #555; }
+  header nav a { color: #555; text-decoration: none; margin: 0 8px; }
+  header b { font-size: 20px; letter-spacing: 2px; }
+  #board { display: inline-block; margin: 12px 0; }
+  .row { display: flex; gap: 4px; margin-bottom: 4px; }
+  .tile { width: 48px; height: 48px; border: 2px solid #d3d6da; font-size: 24px; font-weight: 700;
+          display: flex; align-items: center; justify-content: center; text-transform: uppercase; }
+  .tile.correct { background: #6aaa64; border-color: #6aaa64; color: #fff; }
+  .tile.present { background: #c9b458; border-color: #c9b458; color: #fff; }
+  .tile.absent  { background: #787c7e; border-color: #787c7e; color: #fff; }
+  #counter { font-size: 13px; color: #555; }
+  #letters { font-family: monospace; font-size: 12px; margin: 8px 0; }
+  #feedback { text-align: left; font-family: monospace; font-size: 13px; }
+  #status { font-weight: 700; margin-top: 12px; }
+  #share { text-align: left; display: inline-block; background: #f4f4f4; padding: 8px; }
+  input { text-transform: uppercase; font-size: 18px; width: 10em; }
+  footer { margin-top: 32px; border-top: 1px solid #ddd; padding: 12px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<header>
+  <nav><a href="#">Puzzles</a> · <a href="#">Archive</a> · <a href="#">Stats</a> · <a href="#">Help</a></nav>
+  <b>GRIDWORD</b>
+</header>
+<p>Guess the 5-letter word. You have 6 tries. After each guess, every letter is
+marked <b>correct</b> (right letter, right spot), <b>present</b> (in the word,
+wrong spot), or <b>absent</b>.</p>
+
+<div id="board"></div>
+<div id="counter">Guess 0 of 6</div>
+
+<form id="guessForm">
+  <input id="guessInput" maxlength="5" placeholder="5-letter guess" autocomplete="off" aria-label="Enter your guess">
+  <button type="submit">Guess</button>
+</form>
+
+<div id="letters" aria-live="polite"></div>
+<div id="feedback" aria-live="polite"></div>
+<div id="status" role="status"></div>
+
+<footer>Gridword is a fictional daily word puzzle used for local browser testing.
+A new puzzle is posted at midnight.</footer>
+
+<script>
+  // Encoded so casual view-source doesn't spoil the puzzle.
+  const ANSWERS = atob('Q1JJU1AsUExVTUIsR0xJTlQsRlJPTkQsTUlSVEgsUVVBS0UsU1dPT1A=').split(',');
+  const params = new URLSearchParams(location.search);
+  const ANSWER = (params.get('answer') || ANSWERS[Number(params.get('day') || 0) % ANSWERS.length]).toUpperCase();
+  const MAX_GUESSES = 6;
+  let guesses = 0;
+  let done = false;
+  const seen = new Set();
+  const marksHistory = [];
+  const letterState = { correct: new Set(), present: new Set(), absent: new Set() };
+
+  const board = document.getElementById('board');
+  const counter = document.getElementById('counter');
+  const letters = document.getElementById('letters');
+  const feedback = document.getElementById('feedback');
+  const status = document.getElementById('status');
+
+  for (let r = 0; r < MAX_GUESSES; r++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (let i = 0; i < 5; i++) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      row.appendChild(tile);
+    }
+    board.appendChild(row);
+  }
+
+  function mark(guess) {
+    // Two-pass wordle marking so duplicate letters behave correctly.
+    const result = new Array(5).fill('absent');
+    const remaining = {};
+    for (let i = 0; i < 5; i++) {
+      if (guess[i] === ANSWER[i]) {
+        result[i] = 'correct';
+      } else {
+        remaining[ANSWER[i]] = (remaining[ANSWER[i]] || 0) + 1;
+      }
+    }
+    for (let i = 0; i < 5; i++) {
+      if (result[i] !== 'correct' && remaining[guess[i]] > 0) {
+        result[i] = 'present';
+        remaining[guess[i]]--;
+      }
+    }
+    return result;
+  }
+
+  function updateLetterState(guess, marks) {
+    for (let i = 0; i < 5; i++) {
+      const letter = guess[i];
+      if (marks[i] === 'correct') {
+        letterState.correct.add(letter);
+        letterState.present.delete(letter);
+      } else if (marks[i] === 'present' && !letterState.correct.has(letter)) {
+        letterState.present.add(letter);
+      } else if (marks[i] === 'absent' && !letterState.correct.has(letter) && !letterState.present.has(letter)) {
+        letterState.absent.add(letter);
+      }
+    }
+    letters.textContent =
+      'Letters — correct: ' + [...letterState.correct].sort().join(' ') +
+      ' | present: ' + [...letterState.present].sort().join(' ') +
+      ' | absent: ' + [...letterState.absent].sort().join(' ');
+  }
+
+  function finish(message) {
+    done = true;
+    status.textContent = message;
+    document.getElementById('guessInput').disabled = true;
+    document.querySelector('#guessForm button').disabled = true;
+    const share = marksHistory
+      .map((m) => m.map((x) => (x === 'correct' ? 'G' : x === 'present' ? 'Y' : '.')).join(''))
+      .join('\n');
+    status.insertAdjacentHTML(
+      'afterend',
+      '<pre id="share">Gridword ' + (guesses <= MAX_GUESSES ? guesses : 'X') + '/6\n' + share + '</pre>'
+    );
+  }
+
+  document.getElementById('guessForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (done) return;
+    const input = document.getElementById('guessInput');
+    const guess = input.value.trim().toUpperCase();
+    if (!/^[A-Z]{5}$/.test(guess)) {
+      status.textContent = 'Guesses must be exactly 5 letters.';
+      return;
+    }
+    if (seen.has(guess)) {
+      status.textContent = 'Already guessed ' + guess + '. Try a different word.';
+      return;
+    }
+    seen.add(guess);
+    status.textContent = '';
+    input.value = '';
+
+    const marks = mark(guess);
+    marksHistory.push(marks);
+    const tiles = board.children[guesses].children;
+    for (let i = 0; i < 5; i++) {
+      tiles[i].classList.add(marks[i]);
+      tiles[i].textContent = guess[i];
+      tiles[i].setAttribute('aria-label', guess[i] + ' ' + marks[i]);
+    }
+    guesses++;
+    counter.textContent = 'Guess ' + guesses + ' of ' + MAX_GUESSES;
+
+    const line = document.createElement('div');
+    line.textContent = 'Guess ' + guesses + ': ' + guess + ' → ' +
+      guess.split('').map((letter, i) => letter + ':' + marks[i]).join(' ');
+    feedback.appendChild(line);
+    updateLetterState(guess, marks);
+
+    if (guess === ANSWER) {
+      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!') + ' The word was ' + ANSWER + '.');
+    } else if (guesses >= MAX_GUESSES) {
+      finish('Out of guesses. The word was ' + ANSWER + '.');
+    }
+  });
+</script>
+</body>
+</html>

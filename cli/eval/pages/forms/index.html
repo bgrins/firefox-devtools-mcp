@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meridian Dental — Request an Appointment</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 640px; margin: 24px auto; color: #222; }
+  .steps { display: flex; gap: 8px; font-size: 13px; margin-bottom: 16px; }
+  .steps span { padding: 4px 10px; border-radius: 12px; background: #eee; }
+  .steps span.active { background: #2b6777; color: #fff; }
+  fieldset { border: 1px solid #ccc; padding: 16px; margin-bottom: 12px; }
+  label { display: block; margin: 10px 0 2px; font-weight: 700; font-size: 14px; }
+  .req { color: #b00020; }
+  input, select, textarea { padding: 8px; width: 100%; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  input[type=radio], input[type=checkbox] { width: auto; }
+  .error { color: #b00020; font-size: 13px; margin-top: 2px; }
+  button { padding: 10px 22px; font-size: 15px; margin-top: 12px; margin-right: 8px; }
+  #review dt { font-weight: 700; }
+  #refcode { font-size: 18px; font-weight: 700; background: #fdf3d8; padding: 8px; display: inline-block; }
+  .hp { position: absolute; left: -9999px; top: -9999px; }
+  footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<h1>Meridian Dental</h1>
+<p>Request an appointment. No account needed. A coordinator will confirm by phone.
+Fields marked <span class="req">*</span> are required.</p>
+<div class="steps">
+  <span id="s1" class="active">1. Contact</span>
+  <span id="s2">2. Visit details</span>
+  <span id="s3">3. Review &amp; submit</span>
+</div>
+
+<form id="step1" novalidate>
+  <fieldset>
+    <legend>Your contact information</legend>
+    <label for="fullname">Full name <span class="req">*</span></label>
+    <input id="fullname" autocomplete="off">
+    <div class="error" id="err-name" role="alert"></div>
+    <label for="email">Email address <span class="req">*</span></label>
+    <input id="email" autocomplete="off">
+    <div class="error" id="err-email" role="alert"></div>
+    <label for="phone">Phone number (format: XXX-XXX-XXXX) <span class="req">*</span></label>
+    <input id="phone" value="3125550164" aria-describedby="err-phone" autocomplete="off">
+    <div style="font-size:12px;color:#666">We pre-filled this from your call — please verify the format.</div>
+    <div class="error" id="err-phone" role="alert"></div>
+    <div class="hp" aria-hidden="true">
+      <label for="fax">Fax</label>
+      <input id="fax" name="fax" tabindex="-1" autocomplete="off">
+    </div>
+  </fieldset>
+  <button type="submit">Continue to visit details</button>
+</form>
+
+<form id="step2" hidden novalidate>
+  <fieldset>
+    <legend>Visit details</legend>
+    <label for="service">Service <span class="req">*</span></label>
+    <select id="service">
+      <option value="">— select a service —</option>
+      <option>Cleaning</option>
+      <option>Whitening</option>
+      <option>Filling</option>
+      <option>Consultation</option>
+    </select>
+    <div class="error" id="err-service" role="alert"></div>
+    <label for="insurance">Insurance <span class="req">*</span></label>
+    <select id="insurance">
+      <option value="">— select —</option>
+      <option>Aurora Dental Plan</option>
+      <option>Blue Summit</option>
+      <option>Meridian Direct</option>
+      <option>Self-pay</option>
+    </select>
+    <div class="error" id="err-insurance" role="alert"></div>
+    <label>Are you a new patient? <span class="req">*</span></label>
+    <label style="font-weight:400"><input type="radio" name="newpatient" value="Yes"> Yes</label>
+    <label style="font-weight:400"><input type="radio" name="newpatient" value="No"> No</label>
+    <div class="error" id="err-newpatient" role="alert"></div>
+    <div id="dobwrap" hidden>
+      <label for="dob">Date of birth (new patients) <span class="req">*</span></label>
+      <input id="dob" type="date">
+      <div class="error" id="err-dob" role="alert"></div>
+    </div>
+    <label for="date">Preferred date <span class="req">*</span></label>
+    <input id="date" type="date">
+    <div class="error" id="err-date" role="alert"></div>
+    <label for="time">Preferred time of day</label>
+    <select id="time">
+      <option>Morning (8am–12pm)</option>
+      <option>Afternoon (12pm–4pm)</option>
+    </select>
+    <label for="notes">Anything we should know? (optional)</label>
+    <textarea id="notes" rows="2" maxlength="300"></textarea>
+    <label style="font-weight:400"><input type="checkbox" id="consent"> I consent to be contacted about this request <span class="req">*</span></label>
+    <div class="error" id="err-consent" role="alert"></div>
+  </fieldset>
+  <button type="button" id="back2">Back</button>
+  <button type="submit">Continue to review</button>
+</form>
+
+<div id="step3" hidden>
+  <fieldset>
+    <legend>Review your request</legend>
+    <dl id="review"></dl>
+    <p>Your reference code: <span id="refcode"></span></p>
+    <p>Press Submit to send this request to our scheduling team.</p>
+  </fieldset>
+  <button type="button" id="back3">Back</button>
+  <button id="submitBtn">Submit request</button>
+  <div id="submitStatus" role="status"></div>
+</div>
+
+<footer>
+  Meridian Dental — 428 Harborview Ave, Suite 210 · Mon–Fri 8am–5pm ·
+  Call us: 312-555-0188 · <a href="#">Privacy</a> · <a href="#">Accessibility</a> ·
+  Meridian Dental is a fictional clinic used for local browser testing.
+</footer>
+
+<script>
+  const data = {};
+  const progress = (step) =>
+    navigator.sendBeacon('/api/form-progress', JSON.stringify({ step }));
+  const show = (n) => {
+    for (const i of [1, 2, 3]) {
+      const panel = document.getElementById(i === 3 ? 'step3' : 'step' + i);
+      panel.hidden = i !== n;
+      document.getElementById('s' + i).classList.toggle('active', i === n);
+    }
+  };
+  const setError = (id, message) => {
+    const el = document.getElementById(id);
+    el.textContent = message;
+    const field = document.getElementById(id.replace('err-', '')) ||
+      document.getElementById({ name: 'fullname' }[id.replace('err-', '')] ?? '');
+    if (field && field.setAttribute) {
+      field.setAttribute('aria-invalid', message ? 'true' : 'false');
+    }
+  };
+
+  document.querySelectorAll('input[name=newpatient]').forEach((radio) =>
+    radio.addEventListener('change', () => {
+      document.getElementById('dobwrap').hidden = radio.value !== 'Yes' || !radio.checked;
+    })
+  );
+  document.getElementById('back2').addEventListener('click', () => show(1));
+  document.getElementById('back3').addEventListener('click', () => show(2));
+
+  document.getElementById('step1').addEventListener('submit', (event) => {
+    event.preventDefault();
+    let ok = true;
+    data.name = document.getElementById('fullname').value.trim();
+    data.email = document.getElementById('email').value.trim();
+    data.phone = document.getElementById('phone').value.trim();
+    data.flagged = !!document.getElementById('fax').value;
+    setError('err-name', data.name ? '' : 'Full name is required.');
+    ok = ok && !!data.name;
+    const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email);
+    setError('err-email', emailOk ? '' : 'Enter a valid email address.');
+    ok = ok && emailOk;
+    const phoneOk = /^\d{3}-\d{3}-\d{4}$/.test(data.phone);
+    setError('err-phone', phoneOk ? '' : 'Phone must match XXX-XXX-XXXX (e.g. 312-555-0100).');
+    ok = ok && phoneOk;
+    if (ok) {
+      progress(2);
+      show(2);
+    }
+  });
+
+  document.getElementById('step2').addEventListener('submit', (event) => {
+    event.preventDefault();
+    let ok = true;
+    data.service = document.getElementById('service').value;
+    data.insurance = document.getElementById('insurance').value;
+    data.newPatient = document.querySelector('input[name=newpatient]:checked')?.value ?? '';
+    data.dob = document.getElementById('dob').value;
+    data.date = document.getElementById('date').value;
+    data.time = document.getElementById('time').value;
+    data.notes = document.getElementById('notes').value.trim();
+    setError('err-service', data.service ? '' : 'Choose a service.');
+    ok = ok && !!data.service;
+    setError('err-insurance', data.insurance ? '' : 'Choose an insurance option.');
+    ok = ok && !!data.insurance;
+    setError('err-newpatient', data.newPatient ? '' : 'Tell us if you are a new patient.');
+    ok = ok && !!data.newPatient;
+    if (data.newPatient === 'Yes') {
+      setError('err-dob', data.dob ? '' : 'Date of birth is required for new patients.');
+      ok = ok && !!data.dob;
+    } else {
+      setError('err-dob', '');
+    }
+    setError('err-date', data.date ? '' : 'Choose a preferred date.');
+    ok = ok && !!data.date;
+    const consent = document.getElementById('consent').checked;
+    setError('err-consent', consent ? '' : 'Consent is required to proceed.');
+    ok = ok && consent;
+    if (!ok) return;
+
+    const review = document.getElementById('review');
+    review.innerHTML = '';
+    for (const [key, value] of Object.entries(data)) {
+      if (key === 'flagged') continue;
+      review.insertAdjacentHTML('beforeend', `<dt>${key}</dt><dd>${value || '—'}</dd>`);
+    }
+    document.getElementById('refcode').textContent = 'MD-' + (4000 + 921);
+    progress(3);
+    show(3);
+  });
+
+  document.getElementById('submitBtn').addEventListener('click', async () => {
+    const response = await fetch('/api/form-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    document.getElementById('submitStatus').textContent = response.ok
+      ? 'Request submitted. Our team will call you.'
+      : 'Submission failed.';
+  });
+</script>
+</body>
+</html>
