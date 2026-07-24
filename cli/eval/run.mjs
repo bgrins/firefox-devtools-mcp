@@ -3,7 +3,7 @@
 // MCP server attached — and compare success, turns, tokens, cost, duration.
 //
 //   node eval/run.mjs [--suite basic|web|all] [--task <id>] [--model <id>]
-//                     [--backend anthropic|codex] [--headed]
+//                     [--backend anthropic|codex] [--headed] [--parallel]
 //
 // Suites: 'basic' = tiny data:-URL tasks; 'web' = simulated sites served from
 // eval/pages/ (no live web). --headed launches visible Firefox windows.
@@ -32,7 +32,27 @@ const backend = await import(`./backends/${BACKEND_NAME}.mjs`);
 const MODEL = flag('model', backend.DEFAULT_MODEL);
 const SUITE = flag('suite', 'basic');
 const ONLY_TASK = flag('task', null);
+if (args.includes('--help') || args.includes('help')) {
+  console.log(`firefox-cli eval harness — compare agent backends driving Firefox via
+the firefox-cli shell command (cli) vs the MCP server (mcp).
+
+Usage: node eval/run.mjs [options]
+
+  --suite basic|web|all   task suite (default: basic; web = simulated sites)
+  --task <id>             run a single task by id
+  --model <id>            model for the agent backend
+  --backend <name>        anthropic (default) or codex (eval/backends/)
+  --headed                visible Firefox windows (side-by-side with --parallel)
+  --parallel              run cli and mcp conditions concurrently
+  --help                  show this help
+
+Results land in eval/results/run-<timestamp>/ (gitignored): results.json,
+report.md (shareable), and transcripts/*.jsonl (full agent message streams).`);
+  process.exit(0);
+}
+
 const HEADED = args.includes('--headed');
+const PARALLEL = args.includes('--parallel');
 
 function basicTasks(base) {
   return [
@@ -280,32 +300,104 @@ function markdownReport({ meta, results, totals }) {
   return lines.join('\n') + '\n';
 }
 
-async function withInstance(stateDir, fn) {
-  process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-  const instance = await launch({ headless: !HEADED });
-  try {
-    return await fn(instance);
-  } finally {
-    const [inst] = listInstances();
-    if (inst) {
-      await stop(inst).catch(() => {});
-    }
-  }
+// launch()/listInstances() read FIREFOX_CLI_STATE_DIR from process.env, so
+// concurrent conditions serialize just their launch/teardown around it.
+let envLock = Promise.resolve();
+function withEnvLock(fn) {
+  const next = envLock.then(fn);
+  envLock = next.catch(() => {});
+  return next;
 }
 
-async function main() {
-  const pages = await startPagesServer();
+async function buildTasks(base) {
   let tasks = [];
   if (SUITE === 'basic' || SUITE === 'all') {
-    tasks.push(...basicTasks(pages.url));
+    tasks.push(...basicTasks(base));
   }
   if (SUITE === 'web' || SUITE === 'all') {
-    tasks.push(...(await webTasks(pages.url)));
+    tasks.push(...(await webTasks(base)));
   }
   if (ONLY_TASK) {
     tasks = tasks.filter((t) => t.id === ONLY_TASK);
   }
-  if (!tasks.length) {
+  return tasks;
+}
+
+// Pre-seed window geometry so headed windows tile side by side (cli left,
+// mcp right) instead of stacking.
+function seedWindowGeometry(stateDir, condition) {
+  const profileDir = join(stateDir, 'profile');
+  mkdirSync(profileDir, { recursive: true });
+  const geometry = {
+    'chrome://browser/content/browser.xhtml': {
+      'main-window': {
+        screenX: condition === 'cli' ? '0' : '880',
+        screenY: '40',
+        width: '860',
+        height: '920',
+        sizemode: 'normal',
+      },
+    },
+  };
+  writeFileSync(join(profileDir, 'xulstore.json'), JSON.stringify(geometry));
+  return profileDir;
+}
+
+async function runCondition(condition, shared) {
+  // Each condition gets its own pages server so form-state validation
+  // (submissions/progress) stays isolated when running in parallel.
+  const pages = await startPagesServer();
+  const tasks = await buildTasks(pages.url);
+  const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
+  const results = [];
+  console.log(`[${condition}] starting (backend: ${BACKEND_NAME}, model: ${MODEL})`);
+  const instance = await withEnvLock(() => {
+    process.env.FIREFOX_CLI_STATE_DIR = stateDir;
+    return launch({
+      headless: !HEADED,
+      ...(HEADED ? { profile: seedWindowGeometry(stateDir, condition) } : {}),
+    });
+  });
+  try {
+    const ctx = {
+      ...shared,
+      stateDir,
+      pages,
+      endpoint: instance.discovery.endpoint,
+    };
+    for (const task of tasks) {
+      pages.state.submissions.length = 0;
+      pages.state.progress.length = 0;
+      try {
+        const r = await runTask(condition, task, ctx);
+        results.push(r);
+        console.log(
+          `[${condition}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
+            `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
+            `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
+            (r.detail ? ` (${r.detail})` : '')
+        );
+      } catch (error) {
+        console.log(`[${condition}] ${task.id}: ERROR ${error.message}`);
+        results.push({ condition, task: task.id, success: false, error: error.message });
+      }
+    }
+  } finally {
+    await withEnvLock(async () => {
+      process.env.FIREFOX_CLI_STATE_DIR = stateDir;
+      const [inst] = listInstances();
+      if (inst) {
+        await stop(inst).catch(() => {});
+      }
+    });
+    await pages.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+  return results;
+}
+
+async function main() {
+  if (!(await buildTasks('http://placeholder')).length) {
     throw new Error(`no tasks selected (suite=${SUITE}, task=${ONLY_TASK})`);
   }
 
@@ -320,41 +412,21 @@ async function main() {
   const wrapper = join(binDir, 'firefox-cli');
   writeFileSync(wrapper, `#!/bin/sh\nexec "${process.execPath}" "${cliBin}" "$@"\n`);
   chmodSync(wrapper, 0o755);
+  const shared = { scratchDir, binDir, transcriptsDir };
 
-  const results = [];
-  for (const condition of ['cli', 'mcp']) {
-    const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
-    console.log(`\n=== condition: ${condition} (backend: ${BACKEND_NAME}, model: ${MODEL}) ===`);
-    await withInstance(stateDir, async (instance) => {
-      const ctx = {
-        scratchDir, binDir, stateDir, pages, transcriptsDir,
-        endpoint: instance.discovery.endpoint,
-      };
-      for (const task of tasks) {
-        if (pages) {
-          pages.state.submissions.length = 0;
-          pages.state.progress.length = 0;
-        }
-        process.stdout.write(`  ${task.id}... `);
-        try {
-          const r = await runTask(condition, task, ctx);
-          results.push(r);
-          console.log(
-            `${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} cacheR=${r.cache_read} ` +
-              `out=${r.output_tokens} ${r.cost_usd?.toFixed?.(4) ?? '?'} wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
-              (r.detail ? ` (${r.detail})` : '')
-          );
-        } catch (error) {
-          console.log(`ERROR ${error.message}`);
-          results.push({ condition, task: task.id, success: false, error: error.message });
-        }
-      }
-    });
-    rmSync(stateDir, { recursive: true, force: true });
+  const conditions = ['cli', 'mcp'];
+  let results;
+  if (PARALLEL) {
+    console.log('(parallel mode: conditions run side by side; wall timings may include contention)\n');
+    results = (await Promise.all(conditions.map((c) => runCondition(c, shared)))).flat();
+  } else {
+    results = [];
+    for (const condition of conditions) {
+      results.push(...(await runCondition(condition, shared)));
+    }
   }
   rmSync(scratchDir, { recursive: true, force: true });
   rmSync(binDir, { recursive: true, force: true });
-  await pages?.close();
 
   const totals = totalsByCondition(results);
   console.log('\n=== totals per condition ===');
@@ -366,6 +438,7 @@ async function main() {
     model: MODEL,
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
+    parallel: PARALLEL || undefined,
   };
   const jsonPath = join(runDir, 'results.json');
   const mdPath = join(runDir, 'report.md');
