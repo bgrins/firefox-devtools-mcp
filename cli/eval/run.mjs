@@ -244,6 +244,7 @@ async function runTask(backendName, condition, label, task, ctx) {
               join(here, '..', '..', 'dist', 'index.js'),
               '--enable-script',
               ...(HEADED ? [] : ['--headless']),
+              ...(ctx.stdioProfile ? ['--profile-path', ctx.stdioProfile] : []),
             ],
           }
         : null,
@@ -408,6 +409,10 @@ async function runCondition(backendName, condition, shared) {
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
   const needsInstance = condition === 'cli' || MCP_TRANSPORT === 'http';
+  // stdio MCP servers launch their own Firefox; seed a profile so headed
+  // windows still tile into their grid slot.
+  const stdioProfile =
+    !needsInstance && HEADED ? seedWindowGeometry(stateDir, backendName, condition) : null;
   console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
   const instance = !needsInstance ? null : await withEnvLock(async () => {
     process.env.FIREFOX_CLI_STATE_DIR = stateDir;
@@ -430,6 +435,7 @@ async function runCondition(backendName, condition, shared) {
       stateDir,
       pages,
       endpoint: instance?.discovery.endpoint ?? null,
+      stdioProfile,
     };
     for (const task of tasks) {
       pages.state.submissions.length = 0;
