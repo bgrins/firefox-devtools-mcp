@@ -180,6 +180,16 @@ export const cliOptions = {
       'Enable privileged context tools: list/select privileged contexts, evaluate privileged scripts, get/set Firefox prefs, and list extensions. Requires MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1.',
     default: (process.env.ENABLE_PRIVILEGED_CONTEXT ?? 'false') === 'true',
   },
+  httpPort: {
+    type: 'number',
+    description:
+      'Serve MCP over streamable HTTP on 127.0.0.1 at this port instead of stdio. Use 0 for an ephemeral port.',
+  },
+  discoveryFile: {
+    type: 'string',
+    description:
+      'Path to write a JSON discovery file ({port, endpoint, pid, auth}) once the HTTP transport is listening; removed on shutdown. Requires --http-port.',
+  },
 } satisfies Record<string, YargsOptions>;
 
 export function parseArguments(version: string, argv = process.argv, includePrivileged = true) {

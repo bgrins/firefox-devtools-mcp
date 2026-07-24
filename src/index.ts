@@ -2,8 +2,12 @@ import { version } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { realpathSync } from 'node:fs';
+import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import * as fsPromises from 'node:fs/promises';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -419,6 +423,14 @@ export async function run(
     throw new Error('Resource reading not implemented');
   });
 
+  if (args.httpPort !== undefined) {
+    await startHttpTransport(server, args.httpPort, args.discoveryFile);
+    return;
+  }
+  if (args.discoveryFile) {
+    logError('--discovery-file requires --http-port; ignoring');
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
@@ -439,4 +451,79 @@ export async function run(
   // StdioServerTransport does not fire onclose on stdin EOF.
   process.stdin.on('end', onSignal);
   process.stdin.on('close', onSignal);
+}
+
+/**
+ * Serve MCP over streamable HTTP on 127.0.0.1 (same wire contract as the
+ * in-browser server in Firefox: MCP at /mcp plus an optional discovery file),
+ * so clients written against that contract work with either backend.
+ */
+async function startHttpTransport(
+  server: Server,
+  requestedPort: number,
+  discoveryFile: string | undefined
+): Promise<void> {
+  const httpServer = http.createServer();
+  await new Promise<void>((resolvePort, reject) => {
+    httpServer.once('error', reject);
+    httpServer.listen(requestedPort, '127.0.0.1', () => resolvePort());
+  });
+  const address = httpServer.address();
+  const port = typeof address === 'object' && address ? address.port : requestedPort;
+
+  // Stateful (session-id) mode: the SDK's stateless mode does not support a
+  // long-lived shared transport (second request 500s). Conforming clients
+  // track Mcp-Session-Id transparently. The cast works around the SDK's
+  // Transport typings being incompatible with exactOptionalPropertyTypes.
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true,
+    enableDnsRebindingProtection: true,
+    allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
+  });
+  await server.connect(transport as unknown as Parameters<typeof server.connect>[0]);
+
+  httpServer.on('request', (req, res) => {
+    if ((req.url ?? '').split('?')[0] !== '/mcp') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('not found');
+      return;
+    }
+    transport.handleRequest(req, res).catch((error: unknown) => {
+      logError('HTTP transport request failed', error);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end();
+      }
+    });
+  });
+
+  let removeDiscoveryFile: (() => Promise<void>) | null = null;
+  if (discoveryFile) {
+    await fsPromises.writeFile(
+      discoveryFile,
+      JSON.stringify({
+        port,
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        pid: process.pid,
+        auth: 'none',
+      })
+    );
+    removeDiscoveryFile = () => fsPromises.unlink(discoveryFile).catch(() => {});
+  }
+
+  log(`Firefox DevTools MCP server running on http://127.0.0.1:${port}/mcp`);
+  log('Ready to accept tool requests');
+
+  const cleanup = async () => {
+    await removeDiscoveryFile?.();
+    await resetFirefox();
+    await server.close();
+    httpServer.close();
+    await flushLogs().catch(() => {});
+    process.exit(0);
+  };
+  const onSignal = () => void cleanup();
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
 }
