@@ -1,0 +1,16 @@
+{
+  "name": "firefox-cli",
+  "private": true,
+  "version": "0.0.1",
+  "description": "One-shot CLI for driving Firefox via the firefox-devtools-mcp wire contract (discovery file + MCP over loopback HTTP)",
+  "type": "module",
+  "bin": {
+    "firefox-cli": "bin/firefox-cli.mjs"
+  },
+  "scripts": {
+    "test": "node test/e2e.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0"
+  }
+}

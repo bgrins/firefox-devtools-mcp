@@ -361,75 +361,86 @@ export async function run(
     logDebug(`  Viewport: ${args.viewport.width}x${args.viewport.height}`);
   }
 
-  const server = new Server(
-    {
-      name: SERVER_NAME,
-      version: SERVER_VERSION,
-    },
-    {
-      capabilities: {
-        resources: {},
-        tools: {},
+  /**
+   * Build a configured MCP Server. HTTP mode creates one per session (a
+   * transport supports a single session); they all share the module-level
+   * Firefox facade.
+   */
+  function createServer(): Server {
+    const server = new Server(
+      {
+        name: SERVER_NAME,
+        version: SERVER_VERSION,
       },
-    }
-  );
-
-  // List available tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    log('Listing available tools');
-    return {
-      tools: allTools,
-    };
-  });
-
-  // Handle tool execution
-  server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
-    const { name, arguments: args } = request.params;
-    log(`Executing tool: ${name}`);
-
-    const handler = toolHandlers.get(name);
-    if (!handler) {
-      throw new Error(`Unknown tool: ${name}`);
-    }
-
-    try {
-      const result = await handler(args);
-      if (pendingWarning) {
-        // Return as isError so that agents acting as MCP clients (e.g. Claude)
-        // surface the message to the user.
-        // Also note the operation completed so the agent does not retry.
-        const operationNote =
-          result.content[0]?.type === 'text'
-            ? `\n\n[Note: The operation also completed — ${result.content[0].text}]`
-            : '';
-        const warning = pendingWarning;
-        pendingWarning = null;
-        return errorResponse(`${warning}${operationNote}`);
+      {
+        capabilities: {
+          resources: {},
+          tools: {},
+        },
       }
-      return result;
-    } catch (error) {
-      logError(`Error executing tool ${name}`, error);
-      throw error;
-    }
-  });
+    );
 
-  // List resources (not implemented for this server)
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    return { resources: [] };
-  });
+    // List available tools
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
+      log('Listing available tools');
+      return {
+        tools: allTools,
+      };
+    });
 
-  // Read resource (not implemented for this server)
-  server.setRequestHandler(ReadResourceRequestSchema, async () => {
-    throw new Error('Resource reading not implemented');
-  });
+    // Handle tool execution
+    server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
+      const { name, arguments: args } = request.params;
+      log(`Executing tool: ${name}`);
+
+      const handler = toolHandlers.get(name);
+      if (!handler) {
+        throw new Error(`Unknown tool: ${name}`);
+      }
+
+      try {
+        const result = await handler(args);
+        if (pendingWarning) {
+          // Return as isError so that agents acting as MCP clients (e.g. Claude)
+          // surface the message to the user.
+          // Also note the operation completed so the agent does not retry.
+          const operationNote =
+            result.content[0]?.type === 'text'
+              ? `\n\n[Note: The operation also completed — ${result.content[0].text}]`
+              : '';
+          const warning = pendingWarning;
+          pendingWarning = null;
+          return errorResponse(`${warning}${operationNote}`);
+        }
+        return result;
+      } catch (error) {
+        logError(`Error executing tool ${name}`, error);
+        throw error;
+      }
+    });
+
+    // List resources (not implemented for this server)
+    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      return { resources: [] };
+    });
+
+    // Read resource (not implemented for this server)
+    server.setRequestHandler(ReadResourceRequestSchema, async () => {
+      throw new Error('Resource reading not implemented');
+    });
+
+    return server;
+  }
 
   if (args.httpPort !== undefined) {
-    await startHttpTransport(server, args.httpPort, args.discoveryFile);
+    await startHttpTransport(createServer, args.httpPort, args.discoveryFile);
     return;
   }
   if (args.discoveryFile) {
     logError('--discovery-file requires --http-port; ignoring');
   }
+
+  const server = createServer();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -457,9 +468,13 @@ export async function run(
  * Serve MCP over streamable HTTP on 127.0.0.1 (same wire contract as the
  * in-browser server in Firefox: MCP at /mcp plus an optional discovery file),
  * so clients written against that contract work with either backend.
+ *
+ * One transport + Server per MCP session (the SDK's canonical pattern);
+ * sessions share the global Firefox facade, so one-shot CLI invocations see
+ * persistent browser state.
  */
 async function startHttpTransport(
-  server: Server,
+  buildServer: () => Server,
   requestedPort: number,
   discoveryFile: string | undefined
 ): Promise<void> {
@@ -471,25 +486,45 @@ async function startHttpTransport(
   const address = httpServer.address();
   const port = typeof address === 'object' && address ? address.port : requestedPort;
 
-  // Stateful (session-id) mode: the SDK's stateless mode does not support a
-  // long-lived shared transport (second request 500s). Conforming clients
-  // track Mcp-Session-Id transparently. The cast works around the SDK's
-  // Transport typings being incompatible with exactOptionalPropertyTypes.
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: true,
-    enableDnsRebindingProtection: true,
-    allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
-  });
-  await server.connect(transport as unknown as Parameters<typeof server.connect>[0]);
+  const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  httpServer.on('request', (req, res) => {
+  const handleHttp = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if ((req.url ?? '').split('?')[0] !== '/mcp') {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('not found');
       return;
     }
-    transport.handleRequest(req, res).catch((error: unknown) => {
+    const sessionId = req.headers['mcp-session-id'];
+    let transport = typeof sessionId === 'string' ? transports.get(sessionId) : undefined;
+    if (!transport) {
+      // New session (the transport rejects anything but an initialize request
+      // for an unknown session). The cast works around the SDK's Transport
+      // typings being incompatible with exactOptionalPropertyTypes.
+      const sessionTransport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        enableJsonResponse: true,
+        enableDnsRebindingProtection: true,
+        allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
+        onsessioninitialized: (sid) => {
+          transports.set(sid, sessionTransport);
+        },
+      });
+      sessionTransport.onclose = () => {
+        if (sessionTransport.sessionId) {
+          transports.delete(sessionTransport.sessionId);
+        }
+      };
+      const sessionServer = buildServer();
+      await sessionServer.connect(
+        sessionTransport as unknown as Parameters<typeof sessionServer.connect>[0]
+      );
+      transport = sessionTransport;
+    }
+    await transport.handleRequest(req, res);
+  };
+
+  httpServer.on('request', (req, res) => {
+    handleHttp(req, res).catch((error: unknown) => {
       logError('HTTP transport request failed', error);
       if (!res.headersSent) {
         res.writeHead(500);
@@ -518,7 +553,9 @@ async function startHttpTransport(
   const cleanup = async () => {
     await removeDiscoveryFile?.();
     await resetFirefox();
-    await server.close();
+    for (const transport of transports.values()) {
+      await transport.close().catch(() => {});
+    }
     httpServer.close();
     await flushLogs().catch(() => {});
     process.exit(0);
