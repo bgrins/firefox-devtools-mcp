@@ -1,0 +1,13 @@
+{
+  "name": "firefox-devtools-mcp-embedded",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Builds fdm-core.mjs: the shared tool surface + facade + MCP protocol layer as a single ES module for embedding in Firefox (vendored into browser/components/mcp/vendor/)",
+  "type": "module",
+  "scripts": {
+    "build:moz": "node build-moz.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
