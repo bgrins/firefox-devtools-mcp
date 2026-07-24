@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, listInstances, stop } from '../lib/instances.mjs';
+import { callTool } from '../lib/mcp.mjs';
 import { startPagesServer } from './server.mjs';
 import { ANSWERS } from './answers.mjs';
 
@@ -27,9 +28,19 @@ const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i !== -1 ? args[i + 1] : fallback;
 };
-const BACKEND_NAME = flag('backend', 'anthropic');
-const backend = await import(`./backends/${BACKEND_NAME}.mjs`);
-const MODEL = flag('model', backend.DEFAULT_MODEL);
+const BACKEND_ARG = flag('backend', 'anthropic');
+const BACKEND_NAMES =
+  BACKEND_ARG === 'all' ? ['anthropic', 'codex'] : BACKEND_ARG.split(',');
+const BACKENDS = Object.fromEntries(
+  await Promise.all(
+    BACKEND_NAMES.map(async (name) => [name, await import(`./backends/${name}.mjs`)])
+  )
+);
+const MODEL_FLAG = flag('model', null);
+if (MODEL_FLAG && BACKEND_NAMES.length > 1) {
+  throw new Error('--model cannot be combined with multiple backends; each uses its default');
+}
+const modelFor = (name) => MODEL_FLAG ?? BACKENDS[name].DEFAULT_MODEL;
 const SUITE = flag('suite', 'basic');
 const ONLY_TASK = flag('task', null);
 if (args.includes('--help') || args.includes('help')) {
@@ -41,7 +52,7 @@ Usage: node eval/run.mjs [options]
   --suite basic|web|all   task suite (default: basic; web = simulated sites)
   --task <id>             run a single task by id
   --model <id>            model for the agent backend
-  --backend <name>        anthropic (default) or codex (eval/backends/)
+  --backend <names>       anthropic (default), codex, comma list, or 'all'
   --headed                visible Firefox windows (side-by-side with --parallel)
   --parallel              run cli and mcp conditions concurrently
   --help                  show this help
@@ -190,6 +201,9 @@ async function webTasks(base) {
 
 const CLI_CHEATSHEET = `You control a running Firefox via the \`firefox-cli\` shell command.
 Each command is a one-shot process; browser state persists between commands.
+Exactly one managed Firefox instance is ALREADY RUNNING for you — never run
+\`firefox-cli launch\`, \`stop\`, or \`servers\`. If a command errors, retry it
+or adjust its arguments instead of managing instances.
 
   firefox-cli open <url>            open a new tab at url
   firefox-cli find "text"           search the page, returns matching elements with uids like 3_7
@@ -208,10 +222,11 @@ function taskPrompt(condition, task) {
   return `${intro}\n\nTask: ${task.ask}\nAnswer concisely with the requested information.`;
 }
 
-async function runTask(condition, task, ctx) {
+async function runTask(backendName, condition, label, task, ctx) {
+  const backend = BACKENDS[backendName];
   const spec = {
     prompt: taskPrompt(condition, task),
-    model: MODEL,
+    model: modelFor(backendName),
     maxTurns: task.maxTurns,
     condition,
     cwd: ctx.scratchDir,
@@ -227,7 +242,7 @@ async function runTask(condition, task, ctx) {
   let transcriptStream = null;
   if (ctx.transcriptsDir) {
     transcriptStream = createWriteStream(
-      join(ctx.transcriptsDir, `${condition}--${task.id}.jsonl`)
+      join(ctx.transcriptsDir, `${label.replace('/', '--')}--${task.id}.jsonl`)
     );
     spec.onMessage = (message) =>
       transcriptStream.write(JSON.stringify(message) + '\n');
@@ -245,7 +260,8 @@ async function runTask(condition, task, ctx) {
     : { pass: task.expect.test(r.text) };
   const tenth = (ms) => (ms == null ? null : Math.round(ms / 100) / 10);
   return {
-    condition,
+    backend: backendName,
+    condition: label,
     task: task.id,
     success: verdict.pass,
     detail: verdict.detail,
@@ -345,16 +361,20 @@ async function buildTasks(base) {
 
 // Pre-seed window geometry so headed windows tile side by side (cli left,
 // mcp right) instead of stacking.
-function seedWindowGeometry(stateDir, condition) {
+function seedWindowGeometry(stateDir, backendName, condition) {
   const profileDir = join(stateDir, 'profile');
   mkdirSync(profileDir, { recursive: true });
+  const col = condition === 'cli' ? 0 : 1;
+  const row = BACKEND_NAMES.indexOf(backendName);
+  const rows = BACKEND_NAMES.length;
+  const height = rows > 1 ? 470 : 920;
   const geometry = {
     'chrome://browser/content/browser.xhtml': {
       'main-window': {
-        screenX: condition === 'cli' ? '0' : '880',
-        screenY: '40',
+        screenX: String(col * 880),
+        screenY: String(40 + row * (height + 30)),
         width: '860',
-        height: '920',
+        height: String(height),
         sizemode: 'normal',
       },
     },
@@ -363,20 +383,29 @@ function seedWindowGeometry(stateDir, condition) {
   return profileDir;
 }
 
-async function runCondition(condition, shared) {
+async function runCondition(backendName, condition, shared) {
+  const label = BACKEND_NAMES.length > 1 ? `${backendName}/${condition}` : condition;
   // Each condition gets its own pages server so form-state validation
   // (submissions/progress) stays isolated when running in parallel.
   const pages = await startPagesServer();
   const tasks = await buildTasks(pages.url);
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
-  console.log(`[${condition}] starting (backend: ${BACKEND_NAME}, model: ${MODEL || '(backend default)'})`);
-  const instance = await withEnvLock(() => {
+  console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
+  const instance = await withEnvLock(async () => {
     process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-    return launch({
+    const inst = await launch({
       headless: !HEADED,
-      ...(HEADED ? { profile: seedWindowGeometry(stateDir, condition) } : {}),
+      ...(HEADED ? { profile: seedWindowGeometry(stateDir, backendName, condition) } : {}),
     });
+    // Firefox starts lazily on the first tool call. Warm it up while still
+    // serialized: concurrent cold starts can SIGABRT in macOS
+    // RegisterApplication/LaunchServices when several instances register at
+    // once (TransformProcessType abort).
+    await callTool(inst.discovery.endpoint, 'list_pages', {}).catch((error) =>
+      console.log(`[${label}] warm-up failed: ${error.message}`)
+    );
+    return inst;
   });
   try {
     const ctx = {
@@ -389,17 +418,17 @@ async function runCondition(condition, shared) {
       pages.state.submissions.length = 0;
       pages.state.progress.length = 0;
       try {
-        const r = await runTask(condition, task, ctx);
+        const r = await runTask(backendName, condition, label, task, ctx);
         results.push(r);
         console.log(
-          `[${condition}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
+          `[${label}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
             `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
             `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
             (r.detail ? ` (${r.detail})` : '')
         );
       } catch (error) {
-        console.log(`[${condition}] ${task.id}: ERROR ${error.message}`);
-        results.push({ condition, task: task.id, success: false, error: error.message });
+        console.log(`[${label}] ${task.id}: ERROR ${error.message}`);
+        results.push({ backend: backendName, condition: label, task: task.id, success: false, error: error.message });
       }
     }
   } finally {
@@ -434,15 +463,19 @@ async function main() {
   chmodSync(wrapper, 0o755);
   const shared = { scratchDir, binDir, transcriptsDir };
 
-  const conditions = ['cli', 'mcp'];
+  const runs = BACKEND_NAMES.flatMap((backendName) =>
+    ['cli', 'mcp'].map((condition) => [backendName, condition])
+  );
   let results;
   if (PARALLEL) {
-    console.log('(parallel mode: conditions run side by side; wall timings may include contention)\n');
-    results = (await Promise.all(conditions.map((c) => runCondition(c, shared)))).flat();
+    console.log('(parallel mode: runs execute side by side; wall timings may include contention)\n');
+    results = (
+      await Promise.all(runs.map(([b, c]) => runCondition(b, c, shared)))
+    ).flat();
   } else {
     results = [];
-    for (const condition of conditions) {
-      results.push(...(await runCondition(condition, shared)));
+    for (const [b, c] of runs) {
+      results.push(...(await runCondition(b, c, shared)));
     }
   }
   rmSync(scratchDir, { recursive: true, force: true });
@@ -454,8 +487,8 @@ async function main() {
 
   const meta = {
     date: startedAt.toISOString(),
-    backend: BACKEND_NAME,
-    model: MODEL || '(backend default)',
+    backend: BACKEND_NAMES.join(','),
+    model: MODEL_FLAG ?? '(backend defaults)',
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
     parallel: PARALLEL || undefined,

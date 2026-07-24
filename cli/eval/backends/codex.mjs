@@ -33,6 +33,19 @@ export async function run({ prompt, model, condition, env, endpoint, cwd, onMess
       network_access: true,
       writable_roots: [env?.FIREFOX_CLI_STATE_DIR, tmpdir()].filter(Boolean),
     };
+    // Codex's default shell_environment_policy passes only "core" vars
+    // (PATH, HOME, ...) to shell commands — custom vars like
+    // FIREFOX_CLI_STATE_DIR are dropped, which strands firefox-cli in the
+    // wrong state dir. Inherit everything and pin the vars we depend on.
+    codexOptions.config.shell_environment_policy = {
+      inherit: 'all',
+      set: {
+        ...(env?.FIREFOX_CLI_STATE_DIR
+          ? { FIREFOX_CLI_STATE_DIR: env.FIREFOX_CLI_STATE_DIR }
+          : {}),
+        ...(env?.PATH ? { PATH: env.PATH } : {}),
+      },
+    };
   } else {
     codexOptions.config.mcp_servers = { firefox: { url: endpoint } };
   }
