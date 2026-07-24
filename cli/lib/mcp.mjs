@@ -137,6 +137,64 @@ export const TOOL_COMMANDS = {
   },
 };
 
+// Search the current snapshot for text/regex, returning matching lines with
+// surrounding context (playwright-cli's `find`) — the token-cheap alternative
+// to dumping a full snapshot.
+export async function findInSnapshot(endpoint, pattern, flags) {
+  const result = await callTool(endpoint, 'take_snapshot', {});
+  if (result.isError) {
+    return result;
+  }
+  const text = (result.content ?? [])
+    .filter((c) => c.type === 'text')
+    .map((c) => c.text)
+    .join('\n');
+  const lines = text.split('\n');
+  const context = flags.context !== undefined ? Number(flags.context) : 2;
+  const matcher = flags.regex
+    ? new RegExp(...parseRegex(pattern))
+    : null;
+  const matches = [];
+  for (let i = 0; i < lines.length; i++) {
+    const hit = matcher ? matcher.test(lines[i]) : lines[i].includes(pattern);
+    if (hit) {
+      matches.push(i);
+    }
+  }
+  if (!matches.length) {
+    return { content: [{ type: 'text', text: `(no matches for ${pattern})` }], isError: true };
+  }
+  // Merge overlapping context ranges into blocks.
+  const blocks = [];
+  for (const idx of matches) {
+    const start = Math.max(0, idx - context);
+    const end = Math.min(lines.length - 1, idx + context);
+    const last = blocks[blocks.length - 1];
+    if (last && start <= last.end + 1) {
+      last.end = end;
+      last.hits.add(idx);
+    } else {
+      blocks.push({ start, end, hits: new Set([idx]) });
+    }
+  }
+  const out = [];
+  for (const block of blocks) {
+    if (out.length) {
+      out.push('--');
+    }
+    for (let i = block.start; i <= block.end; i++) {
+      out.push(`${block.hits.has(i) ? '>' : ' '} ${lines[i]}`);
+    }
+  }
+  out.push(`(${matches.length} matching line${matches.length === 1 ? '' : 's'})`);
+  return { content: [{ type: 'text', text: out.join('\n') }] };
+}
+
+function parseRegex(pattern) {
+  const slashed = pattern.match(/^\/(.*)\/([a-z]*)$/);
+  return slashed ? [slashed[1], slashed[2]] : [pattern, ''];
+}
+
 export function printResult(result, flags) {
   if (flags.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');

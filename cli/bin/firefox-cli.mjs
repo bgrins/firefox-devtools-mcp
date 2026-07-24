@@ -6,7 +6,13 @@ import {
   resolveInstance,
   stop,
 } from '../lib/instances.mjs';
-import { callTool, listTools, printResult, TOOL_COMMANDS } from '../lib/mcp.mjs';
+import {
+  callTool,
+  findInSnapshot,
+  listTools,
+  printResult,
+  TOOL_COMMANDS,
+} from '../lib/mcp.mjs';
 
 const VALUE_FLAGS = new Set([
   'instance',
@@ -15,6 +21,7 @@ const VALUE_FLAGS = new Set([
   'selector',
   'timeout',
   'lines',
+  'context',
 ]);
 
 function parseArgv(argv) {
@@ -63,6 +70,8 @@ function help() {
     lines.push(`  ${cmd.usage.padEnd(27)} ${cmd.describe}`);
   }
   lines.push(
+    '  find <text> [--regex] [--context <n>]',
+    '                              search the snapshot, print matches with context',
     "  call <tool> [json-args]     call any MCP tool, e.g. call take_snapshot '{}'",
     '  tools                       list available MCP tools',
     '',
@@ -122,6 +131,18 @@ async function main() {
       console.log(`${tool.name.padEnd(28)} ${tool.description ?? ''}`);
     }
     return 0;
+  }
+
+  if (command === 'find') {
+    const [pattern] = rest;
+    if (!pattern) {
+      throw new Error(
+        "Usage: firefox-cli find <text> [--regex] [--context <n>]"
+      );
+    }
+    const inst = resolveInstance(flags);
+    const result = await findInSnapshot(inst.discovery.endpoint, pattern, flags);
+    return printResult(result, flags);
   }
 
   if (command === 'call') {

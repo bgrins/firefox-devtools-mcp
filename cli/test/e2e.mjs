@@ -67,12 +67,25 @@ async function main() {
   const pages = await cli(['pages']);
   assert.match(pages, /CLI E2E/);
 
-  step('snapshot exposes the button uid');
+  step('snapshot exposes the button');
   const snapshot = await cli(['snapshot']);
-  const buttonLine = snapshot.split('\n').find((l) => l.includes('Press me'));
-  assert.ok(buttonLine, `no button in snapshot:\n${snapshot}`);
-  const uid = buttonLine.match(/(\d+_\d+)/)?.[1];
-  assert.ok(uid, `no uid in line: ${buttonLine}`);
+  assert.ok(
+    snapshot.split('\n').some((l) => l.includes('Press me')),
+    `no button in snapshot:\n${snapshot}`
+  );
+
+  step('find with no matches errors');
+  const notFound = await cli(['find', 'zzz-not-on-page'], { expectFailure: true });
+  assert.match(notFound, /no matches/);
+
+  step('find locates the button (and its uid) without a full snapshot');
+  const found = await cli(['find', 'Press me']);
+  assert.match(found, /matching line/);
+  const foundLine = found.split('\n').find((l) => l.includes('Press me'));
+  // Every find/snapshot invalidates earlier uids — always take the uid from
+  // the most recent output.
+  const uid = foundLine?.match(/(\d+_\d+)/)?.[1];
+  assert.ok(uid, `no uid in find output line: ${foundLine}`);
 
   step(`click ${uid} (state persisted across invocations)`);
   await cli(['click', uid]);
