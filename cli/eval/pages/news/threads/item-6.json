@@ -1,0 +1,65 @@
+{
+  "rank": 6,
+  "comments": [
+    {
+      "author": "pagetable",
+      "age": "10 hours ago",
+      "text": "The most encouraging number in the report isn't lines of code, it's the reviewer count. Going from \"two people can review this\" to a dozen subsystem folks who can meaningfully evaluate the abstractions is the difference between an experiment and an institution. Code is easy to write; a review culture takes years.",
+      "replies": [
+        {
+          "author": "ringzero",
+          "age": "9 hours ago",
+          "text": "OP here (I compiled the report from the mailing list threads, I'm not a maintainer). Agreed, and the report probably undersells how uneven it still is — a couple of subsystems have deep review benches, others have exactly one person who can review the bindings, and that person also has a day job. The bus factor per subsystem would be a sobering appendix."
+        }
+      ]
+    },
+    {
+      "author": "cdecl_forever",
+      "age": "9 hours ago",
+      "text": "Still unconvinced this is worth the cost. Now every cross-cutting refactor has to be done twice, in two languages, by people who mostly know one of them. Every maintainer who's grumbled about this gets dismissed as a dinosaur, but the coordination tax is real and it lands on people who never asked for it.",
+      "replies": [
+        {
+          "author": "borrowchekhov",
+          "age": "8 hours ago",
+          "text": "The tax is real, but weigh it against what it buys. The classes of bug the new drivers structurally can't have — use-after-free, data races on shared state — are exactly the classes that dominate the serious security advisories. Nobody claims it's free; the claim is the exchange rate is favorable.",
+          "replies": [
+            {
+              "author": "cdecl_forever",
+              "age": "7 hours ago",
+              "text": "\"Favorable exchange rate\" is doing a lot of work when the people paying and the people benefiting are different maintainers. But I'll concede the memory-safety numbers in section 3 are hard to argue with — the new drivers' bug trackers really do look different.",
+              "replies": [
+                {
+                  "author": "borrowchekhov",
+                  "age": "7 hours ago",
+                  "text": "That's fair, and the incidence-of-cost point is the strongest version of your argument. Appreciate the actual engagement instead of the usual language-war script."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "author": "kernelpanda",
+      "age": "7 hours ago",
+      "text": "As someone who writes drivers for a living: the thing the report calls \"abstraction friction\" deserves its own article. Wrapping a 30-year-old C API that encodes its safety invariants in lore rather than types is archaeology. Half the value of the whole effort, honestly, is that writing the safe wrapper forces someone to finally write down what the C API's actual contract is. The bindings are executable documentation of rules that previously lived in three maintainers' heads."
+    },
+    {
+      "author": "staticdrift",
+      "age": "5 hours ago",
+      "text": "What's the toolchain story these days? Last I looked, building this required a fairly specific compiler version and the answer to \"what about the other architectures\" was an awkward silence.",
+      "replies": [
+        {
+          "author": "ringzero",
+          "age": "4 hours ago",
+          "text": "Covered in section 5 — the pinned-compiler-version era is over, there's now a supported version range, and the alternative-backend work has brought two more architectures to \"builds and boots\" status. The remaining gaps are the genuinely obscure ports, which mostly lack anyone who wants Rust drivers on them anyway."
+        }
+      ]
+    },
+    {
+      "author": "tokenring",
+      "age": "2 hours ago",
+      "text": "The quiet story here is generational. Every project of this age faces the same problem: the people with deep expertise are aging out, and the language is a barrier for the contributors who'd replace them. Whatever you think of the specific choice, doing *something* to make kernel work attractive to people who started programming after 2015 was going to be necessary. This is that something."
+    }
+  ]
+}

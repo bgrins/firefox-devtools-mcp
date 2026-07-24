@@ -85,6 +85,9 @@ async function webTasks(base) {
   const newsItems = JSON.parse(
     await readFile(join(here, 'pages', 'news', 'items.json'), 'utf8')
   );
+  const topThread = JSON.parse(
+    await readFile(join(here, 'pages', 'news', 'threads', 'item-1.json'), 'utf8')
+  );
   return [
     {
       id: 'gridword',
@@ -147,6 +150,23 @@ async function webTasks(base) {
           /june\s*12/i.test(text) &&
           text.toLowerCase().includes(ANSWERS.gov.instructionsPath),
       }),
+    },
+    {
+      id: 'news-thread',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/news/ — a link-aggregator front page. Open the comment thread ` +
+        `for the #1 top post and report: the title of the post and how many top-level ` +
+        `(non-reply) comments are shown in the thread.`,
+      validate: (text) => {
+        const topLevel = topThread.comments.length;
+        return {
+          pass:
+            text.includes(newsItems[0].title.slice(0, 30)) &&
+            new RegExp(`\\b${topLevel}\\b`).test(text),
+          detail: `expected top-level=${topLevel}`,
+        };
+      },
     },
     {
       id: 'news-extract',
@@ -350,7 +370,7 @@ async function runCondition(condition, shared) {
   const tasks = await buildTasks(pages.url);
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
-  console.log(`[${condition}] starting (backend: ${BACKEND_NAME}, model: ${MODEL})`);
+  console.log(`[${condition}] starting (backend: ${BACKEND_NAME}, model: ${MODEL || '(backend default)'})`);
   const instance = await withEnvLock(() => {
     process.env.FIREFOX_CLI_STATE_DIR = stateDir;
     return launch({
@@ -435,7 +455,7 @@ async function main() {
   const meta = {
     date: startedAt.toISOString(),
     backend: BACKEND_NAME,
-    model: MODEL,
+    model: MODEL || '(backend default)',
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
     parallel: PARALLEL || undefined,

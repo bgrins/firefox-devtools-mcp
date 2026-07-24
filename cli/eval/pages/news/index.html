@@ -52,13 +52,14 @@
           item.type === 'job'
             ? ''
             : '<a href="/news/" title="upvote"><div class="votearrow"></div></a>';
+        const itemUrl = `item.html?id=${item.rank}`;
         const comments =
           item.comments === 0
-            ? '<a href="/news/">discuss</a>'
-            : `<a href="/news/">${item.comments}&nbsp;comment${item.comments === 1 ? '' : 's'}</a>`;
+            ? `<a href="${itemUrl}">discuss</a>`
+            : `<a href="${itemUrl}">${item.comments}&nbsp;comment${item.comments === 1 ? '' : 's'}</a>`;
         const subtext =
           item.type === 'job'
-            ? `${item.age} | <a href="/news/">hide</a>`
+            ? `${item.age} | <a href="${itemUrl}">hide</a>`
             : `${item.points} points by <a href="/news/">${item.author}</a> ` +
               `<a href="/news/">${item.age}</a> | <a href="/news/">hide</a> | ` +
               `<a href="/news/">past</a> | <a href="/news/">flag</a> | ${comments}`;
@@ -67,7 +68,7 @@
           `<tr>
              <td class="rank">${item.rank}.</td>
              <td class="rank">${arrow}</td>
-             <td class="title"><a href="/news/">${item.title}</a>${site}</td>
+             <td class="title"><a href="${itemUrl}">${item.title}</a>${site}</td>
            </tr>
            <tr>
              <td colspan="2"></td>

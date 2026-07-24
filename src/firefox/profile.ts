@@ -65,11 +65,14 @@ export function resolveProfilePath(parentPath: string): ResolvedProfile {
     mkdirSync(mcpProfilePath, { recursive: true });
     log(`Created MCP profile directory: ${mcpProfilePath}`);
 
-    // Bootstrap: copy prefs.js from the parent so user preferences are preserved.
-    const parentPrefs = join(parentPath, 'prefs.js');
-    if (existsSync(parentPrefs)) {
-      copyFileSync(parentPrefs, join(mcpProfilePath, 'prefs.js'));
-      log(`   Copied prefs.js from parent profile for initial preferences.`);
+    // Bootstrap: copy prefs.js from the parent so user preferences are
+    // preserved, and xulstore.json so window geometry carries over.
+    for (const file of ['prefs.js', 'xulstore.json']) {
+      const parentFile = join(parentPath, file);
+      if (existsSync(parentFile)) {
+        copyFileSync(parentFile, join(mcpProfilePath, file));
+        log(`   Copied ${file} from parent profile.`);
+      }
     }
   }
 

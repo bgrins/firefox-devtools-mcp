@@ -128,6 +128,9 @@ export async function launch(flags) {
   if (flags.profile) {
     args.push('--profile-path', String(flags.profile));
   }
+  for (const pref of [].concat(flags.pref ?? [])) {
+    args.push('--pref', String(pref));
+  }
 
   const log = openSync(logPath, 'a');
   const child = spawn(process.execPath, args, {

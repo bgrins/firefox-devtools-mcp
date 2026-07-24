@@ -5,7 +5,7 @@
   "site": "gridlock.dev",
   "points": 487,
   "author": "mlemvik",
-  "comments": 213,
+  "comments": 14,
   "age": "26 minutes ago"
  },
  {
@@ -14,7 +14,7 @@
   "site": "postgresql.example.org",
   "points": 452,
   "author": "tuplewrangler",
-  "comments": 318,
+  "comments": 14,
   "age": "26 minutes ago"
  },
  {
@@ -23,7 +23,7 @@
   "site": "inputdevices.example.com",
   "points": 389,
   "author": "quietcursor",
-  "comments": 145,
+  "comments": 14,
   "age": "26 minutes ago"
  },
  {
@@ -32,7 +32,7 @@
   "site": "ferrostack.example.io",
   "points": 356,
   "author": "rackmounted",
-  "comments": 402,
+  "comments": 14,
   "age": "1 hour ago"
  },
  {
@@ -41,7 +41,7 @@
   "site": "somnolog.example.net",
   "points": 341,
   "author": "circadian",
-  "comments": 98,
+  "comments": 13,
   "age": "1 hour ago"
  },
  {
@@ -50,7 +50,7 @@
   "site": "kernelnotes.example.org",
   "points": 335,
   "author": "ringzero",
-  "comments": 276,
+  "comments": 10,
   "age": "2 hours ago"
  },
  {
@@ -59,7 +59,7 @@
   "site": "hexactly.example.dev",
   "points": 298,
   "author": "nybblenibble",
-  "comments": 87,
+  "comments": 10,
   "age": "2 hours ago"
  },
  {
@@ -68,7 +68,7 @@
   "site": "sidehustlemath.example.com",
   "points": 286,
   "author": "coinop",
-  "comments": 194,
+  "comments": 11,
   "age": "3 hours ago"
  },
  {
@@ -77,7 +77,7 @@
   "site": "suds.example.io",
   "points": 271,
   "author": "rinseaid",
-  "comments": 156,
+  "comments": 10,
   "age": "3 hours ago"
  },
  {
@@ -86,7 +86,7 @@
   "site": "",
   "points": 264,
   "author": "bibliophage",
-  "comments": 331,
+  "comments": 10,
   "age": "4 hours ago"
  },
  {
@@ -95,7 +95,7 @@
   "site": "isoline.example.art",
   "points": 243,
   "author": "contourist",
-  "comments": 64,
+  "comments": 10,
   "age": "4 hours ago"
  },
  {
@@ -104,7 +104,7 @@
   "site": "flatfile.example.dev",
   "points": 238,
   "author": "vacuumfull",
-  "comments": 189,
+  "comments": 9,
   "age": "5 hours ago"
  },
  {
@@ -113,7 +113,7 @@
   "site": "workplacetech.example.com",
   "points": 226,
   "author": "sharepointsurvivor",
-  "comments": 247,
+  "comments": 10,
   "age": "5 hours ago"
  },
  {
@@ -122,7 +122,7 @@
   "site": "typograph.example.io",
   "points": 214,
   "author": "sidebearing",
-  "comments": 52,
+  "comments": 10,
   "age": "5 hours ago"
  },
  {
@@ -131,7 +131,7 @@
   "site": "urbanecology.example.org",
   "points": 203,
   "author": "decibelle",
-  "comments": 71,
+  "comments": 9,
   "age": "6 hours ago"
  },
  {
@@ -140,7 +140,7 @@
   "site": "comptime.example.dev",
   "points": 197,
   "author": "allocfree",
-  "comments": 233,
+  "comments": 8,
   "age": "6 hours ago"
  },
  {
@@ -149,7 +149,7 @@
   "site": "pipelinepenny.example.com",
   "points": 189,
   "author": "yamlwhisperer",
-  "comments": 168,
+  "comments": 7,
   "age": "7 hours ago"
  },
  {
@@ -158,7 +158,7 @@
   "site": "dialup.example.museum",
   "points": 184,
   "author": "hayescompatible",
-  "comments": 122,
+  "comments": 7,
   "age": "7 hours ago"
  },
  {
@@ -167,7 +167,7 @@
   "site": "shelfspace.example.app",
   "points": 176,
   "author": "tabhoarder",
-  "comments": 93,
+  "comments": 8,
   "age": "9 hours ago"
  },
  {
@@ -176,7 +176,7 @@
   "site": "provable.example.edu",
   "points": 171,
   "author": "hoarelogic",
-  "comments": 141,
+  "comments": 7,
   "age": "9 hours ago"
  },
  {
@@ -210,7 +210,7 @@
   "site": "logscale.example.net",
   "points": 147,
   "author": "mantissa",
-  "comments": 39,
+  "comments": 6,
   "age": "13 hours ago"
  },
  {
@@ -219,7 +219,7 @@
   "site": "lastmile.example.net",
   "points": 139,
   "author": "fiberneighbor",
-  "comments": 187,
+  "comments": 6,
   "age": "13 hours ago"
  },
  {
@@ -228,7 +228,7 @@
   "site": "waylines.example.design",
   "points": 131,
   "author": "helveticat",
-  "comments": 45,
+  "comments": 6,
   "age": "13 hours ago"
  },
  {
@@ -244,7 +244,7 @@
   "site": "cellc.example.dev",
   "points": 124,
   "author": "iferror",
-  "comments": 96,
+  "comments": 6,
   "age": "16 hours ago"
  },
  {
@@ -253,7 +253,7 @@
   "site": "rfc-graveyard.example.org",
   "points": 117,
   "author": "gopherhole",
-  "comments": 83,
+  "comments": 5,
   "age": "16 hours ago"
  },
  {
@@ -262,7 +262,7 @@
   "site": "hubwatts.example.io",
   "points": 109,
   "author": "spokesperson",
-  "comments": 41,
+  "comments": 6,
   "age": "21 hours ago"
  },
  {
@@ -271,7 +271,7 @@
   "site": "kitchenphysics.example.edu",
   "points": 102,
   "author": "smallangle",
-  "comments": 37,
+  "comments": 6,
   "age": "21 hours ago"
  },
  {
@@ -280,7 +280,7 @@
   "site": "resonantcity.example.com",
   "points": 95,
   "author": "stormdrain",
-  "comments": 29,
+  "comments": 5,
   "age": "1 day ago"
  },
  {
@@ -288,7 +288,7 @@
   "site": "cartography.example.dev",
   "points": 88,
   "author": "abandonedcart",
-  "comments": 61,
+  "comments": 6,
   "age": "1 day ago",
   "rank": 33
  }

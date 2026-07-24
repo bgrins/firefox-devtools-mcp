@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hacker Bulletin</title>
+<style>
+  body { font-family: Verdana, Geneva, sans-serif; font-size: 10pt; background: #f6f6ef; margin: 0; }
+  #wrap { width: 85%; margin: 8px auto; }
+  #topbar { background: #4a7023; padding: 4px 8px; color: #fff; }
+  #topbar a { color: #fff; text-decoration: none; margin-right: 10px; }
+  #logo { display: inline-block; width: 16px; height: 16px; border: 1px solid #fff;
+          text-align: center; font-size: 9px; line-height: 16px; font-weight: 700;
+          vertical-align: middle; margin-right: 6px; }
+  .title { font-size: 11pt; padding: 8px 0 0 4px; }
+  .title a { color: #000; text-decoration: none; }
+  .sitebit, .subtext { color: #828282; font-size: 8pt; }
+  .subtext { padding: 2px 0 10px 4px; }
+  .subtext a { color: #828282; }
+  .comment { margin: 10px 0 0 0; }
+  .ctree { margin-left: 28px; }
+  .chead { color: #828282; font-size: 8pt; }
+  .chead a { color: #828282; }
+  .ctext { padding-top: 3px; max-width: 78ch; }
+  .ctext p { margin: 6px 0; }
+  .more { color: #828282; font-size: 9pt; padding: 14px 0 4px 4px; }
+  #reply-note { color: #828282; font-size: 8pt; margin-top: 16px; }
+  #footer { text-align: center; color: #828282; font-size: 8pt; border-top: 2px solid #4a7023;
+            padding: 8px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <span id="logo">HB</span><b>Hacker Bulletin</b>
+    <a href="/news/">new</a> <a href="/news/">past</a> <a href="/news/">comments</a>
+    <a href="/news/">ask</a> <a href="/news/">show</a> <a href="/news/">jobs</a>
+    <span style="float:right"><a href="/news/">login</a></span>
+  </div>
+  <div id="story"></div>
+  <div id="comments"></div>
+  <div id="reply-note">You must be logged in to reply.</div>
+  <div id="footer">Guidelines | FAQ | Lists | API | Security | Legal<br>
+    Hacker Bulletin is a fictional link aggregator for local browser testing.</div>
+</div>
+<script>
+  const id = Number(new URLSearchParams(location.search).get('id'));
+
+  // Replies nest structurally inside their parent (not just visual indent)
+  // so the hierarchy survives DOM/accessibility snapshots.
+  function renderComment(comment) {
+    const wrap = document.createElement('div');
+    wrap.className = 'comment';
+    const paragraphs = comment.text
+      .split('\n\n')
+      .map((p) => `<p>${p}</p>`)
+      .join('');
+    wrap.innerHTML =
+      `<div class="chead"><a href="#">${comment.author}</a> ${comment.age} | ` +
+      `<a href="#">flag</a> | <a href="#">parent</a></div>` +
+      `<div class="ctext">${paragraphs}</div>`;
+    const replies = comment.replies ?? [];
+    if (replies.length) {
+      const tree = document.createElement('div');
+      tree.className = 'ctree';
+      tree.setAttribute('role', 'group');
+      tree.setAttribute('aria-label', 'replies');
+      for (const reply of replies) {
+        tree.appendChild(renderComment(reply));
+      }
+      wrap.appendChild(tree);
+    }
+    return wrap;
+  }
+
+  Promise.all([
+    fetch('items.json').then((r) => r.json()),
+    fetch(`threads/item-${id}.json`).then((r) => (r.ok ? r.json() : { comments: [] })),
+  ]).then(([items, thread]) => {
+    const item = items.find((entry) => entry.rank === id);
+    if (!item) {
+      document.getElementById('story').textContent = 'No such item.';
+      return;
+    }
+    document.title = item.title + ' | Hacker Bulletin';
+    const site = item.site ? ` <span class="sitebit">(${item.site})</span>` : '';
+    document.getElementById('story').innerHTML =
+      `<div class="title"><a href="#">${item.title}</a>${site}</div>` +
+      (item.type === 'job'
+        ? `<div class="subtext">${item.age}</div>`
+        : `<div class="subtext">${item.points} points by <a href="#">${item.author}</a> ` +
+          `${item.age} | <a href="#">hide</a> | <a href="#">past</a> | ` +
+          `${item.comments}&nbsp;comment${item.comments === 1 ? '' : 's'}</div>`);
+
+    const container = document.getElementById('comments');
+    for (const comment of thread.comments) {
+      container.appendChild(renderComment(comment));
+    }
+  });
+</script>
+</body>
+</html>
