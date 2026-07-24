@@ -27,8 +27,10 @@ function pidAlive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // EPERM means the process exists but isn't ours — e.g. when probing from
+    // inside a sandbox (codex seatbelt). Only ESRCH means it's gone.
+    return error.code === 'EPERM';
   }
 }
 

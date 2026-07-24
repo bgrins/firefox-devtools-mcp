@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 // Empty = defer to the user's codex config (~/.codex/config.toml model).
 export const DEFAULT_MODEL = '';
 
-export async function run({ prompt, model, condition, env, endpoint, cwd, onMessage }) {
+export async function run({ prompt, model, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const codexOptions = {
     // When env is provided the SDK does not inherit process.env, so run.mjs
     // builds it from the full process.env.
@@ -47,7 +47,19 @@ export async function run({ prompt, model, condition, env, endpoint, cwd, onMess
       },
     };
   } else {
-    codexOptions.config.mcp_servers = { firefox: { url: endpoint } };
+    codexOptions.config.mcp_servers = {
+      firefox: {
+        ...(mcpStdio
+          ? { command: mcpStdio.command, args: mcpStdio.args }
+          : { url: endpoint }),
+        // Codex cancels non-read-only MCP tools under approval 'never';
+        // auto-approve this server's tools instead.
+        default_tools_approval_mode: 'approve',
+        // Headroom for Firefox's lazy cold start inside the first tool call.
+        startup_timeout_sec: 60,
+        tool_timeout_sec: 180,
+      },
+    };
   }
   const codex = new Codex(codexOptions);
   const thread = codex.startThread({

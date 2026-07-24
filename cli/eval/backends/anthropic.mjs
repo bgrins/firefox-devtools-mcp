@@ -12,7 +12,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
-export async function run({ prompt, model, maxTurns, condition, env, endpoint, cwd, onMessage }) {
+export async function run({ prompt, model, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const options = {
     model,
     maxTurns,
@@ -25,7 +25,11 @@ export async function run({ prompt, model, maxTurns, condition, env, endpoint, c
     options.env = env;
   } else {
     options.allowedTools = ['mcp__firefox'];
-    options.mcpServers = { firefox: { type: 'http', url: endpoint } };
+    options.mcpServers = {
+      firefox: mcpStdio
+        ? { type: 'stdio', command: mcpStdio.command, args: mcpStdio.args }
+        : { type: 'http', url: endpoint },
+    };
   }
 
   const started = Date.now();

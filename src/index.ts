@@ -545,6 +545,18 @@ async function startHttpTransport(
       })
     );
     removeDiscoveryFile = () => fsPromises.unlink(discoveryFile).catch(() => {});
+    // Self-terminate if the discovery file disappears: the launcher owns that
+    // file, so its removal means our state dir was cleaned up (or the launcher
+    // died and something swept it). Prevents orphaned detached runners.
+    const watchdog = setInterval(() => {
+      fsPromises.access(discoveryFile).catch(() => {
+        clearInterval(watchdog);
+        removeDiscoveryFile = null;
+        log('Discovery file removed externally; shutting down.');
+        void cleanup();
+      });
+    }, 5000);
+    watchdog.unref();
   }
 
   log(`Firefox DevTools MCP server running on http://127.0.0.1:${port}/mcp`);

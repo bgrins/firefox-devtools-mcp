@@ -54,6 +54,8 @@ Usage: node eval/run.mjs [options]
   --model <id>            model for the agent backend
   --backend <names>       anthropic (default), codex, comma list, or 'all'
   --headed                visible Firefox windows (side-by-side with --parallel)
+  --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
+                          client configs do) or http (shared instance endpoint)
   --parallel              run cli and mcp conditions concurrently
   --help                  show this help
 
@@ -64,6 +66,9 @@ report.md (shareable), and transcripts/*.jsonl (full agent message streams).`);
 
 const HEADED = args.includes('--headed');
 const PARALLEL = args.includes('--parallel');
+// 'stdio' spawns the MCP server per agent session, like real client configs
+// (npx firefox-devtools-mcp); 'http' attaches the shared instance's endpoint.
+const MCP_TRANSPORT = flag('mcp-transport', 'stdio');
 
 function basicTasks(base) {
   return [
@@ -231,6 +236,17 @@ async function runTask(backendName, condition, label, task, ctx) {
     condition,
     cwd: ctx.scratchDir,
     endpoint: ctx.endpoint,
+    mcpStdio:
+      condition === 'mcp' && MCP_TRANSPORT === 'stdio'
+        ? {
+            command: process.execPath,
+            args: [
+              join(here, '..', '..', 'dist', 'index.js'),
+              '--enable-script',
+              ...(HEADED ? [] : ['--headless']),
+            ],
+          }
+        : null,
     env: {
       ...process.env,
       PATH: `${ctx.binDir}:${process.env.PATH}`,
@@ -391,8 +407,9 @@ async function runCondition(backendName, condition, shared) {
   const tasks = await buildTasks(pages.url);
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
+  const needsInstance = condition === 'cli' || MCP_TRANSPORT === 'http';
   console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
-  const instance = await withEnvLock(async () => {
+  const instance = !needsInstance ? null : await withEnvLock(async () => {
     process.env.FIREFOX_CLI_STATE_DIR = stateDir;
     const inst = await launch({
       headless: !HEADED,
@@ -412,7 +429,7 @@ async function runCondition(backendName, condition, shared) {
       ...shared,
       stateDir,
       pages,
-      endpoint: instance.discovery.endpoint,
+      endpoint: instance?.discovery.endpoint ?? null,
     };
     for (const task of tasks) {
       pages.state.submissions.length = 0;
@@ -432,13 +449,14 @@ async function runCondition(backendName, condition, shared) {
       }
     }
   } finally {
-    await withEnvLock(async () => {
-      process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-      const [inst] = listInstances();
-      if (inst) {
-        await stop(inst).catch(() => {});
-      }
-    });
+    if (needsInstance) {
+      await withEnvLock(async () => {
+        process.env.FIREFOX_CLI_STATE_DIR = stateDir;
+        for (const inst of listInstances()) {
+          await stop(inst).catch(() => {});
+        }
+      });
+    }
     await pages.close();
     rmSync(stateDir, { recursive: true, force: true });
   }
@@ -491,6 +509,7 @@ async function main() {
     model: MODEL_FLAG ?? '(backend defaults)',
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
+    mcpTransport: MCP_TRANSPORT,
     parallel: PARALLEL || undefined,
   };
   const jsonPath = join(runDir, 'results.json');
