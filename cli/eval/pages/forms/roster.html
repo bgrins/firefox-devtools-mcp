@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Summit Group Registration — Meridian Conference Services</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 640px; margin: 24px auto; color: #222; }
+  fieldset { border: 1px solid #ccc; padding: 16px; margin-bottom: 12px; }
+  label { display: block; margin: 10px 0 2px; font-weight: 700; font-size: 14px; }
+  .req { color: #b00020; }
+  input { padding: 8px; width: 100%; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  .error { color: #b00020; font-size: 13px; margin-top: 2px; }
+  button { padding: 10px 22px; font-size: 15px; margin-top: 12px; margin-right: 8px; }
+  .attendee { border: 1px solid #ddd; padding: 12px 14px; margin: 12px 0; background: #fafaf6; }
+  .attendee h3 { margin: 0; font-size: 14px; display: flex; justify-content: space-between; }
+  .attendee a { font-weight: normal; font-size: 13px; color: #b00020; }
+  #groupcode { font-size: 18px; font-weight: 700; background: #fdf3d8; padding: 8px; display: inline-block; }
+  #confirm { margin-top: 16px; }
+  footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<h1>Summit Group Registration</h1>
+<p>Register your delegation for the Meridian Leadership Summit. Add one entry per
+attendee. Fields marked <span class="req">*</span> are required.</p>
+
+<form id="roster" novalidate>
+  <fieldset>
+    <legend>Attendees</legend>
+    <div id="rows"></div>
+    <button type="button" id="add">Add attendee</button>
+  </fieldset>
+  <button type="submit" id="submit">Submit registration</button>
+</form>
+
+<div id="confirm" hidden>
+  <p>Registration received. Your group code (bring this to check-in):</p>
+  <span id="groupcode"></span>
+</div>
+
+<footer>
+  Meridian Conference Services — a fictional organizer used for local browser testing.
+  Group codes are issued server-side at submission time.
+</footer>
+
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const rows = document.getElementById('rows');
+  let seq = 0;
+
+  function addRow() {
+    seq += 1;
+    const row = document.createElement('div');
+    row.className = 'attendee';
+    row.innerHTML = `
+      <h3>Attendee <span class="num"></span> <a href="#" class="remove">Remove</a></h3>
+      <label>Full name <span class="req">*</span></label>
+      <input class="name" autocomplete="off">
+      <div class="error err-name" role="alert"></div>
+      <label>Email <span class="req">*</span></label>
+      <input class="email" autocomplete="off">
+      <div class="error err-email" role="alert"></div>`;
+    row.querySelector('.remove').addEventListener('click', (event) => {
+      event.preventDefault();
+      row.remove();
+      renumber();
+    });
+    rows.append(row);
+    renumber();
+  }
+
+  function renumber() {
+    let n = 0;
+    for (const row of rows.querySelectorAll('.attendee')) {
+      n += 1;
+      row.querySelector('.num').textContent = n;
+      row.querySelector('.remove').hidden = rows.children.length === 1;
+    }
+  }
+
+  document.getElementById('add').addEventListener('click', addRow);
+  addRow();
+
+  document.getElementById('roster').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const attendees = [];
+    let ok = true;
+    for (const row of rows.querySelectorAll('.attendee')) {
+      const name = row.querySelector('.name').value.trim();
+      const email = row.querySelector('.email').value.trim();
+      row.querySelector('.err-name').textContent = name ? '' : 'Name is required.';
+      const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+      row.querySelector('.err-email').textContent = emailOk ? '' : 'Enter a valid email address.';
+      ok = ok && !!name && emailOk;
+      attendees.push({ name, email });
+    }
+    if (!ok) return;
+    const res = await fetch('/api/roster-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, attendees }),
+    });
+    if (!res.ok) {
+      alert('Submission failed — try again.');
+      return;
+    }
+    const body = await res.json();
+    document.getElementById('roster').hidden = true;
+    document.getElementById('confirm').hidden = false;
+    document.getElementById('groupcode').textContent = body.groupCode;
+  });
+</script>
+</body>
+</html>

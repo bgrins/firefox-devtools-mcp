@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facility Access Console — Metronome Systems</title>
+<style>
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #10141c; color: #dfe6f2; margin: 0; }
+  header { padding: 18px 32px; background: #171d29; border-bottom: 1px solid #2a3346; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.04em; }
+  header span { color: #6b788f; font-size: 13px; }
+  main { max-width: 720px; margin: 40px auto; padding: 0 24px; }
+  .note { color: #8b97ad; font-size: 14px; line-height: 1.5; }
+  footer { margin-top: 60px; padding: 20px 32px; color: #4d5870; font-size: 12px; border-top: 1px solid #1d2434; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Metronome Systems — Facility Access Console</h1>
+  <span>Operations terminal · Stage clearance module</span>
+</header>
+<main>
+  <p class="note">Authorized personnel: enter your stage access code in the panel below.
+  Codes are issued per shift by the operations desk. Three failed attempts will
+  flag the terminal for review.</p>
+  <fx-panel></fx-panel>
+  <p class="note">Lost code? Contact the operations desk at extension 4410.
+  This console is a simulated fixture for local browser testing.</p>
+</main>
+<footer>Metronome Systems facility terminal · build 7.2.19 · uptime nominal</footer>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+
+  class FxInput extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = `
+        <style>
+          .row { display: flex; gap: 10px; }
+          input { flex: 1; padding: 10px 12px; background: #0c1017; color: #dfe6f2;
+                  border: 1px solid #33405a; border-radius: 6px; font-size: 15px;
+                  letter-spacing: 0.08em; }
+          button { padding: 10px 22px; background: #2e6df6; color: #fff; border: 0;
+                   border-radius: 6px; font-size: 14px; cursor: pointer; }
+          button:hover { background: #2159d1; }
+          .msg { margin-top: 14px; min-height: 20px; font-size: 14px; }
+          .msg.granted { color: #5fd08a; }
+          .msg.denied { color: #e07a6b; }
+        </style>
+        <div class="row">
+          <input type="text" aria-label="Access code" placeholder="Access code">
+          <button>Unlock</button>
+        </div>
+        <div class="msg" role="status"></div>`;
+      root.querySelector('button').addEventListener('click', () => this.unlock(root));
+      root.querySelector('input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.unlock(root);
+      });
+    }
+    async unlock(root) {
+      const msg = root.querySelector('.msg');
+      msg.textContent = 'Checking…';
+      msg.className = 'msg';
+      try {
+        const res = await fetch('/api/shadow/unlock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nonce: NONCE, code: root.querySelector('input').value.trim() }),
+        });
+        const body = await res.json();
+        msg.textContent = body.message ?? 'Terminal error';
+        msg.className = 'msg ' + (body.granted ? 'granted' : 'denied');
+      } catch {
+        msg.textContent = 'Terminal error: could not reach the access service.';
+        msg.className = 'msg denied';
+      }
+    }
+  }
+
+  class FxPanel extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = `
+        <style>
+          .panel { background: #171d29; border: 1px solid #2a3346; border-radius: 10px;
+                   padding: 24px 28px; margin: 24px 0; }
+          h2 { margin: 0 0 6px; font-size: 16px; color: #dfe6f2; }
+          p { margin: 0 0 18px; color: #8b97ad; font-size: 13px; }
+        </style>
+        <div class="panel">
+          <h2>Stage clearance</h2>
+          <p>Enter the access code exactly as issued (letters, digits, and dashes).</p>
+          <fx-input></fx-input>
+        </div>`;
+    }
+  }
+
+  customElements.define('fx-input', FxInput);
+  customElements.define('fx-panel', FxPanel);
+</script>
+</body>
+</html>

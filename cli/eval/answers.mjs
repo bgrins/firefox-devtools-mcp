@@ -22,8 +22,19 @@ export const ANSWERS = {
   // pages/forms/index.html — reference code shown on the review step.
   form: { refCode: 'MD-4921' },
 
-  // pages/gov/rv7.html
-  gov: { deadline: 'June 12', instructionsPath: 'rv7-instructions' },
+  // pages/gov/rv7.html; schedule-widget.html (iframe); handbook.html section 22.
+  gov: {
+    deadline: 'June 12',
+    instructionsPath: 'rv7-instructions',
+    harborviewThursday: '10:00 am – 6:30 pm',
+    handbookRetention: '7 years',
+  },
+
+  // pages/shadow/index.html — success message is server-issued (server.mjs).
+  shadow: { code: 'ORCHID-22', message: 'Metronome stage two is clear' },
+
+  // pages/flaky/index.html — revenue served after 2 failed attempts (server.mjs).
+  flaky: { revenue: '$1,284,550' },
 
   // pages/news/ ground truth lives in pages/news/items.json (the page must
   // render it, so it is page content rather than an answer key).

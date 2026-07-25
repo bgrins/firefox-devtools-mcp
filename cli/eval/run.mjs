@@ -60,6 +60,9 @@ Usage: node eval/run.mjs [options]
   --headed                visible Firefox windows (side-by-side with --parallel)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
                           client configs do) or http (shared instance endpoint)
+  --mcp-command "<cmd>"   custom stdio MCP server for the mcp condition, e.g.
+                          "npx @playwright/mcp@latest --browser firefox";
+                          replaces the built-in firefox-devtools-mcp server
   --parallel              run cli and mcp conditions concurrently
   --help                  show this help
 
@@ -76,6 +79,13 @@ const MCP_TRANSPORT = flag('mcp-transport', 'stdio');
 if (!['stdio', 'http'].includes(MCP_TRANSPORT)) {
   throw new Error(`--mcp-transport must be stdio or http, got "${MCP_TRANSPORT}"`);
 }
+// Swap in any stdio MCP server (e.g. playwright-mcp) as the mcp condition.
+// Naive whitespace split; quote-free commands only.
+const MCP_COMMAND = flag('mcp-command', null);
+if (MCP_COMMAND && MCP_TRANSPORT !== 'stdio') {
+  throw new Error('--mcp-command requires --mcp-transport stdio');
+}
+const CUSTOM_MCP = MCP_COMMAND ? MCP_COMMAND.trim().split(/\s+/) : null;
 
 function basicTasks(base) {
   return [
@@ -152,13 +162,13 @@ async function webTasks(base) {
         `Proceed through the form to the review step and report the reference code shown. ` +
         `IMPORTANT: do NOT press the final Submit button.`,
       validate: (text, ctx) => {
-        const walked = ctx.pages.state.progress.some((p) => p.body.includes('3'));
+        const walked = ctx.pages.state
+          .beaconsOf('form-progress')
+          .some((b) => b.data?.step === 3);
+        const submissions = ctx.pages.state.beaconsOf('form-submit').length;
         return {
-          pass:
-            text.includes(ANSWERS.form.refCode) &&
-            walked &&
-            ctx.pages.state.submissions.length === 0,
-          detail: `walked=${walked} submissions=${ctx.pages.state.submissions.length}`,
+          pass: text.includes(ANSWERS.form.refCode) && walked && submissions === 0,
+          detail: `walked=${walked} submissions=${submissions}`,
         };
       },
     },
@@ -172,6 +182,92 @@ async function webTasks(base) {
         pass:
           /june\s*12/i.test(text) &&
           text.toLowerCase().includes(ANSWERS.gov.instructionsPath),
+      }),
+    },
+    {
+      id: 'iframe-schedule',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/gov/offices.html — an agency's office locations page, which embeds ` +
+        `a weekly schedule widget. What are the THURSDAY hours of the Harborview satellite ` +
+        `office, per the embedded schedule? Report the opening and closing times.`,
+      validate: (text) => ({
+        pass: /10:00\s*a\.?m\.?\s*(–|-|—|to)\s*6:30\s*p\.?m\.?/i.test(text),
+      }),
+    },
+    {
+      id: 'shadow-unlock',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/shadow/ — a facility access console. Enter the access code ` +
+        `"ORCHID-22" in the access widget and press Unlock. Report the exact message ` +
+        `shown after unlocking.`,
+      validate: (text, ctx) => {
+        const unlocked = ctx.pages.state
+          .beaconsOf('shadow-unlock')
+          .some((b) => b.data?.code === ANSWERS.shadow.code);
+        return {
+          pass: unlocked && new RegExp(ANSWERS.shadow.message, 'i').test(text),
+          detail: `unlocked=${unlocked}`,
+        };
+      },
+    },
+    {
+      id: 'roster',
+      maxTurns: 35,
+      ask:
+        `Open ${base}/forms/roster.html — a group registration form. Register these 4 ` +
+        `attendees, using the "Add attendee" button as needed:\n` +
+        `- Dara Voss / dara.voss@example.com\n- Lionel Prue / l.prue@example.com\n` +
+        `- Mika Tanager / mika.t@example.com\n- Odette Brill / odette.brill@example.com\n` +
+        `Submit the form and report the group code shown.`,
+      validate: (text, ctx) => {
+        const expected = [
+          ['Dara Voss', 'dara.voss@example.com'],
+          ['Lionel Prue', 'l.prue@example.com'],
+          ['Mika Tanager', 'mika.t@example.com'],
+          ['Odette Brill', 'odette.brill@example.com'],
+        ];
+        const submits = ctx.pages.state.beaconsOf('roster-submit');
+        const good = submits.find(
+          (b) =>
+            b.data?.attendees?.length === 4 &&
+            expected.every(([name, email]) =>
+              b.data.attendees.some((a) => a.name === name && a.email === email)
+            )
+        );
+        const code = good
+          ? 'GRP-' + ctx.pages.state.sessions.get(good.sid).nonce.slice(0, 4).toUpperCase()
+          : null;
+        return {
+          pass: submits.length === 1 && !!good && text.includes(code),
+          detail: `submits=${submits.length} match=${!!good} code=${code}`,
+        };
+      },
+    },
+    {
+      id: 'flaky-retry',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/flaky/ and load the quarterly report. The reporting backend is ` +
+        `unreliable — retry if it fails. Report the Q3 total revenue figure.`,
+      validate: (text, ctx) => {
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const retried = sessions.some((s) => (s.reportAttempts ?? 0) >= 3);
+        return {
+          pass: text.includes('1,284,550') && retried,
+          detail: `retried-in-session=${retried}`,
+        };
+      },
+    },
+    {
+      id: 'handbook',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/gov/handbook.html — an agency's 30-section compliance handbook. ` +
+        `Per section 22, what is the retention period for FIELD AUDIT LOGS? Report the period.`,
+      validate: (text) => ({
+        pass: /\b(7|seven)\s*years?\b/i.test(text),
       }),
     },
     {
@@ -230,7 +326,9 @@ function taskPrompt(condition, task) {
   const intro =
     condition === 'cli'
       ? CLI_CHEATSHEET
-      : 'You control a running Firefox via the connected "firefox" MCP tools.';
+      : CUSTOM_MCP
+        ? 'You control a web browser via the connected "firefox" MCP tools.'
+        : 'You control a running Firefox via the connected "firefox" MCP tools.';
   return `${intro}\n\nTask: ${task.ask}\nAnswer concisely with the requested information.`;
 }
 
@@ -245,15 +343,17 @@ async function runTask(backendName, condition, label, task, ctx) {
     endpoint: ctx.endpoint,
     mcpStdio:
       condition === 'mcp' && MCP_TRANSPORT === 'stdio'
-        ? {
-            command: process.execPath,
-            args: [
-              join(here, '..', '..', 'dist', 'index.js'),
-              '--enable-script',
-              ...(HEADED ? [] : ['--headless']),
-              ...(ctx.stdioProfile ? ['--profile-path', ctx.stdioProfile] : []),
-            ],
-          }
+        ? CUSTOM_MCP
+          ? { command: CUSTOM_MCP[0], args: CUSTOM_MCP.slice(1) }
+          : {
+              command: process.execPath,
+              args: [
+                join(here, '..', '..', 'dist', 'index.js'),
+                '--enable-script',
+                ...(HEADED ? [] : ['--headless']),
+                ...(ctx.stdioProfile ? ['--profile-path', ctx.stdioProfile] : []),
+              ],
+            }
         : null,
     env: {
       ...process.env,
@@ -453,8 +553,7 @@ async function runCondition(backendName, condition, shared) {
       stdioProfile,
     };
     for (const task of tasks) {
-      pages.state.submissions.length = 0;
-      pages.state.progress.length = 0;
+      pages.state.reset();
       try {
         const r = await runTask(backendName, condition, label, task, ctx);
         results.push(r);
@@ -541,6 +640,7 @@ async function main() {
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
     mcpTransport: MCP_TRANSPORT,
+    mcpCommand: MCP_COMMAND ?? undefined,
     parallel: PARALLEL || undefined,
   };
   const jsonPath = join(runDir, 'results.json');

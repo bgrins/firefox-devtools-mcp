@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quarterly Report — Ledgerline Analytics</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; background: #faf8f4; color: #2b2b2b; margin: 0; }
+  header { background: #1f3a5f; color: #f2ede2; padding: 20px 36px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: normal; }
+  main { max-width: 680px; margin: 36px auto; padding: 0 24px; }
+  .card { background: #fff; border: 1px solid #ddd5c4; border-radius: 4px; padding: 28px 32px; }
+  button { font: inherit; padding: 9px 20px; background: #1f3a5f; color: #fff; border: 0; border-radius: 3px; cursor: pointer; }
+  button:hover { background: #16294a; }
+  #status { margin-top: 18px; font-size: 15px; min-height: 22px; }
+  #status.error { color: #a03123; }
+  #report { margin-top: 18px; display: none; }
+  #report table { border-collapse: collapse; width: 100%; }
+  #report td, #report th { border: 1px solid #ddd5c4; padding: 8px 12px; text-align: left; }
+  #report .figure { font-size: 22px; color: #1f3a5f; }
+  .fine { color: #857c68; font-size: 12px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<header><h1>Ledgerline Analytics — Executive Dashboard</h1></header>
+<main>
+  <div class="card">
+    <h2>Q3 Quarterly Report</h2>
+    <p>Figures are computed on demand from the reporting warehouse. Generation can
+    take a moment and the reporting backend has been intermittently unavailable
+    this week (see the status bulletin).</p>
+    <button id="load">Load Report</button>
+    <div id="status" role="status"></div>
+    <div id="report">
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Total revenue</td><td class="figure" id="revenue"></td></tr>
+        <tr><td>Quarter</td><td id="quarter"></td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="fine">Ledgerline Analytics is a fictional company used for local browser
+  testing. Report data is generated server-side per session.</p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const status = document.getElementById('status');
+  const button = document.getElementById('load');
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    status.className = '';
+    status.textContent = 'Generating report…';
+    try {
+      const res = await fetch('/api/flaky/report', { headers: { 'X-Eval-Nonce': NONCE } });
+      const body = await res.json();
+      if (!res.ok) {
+        status.className = 'error';
+        status.textContent = 'Server error — the reporting backend did not respond. Try again.';
+        button.textContent = 'Retry';
+        return;
+      }
+      document.getElementById('revenue').textContent = body.revenue;
+      document.getElementById('quarter').textContent = body.quarter;
+      document.getElementById('report').style.display = 'block';
+      status.textContent = 'Report generated.';
+      button.style.display = 'none';
+    } catch {
+      status.className = 'error';
+      status.textContent = 'Network error — try again.';
+      button.textContent = 'Retry';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

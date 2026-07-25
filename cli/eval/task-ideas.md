@@ -1,5 +1,15 @@
 # Browser-Agent Eval: Task Ideas — Round 1 (post adversarial review)
 
+> **Status (2026-07-24):** P-1 session/nonce infra is built in `server.mjs` (per-session
+> `evalsid` cookies, `__SESSION_NONCE__` substitution, `/api/beacon`, gated JSON APIs);
+> form-gauntlet migrated onto it. Implemented tasks: T063 (`iframe-schedule`), T064
+> (`shadow-unlock`), T059 (`roster`), T036 (`flaky-retry`), T049 (`handbook`).
+> Known condition gaps surfaced already (deliberately NOT fixed yet — they are the probe):
+> snapshot walker `MAX_DEPTH=10` truncates the iframe schedule inside legacy table soup;
+> the walker never descends into `shadowRoot`, so shadow content is invisible to
+> snapshot/find; snapshot per-node text caps at 100 chars, so `find` misses long handbook
+> paragraphs. `--mcp-command` can swap in an arbitrary stdio MCP server (e.g. playwright-mcp).
+
 This document has been through adversarial review (round 1): a validity/cheatability pass and a
 value/cost pass. **68 of the original 100 ideas survive.** Ids are stable (no renumbering); killed
 and merged ideas are listed in the Graveyard at the bottom with one-line reasons.

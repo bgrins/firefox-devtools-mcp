@@ -119,8 +119,12 @@ Fields marked <span class="req">*</span> are required.</p>
 
 <script>
   const data = {};
+  const NONCE = '__SESSION_NONCE__';
   const progress = (step) =>
-    navigator.sendBeacon('/api/form-progress', JSON.stringify({ step }));
+    navigator.sendBeacon(
+      '/api/beacon',
+      JSON.stringify({ nonce: NONCE, kind: 'form-progress', data: { step } })
+    );
   const show = (n) => {
     for (const i of [1, 2, 3]) {
       const panel = document.getElementById(i === 3 ? 'step3' : 'step' + i);
@@ -208,10 +212,10 @@ Fields marked <span class="req">*</span> are required.</p>
   });
 
   document.getElementById('submitBtn').addEventListener('click', async () => {
-    const response = await fetch('/api/form-submit', {
+    const response = await fetch('/api/beacon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ nonce: NONCE, kind: 'form-submit', data }),
     });
     document.getElementById('submitStatus').textContent = response.ok
       ? 'Request submitted. Our team will call you.'
