@@ -9,6 +9,7 @@
 // Results land in eval/results/ (gitignored) as JSON plus a shareable
 // markdown report.
 
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { chmodSync, createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,6 +61,9 @@ Usage: node eval/run.mjs [options]
   --headed                visible Firefox windows (side-by-side with --parallel)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
                           client configs do) or http (shared instance endpoint)
+  --conditions <list>     comma list of cli, mcp, playwright (default: cli,mcp);
+                          playwright = vendored @playwright/mcp over stdio
+                          driving Playwright Firefox
   --mcp-command "<cmd>"   custom stdio MCP server for the mcp condition, e.g.
                           "npx @playwright/mcp@latest --browser firefox";
                           replaces the built-in firefox-devtools-mcp server
@@ -87,6 +91,21 @@ if (MCP_COMMAND && MCP_TRANSPORT !== 'stdio') {
   throw new Error('--mcp-command requires --mcp-transport stdio');
 }
 const CUSTOM_MCP = MCP_COMMAND ? MCP_COMMAND.trim().split(/\s+/) : null;
+
+// Named conditions. 'playwright' spawns the vendored @playwright/mcp over
+// stdio (registered under the same 'firefox' server name) driving Playwright's
+// own Firefox build.
+const KNOWN_CONDITIONS = ['cli', 'mcp', 'playwright'];
+const CONDITIONS = flag('conditions', 'cli,mcp')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+for (const c of CONDITIONS) {
+  if (!KNOWN_CONDITIONS.includes(c)) {
+    throw new Error(`unknown condition "${c}" (known: ${KNOWN_CONDITIONS.join(', ')})`);
+  }
+}
+const PLAYWRIGHT_MCP_CLI = join(here, '..', 'node_modules', '@playwright', 'mcp', 'cli.js');
 
 function basicTasks(base) {
   return [
@@ -327,10 +346,58 @@ function taskPrompt(condition, task) {
   const intro =
     condition === 'cli'
       ? CLI_CHEATSHEET
-      : CUSTOM_MCP
+      : condition === 'playwright' || CUSTOM_MCP
         ? 'You control a web browser via the connected "firefox" MCP tools.'
         : 'You control a running Firefox via the connected "firefox" MCP tools.';
   return `${intro}\n\nTask: ${task.ask}\nAnswer concisely with the requested information.`;
+}
+
+// Playwright drives its own Firefox build; download it (no-op when present)
+// before any agent loop starts so install time never counts against a task.
+function ensurePlaywrightFirefox() {
+  return new Promise((resolve, reject) => {
+    console.log('(checking Playwright Firefox is installed)');
+    const child = spawn(
+      process.execPath,
+      [join(here, '..', 'node_modules', 'playwright', 'cli.js'), 'install', 'firefox'],
+      { stdio: 'inherit' }
+    );
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`playwright install firefox exited ${code}`))
+    );
+  });
+}
+
+function mcpStdioFor(condition, ctx) {
+  if (condition === 'playwright') {
+    return {
+      command: process.execPath,
+      args: [
+        PLAYWRIGHT_MCP_CLI,
+        '--browser',
+        'firefox',
+        '--isolated',
+        ...(HEADED ? [] : ['--headless']),
+      ],
+    };
+  }
+  if (condition === 'mcp' && MCP_TRANSPORT === 'stdio') {
+    return CUSTOM_MCP
+      ? { command: CUSTOM_MCP[0], args: CUSTOM_MCP.slice(1) }
+      : {
+          command: process.execPath,
+          args: [
+            join(here, '..', '..', 'dist', 'index.js'),
+            '--enable-script',
+            ...(HEADED ? [] : ['--headless']),
+            ...(ctx.stdioProfile ? ['--profile-path', ctx.stdioProfile] : []),
+          ],
+        };
+  }
+  return null;
 }
 
 async function runTask(backendName, condition, label, task, ctx) {
@@ -342,20 +409,7 @@ async function runTask(backendName, condition, label, task, ctx) {
     condition,
     cwd: ctx.scratchDir,
     endpoint: ctx.endpoint,
-    mcpStdio:
-      condition === 'mcp' && MCP_TRANSPORT === 'stdio'
-        ? CUSTOM_MCP
-          ? { command: CUSTOM_MCP[0], args: CUSTOM_MCP.slice(1) }
-          : {
-              command: process.execPath,
-              args: [
-                join(here, '..', '..', 'dist', 'index.js'),
-                '--enable-script',
-                ...(HEADED ? [] : ['--headless']),
-                ...(ctx.stdioProfile ? ['--profile-path', ctx.stdioProfile] : []),
-              ],
-            }
-        : null,
+    mcpStdio: mcpStdioFor(condition, ctx),
     env: {
       ...process.env,
       PATH: `${ctx.binDir}:${process.env.PATH}`,
@@ -494,7 +548,7 @@ async function buildTasks(base) {
 function seedWindowGeometry(stateDir, backendName, condition) {
   const profileDir = join(stateDir, 'profile');
   mkdirSync(profileDir, { recursive: true });
-  const col = condition === 'cli' ? 0 : 1;
+  const col = Math.max(0, CONDITIONS.indexOf(condition));
   const row = BACKEND_NAMES.indexOf(backendName);
   const rows = BACKEND_NAMES.length;
   const height = rows > 1 ? 470 : 920;
@@ -521,7 +575,8 @@ async function runCondition(backendName, condition, shared) {
   const tasks = await buildTasks(pages.url);
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
-  const needsInstance = condition === 'cli' || MCP_TRANSPORT === 'http';
+  const needsInstance =
+    condition === 'cli' || (condition === 'mcp' && MCP_TRANSPORT === 'http');
   // Seed window geometry so headed windows tile into their grid slot
   // (stdio MCP servers launch their own Firefox and get it via --profile-path).
   const headedProfile = HEADED
@@ -602,8 +657,12 @@ async function main() {
   chmodSync(wrapper, 0o755);
   const shared = { scratchDir, binDir, transcriptsDir };
 
+  if (CONDITIONS.includes('playwright')) {
+    await ensurePlaywrightFirefox();
+  }
+
   const runs = BACKEND_NAMES.flatMap((backendName) =>
-    ['cli', 'mcp'].map((condition) => [backendName, condition])
+    CONDITIONS.map((condition) => [backendName, condition])
   );
   let results = [];
   if (PARALLEL) {
@@ -640,6 +699,7 @@ async function main() {
     model: MODEL_FLAG ?? '(backend defaults)',
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
+    conditions: CONDITIONS.join(','),
     mcpTransport: MCP_TRANSPORT,
     mcpCommand: MCP_COMMAND ?? undefined,
     parallel: PARALLEL || undefined,
