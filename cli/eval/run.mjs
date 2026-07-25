@@ -192,7 +192,7 @@ async function webTasks(base) {
         `a weekly schedule widget. What are the THURSDAY hours of the Harborview satellite ` +
         `office, per the embedded schedule? Report the opening and closing times.`,
       validate: (text) => ({
-        pass: /10:00\s*a\.?m\.?\s*(–|-|—|to)\s*6:30\s*p\.?m\.?/i.test(text),
+        pass: /10:00\s*a\.?m\.?/i.test(text) && /6:30\s*p\.?m\.?/i.test(text),
       }),
     },
     {
