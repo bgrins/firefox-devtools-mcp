@@ -67,7 +67,8 @@ Usage: node eval/run.mjs [options]
   --help                  show this help
 
 Results land in eval/results/run-<timestamp>/ (gitignored): results.json,
-report.md (shareable), and transcripts/*.jsonl (full agent message streams).`);
+report.md (shareable), and transcripts/*.jsonl (full agent message streams).
+Render transcripts with: node eval/transcript.mjs [run-dir] [--task <id>] [--md]`);
   process.exit(0);
 }
 
