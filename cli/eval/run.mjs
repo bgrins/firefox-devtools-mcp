@@ -8,6 +8,19 @@
 // served locally from eval/pages/ (no live web). --headed shows Firefox.
 // Results land in eval/results/ (gitignored) as JSON plus a shareable
 // markdown report.
+//
+// Common runs:
+//   node eval/run.mjs
+//     quick smoke: basic suite, cli+mcp, sequential
+//   node eval/run.mjs --suite web --conditions cli,mcp,playwright --parallel --parallel-tasks 2
+//     fast 3-condition iteration sweep (headless)
+//   node eval/run.mjs --suite web --backend all --conditions cli,mcp,playwright --parallel --parallel-tasks 4 --headed
+//     full demo matrix, both backends, tiled windows
+//   node eval/run.mjs --suite web --repeat 3
+//     sequential + repeats: use this for numbers you plan to share
+//     (parallel wall timings carry machine-contention noise)
+//   node eval/transcript.mjs [run-dir] [--task <id>]
+//     inspect what the agents actually did
 
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -52,6 +65,10 @@ const EFFORT = flag('effort', 'medium');
 if (!['default', 'low', 'medium', 'high', 'xhigh', 'max'].includes(EFFORT)) {
   throw new Error(`--effort must be default|low|medium|high|xhigh|max, got "${EFFORT}"`);
 }
+const REPEAT = Number(flag('repeat', '1'));
+if (!Number.isInteger(REPEAT) || REPEAT < 1) {
+  throw new Error('--repeat must be a positive integer');
+}
 const SUITE = flag('suite', 'basic');
 const ONLY_TASK = flag('task', null);
 if (args.includes('--help') || args.includes('help')) {
@@ -62,6 +79,7 @@ Usage: node eval/run.mjs [options]
 
   --suite basic|web|all   task suite (default: basic; web = simulated sites)
   --task <id>             run a single task by id
+  --repeat <n>            run each task n times; report adds per-task medians
   --model <id>            model for the agent backend
   --effort <level>        reasoning effort for both backends (default: medium;
                           'default' = leave backend defaults)
@@ -421,7 +439,7 @@ function mcpStdioFor(condition, ctx) {
   return null;
 }
 
-async function runTask(backendName, condition, label, task, ctx) {
+async function runTask(backendName, condition, label, task, ctx, rep = 1) {
   const backend = BACKENDS[backendName];
   const spec = {
     prompt: taskPrompt(condition, task),
@@ -443,7 +461,10 @@ async function runTask(backendName, condition, label, task, ctx) {
   let transcriptStream = null;
   if (ctx.transcriptsDir) {
     transcriptStream = createWriteStream(
-      join(ctx.transcriptsDir, `${label.replace('/', '--')}--${task.id}.jsonl`)
+      join(
+        ctx.transcriptsDir,
+        `${label.replace('/', '--')}--${task.id}${rep > 1 ? `--r${rep}` : ''}.jsonl`
+      )
     );
     transcriptStream.on('error', (error) =>
       console.error(`transcript write failed: ${error.message}`)
@@ -467,6 +488,7 @@ async function runTask(backendName, condition, label, task, ctx) {
     backend: backendName,
     condition: label,
     task: task.id,
+    ...(REPEAT > 1 ? { rep } : {}),
     model: modelFor(backendName) || '(backend default)',
     success: verdict.pass,
     detail: verdict.detail,
@@ -507,12 +529,50 @@ function totalsByCondition(results) {
   return totals;
 }
 
+function median(values) {
+  const v = values.filter((x) => x != null).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+function medianLines(results) {
+  const groups = new Map();
+  for (const r of results) {
+    const key = `${r.condition}|${r.task}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const lines = [
+    '',
+    '## Per-task medians across repeats',
+    '',
+    '| condition | task | pass | med turns | med cost (USD) | med api (s) | med wall (s) |',
+    '|---|---|---|---|---|---|---|',
+  ];
+  for (const [key, rs] of groups) {
+    const [condition, task] = key.split('|');
+    const passed = rs.filter((r) => r.success).length;
+    const cost = median(rs.map((r) => r.cost_usd));
+    lines.push(
+      `| ${condition} | ${task} | ${passed}/${rs.length} | ${median(rs.map((r) => r.turns)) ?? ''} | ` +
+        `${cost != null ? cost.toFixed(4) : ''} | ${median(rs.map((r) => r.api_s)) ?? ''} | ` +
+        `${median(rs.map((r) => r.wall_s)) ?? ''} |`
+    );
+  }
+  return lines;
+}
+
 function markdownReport({ meta, results, totals }) {
+  const models = Object.entries(meta.models ?? {})
+    .map(([b, m]) => `${b}: ${m}`)
+    .join(', ');
   const lines = [
     `# firefox-cli eval: CLI vs MCP`,
     '',
     `- date: ${meta.date}`,
-    `- backend: ${meta.backend} · model: ${meta.model} · suite: ${meta.suite}`,
+    `- backend: ${meta.backend} · models: ${models} · effort: ${meta.effort} · suite: ${meta.suite}` +
+      (meta.repeat ? ` · repeat: ${meta.repeat}` : ''),
     `- tasks are simulated local pages (no live web); harness: cli/eval/run.mjs`,
     '',
     '## Totals per condition',
@@ -530,15 +590,20 @@ function markdownReport({ meta, results, totals }) {
     '| condition | task | pass | turns | cache read | output | cost | api (s) | wall (s) | notes |',
     '|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
+    const task = r.rep ? `${r.task} (r${r.rep})` : r.task;
     lines.push(
-      `| ${r.condition} | ${r.task} | ${r.success ? 'PASS' : 'FAIL'} | ${r.turns ?? ''} | ` +
+      `| ${r.condition} | ${task} | ${r.success ? 'PASS' : 'FAIL'} | ${r.turns ?? ''} | ` +
         `${r.cache_read ?? ''} | ${r.output_tokens ?? ''} | ${r.cost_usd?.toFixed?.(4) ?? ''} | ` +
         `${r.api_s ?? ''} | ${r.wall_s ?? ''} | ${r.detail ?? r.error ?? ''} |`
     );
   }
+  if (meta.repeat) {
+    lines.push(...medianLines(results));
+  }
   lines.push('', '## Answers (truncated)', '');
   for (const r of results) {
-    lines.push(`- **${r.condition}/${r.task}**: ${r.answer ?? '(error)'}`);
+    const task = r.rep ? `${r.task} (r${r.rep})` : r.task;
+    lines.push(`- **${r.condition}/${task}**: ${r.answer ?? '(error)'}`);
   }
   return lines.join('\n') + '\n';
 }
@@ -703,9 +768,10 @@ async function runCondition(backendName, condition, shared) {
   const label = BACKEND_NAMES.length > 1 ? `${backendName}/${condition}` : condition;
   console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
 
-  async function runOne(env, taskId) {
+  async function runOne(env, item) {
     // Task asks embed the env's pages URL, so rebuild against this env.
-    const task = (await buildTasks(env.pages.url)).find((t) => t.id === taskId);
+    const task = (await buildTasks(env.pages.url)).find((t) => t.id === item.id);
+    const tag = REPEAT > 1 ? `${item.id} (r${item.rep})` : item.id;
     env.pages.state.reset();
     try {
       const ctx = {
@@ -715,46 +781,49 @@ async function runCondition(backendName, condition, shared) {
         endpoint: env.endpoint,
         stdioProfile: env.stdioProfile,
       };
-      const r = await runTask(backendName, condition, label, task, ctx);
+      const r = await runTask(backendName, condition, label, task, ctx, item.rep);
       console.log(
-        `[${label}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
+        `[${label}] ${tag}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
           `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
           `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
           (r.detail ? ` (${r.detail})` : '')
       );
       return r;
     } catch (error) {
-      console.log(`[${label}] ${taskId}: ERROR ${error.message}`);
-      return { backend: backendName, condition: label, task: taskId, success: false, error: error.message };
+      console.log(`[${label}] ${tag}: ERROR ${error.message}`);
+      return { backend: backendName, condition: label, task: item.id, rep: item.rep, success: false, error: error.message };
     }
   }
 
-  const taskIds = (await buildTasks('http://placeholder')).map((t) => t.id);
+  const items = (await buildTasks('http://placeholder')).flatMap((t) =>
+    Array.from({ length: REPEAT }, (_, i) => ({ id: t.id, rep: i + 1 }))
+  );
   if (PARALLEL_TASKS > 1) {
-    const queue = [...taskIds];
-    const byId = new Map();
+    const queue = [...items];
+    const done = new Map();
+    const keyOf = (item) => `${item.id}#${item.rep}`;
     const workerCount = Math.min(PARALLEL_TASKS, queue.length);
     await Promise.all(
       Array.from({ length: workerCount }, async (_, workerIndex) => {
         const env = await makeEnv(backendName, condition, label, workerIndex);
         try {
           while (queue.length) {
-            const id = queue.shift();
-            byId.set(id, await runOne(env, id));
+            const item = queue.shift();
+            done.set(keyOf(item), await runOne(env, item));
           }
         } finally {
           await env.close().catch(() => {});
         }
       })
     );
-    return taskIds.map((id) => byId.get(id)).filter(Boolean);
+    return items.map((item) => done.get(keyOf(item))).filter(Boolean);
   }
 
   const env = await makeEnv(backendName, condition, label);
   try {
     const results = [];
-    for (const id of taskIds) {
-      results.push(await runOne(env, id));
+    for (const item of items) {
+      results.push(await runOne(env, item));
     }
     return results;
   } finally {
@@ -828,6 +897,7 @@ async function main() {
     effort: EFFORT,
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
+    repeat: REPEAT > 1 ? REPEAT : undefined,
     conditions: CONDITIONS.join(','),
     mcpTransport: MCP_TRANSPORT,
     mcpCommand: MCP_COMMAND ?? undefined,

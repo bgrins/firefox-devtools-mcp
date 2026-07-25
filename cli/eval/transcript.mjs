@@ -154,16 +154,23 @@ function normalize(lines) {
   return steps;
 }
 
-// transcripts are named <label>--<task>.jsonl where label is 'cli'/'mcp' or
-// '<backend>--<condition>'; task ids never contain '--'.
+// transcripts are named <label>--<task>[--rN].jsonl where label is 'cli'/'mcp'
+// or '<backend>--<condition>'; task ids never contain '--'.
 function parseName(file) {
   const parts = file.replace(/\.jsonl$/, '').split('--');
-  return { task: parts[parts.length - 1], label: parts.slice(0, -1).join('/') };
+  let rep = null;
+  if (/^r\d+$/.test(parts[parts.length - 1])) {
+    rep = Number(parts.pop().slice(1));
+  }
+  return { task: parts[parts.length - 1], label: parts.slice(0, -1).join('/'), rep };
 }
 
-function metaFor(label, task) {
+function metaFor(label, task, rep) {
   const r = resultsMeta?.results?.find(
-    (x) => x.task === task && (x.condition === label || x.condition === label.split('/').pop())
+    (x) =>
+      x.task === task &&
+      (x.condition === label || x.condition === label.split('/').pop()) &&
+      (rep == null || x.rep === rep)
   );
   if (!r) return '';
   const bits = [
@@ -182,10 +189,10 @@ const files = readdirSync(transcriptsDir)
 
 const byTask = new Map();
 for (const file of files) {
-  const { task, label } = parseName(file);
+  const { task, label, rep } = parseName(file);
   if (ONLY_TASK && task !== ONLY_TASK) continue;
   if (!byTask.has(task)) byTask.set(task, []);
-  byTask.get(task).push({ label, file });
+  byTask.get(task).push({ label, rep, file });
 }
 
 // Preserve suite ordering from results.json where available.
@@ -215,8 +222,8 @@ if (resultsMeta?.meta) {
 
 for (const task of orderedTasks) {
   out.push('', `## ${task}`);
-  for (const { label, file } of byTask.get(task)) {
-    out.push('', `### ${label}${metaFor(label, task)}`, '');
+  for (const { label, rep, file } of byTask.get(task)) {
+    out.push('', `### ${label}${rep ? ` (r${rep})` : ''}${metaFor(label, task, rep)}`, '');
     const lines = readFileSync(join(transcriptsDir, file), 'utf8').trim().split('\n');
     let n = 0;
     for (const step of normalize(lines)) {
