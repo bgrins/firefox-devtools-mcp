@@ -13,7 +13,7 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_MODEL = 'claude-sonnet-5';
 
 export async function run({ prompt, model, effort, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const options = {
