@@ -100,10 +100,14 @@ function normalize(lines) {
         }
       }
     } else if (e.type === 'result') {
+      const u = e.usage ?? {};
       steps.push({
         kind: 'final',
         text: e.result ?? '',
-        info: `turns=${e.num_turns} cost=$${e.total_cost_usd?.toFixed?.(4) ?? '?'}`,
+        info:
+          `turns=${e.num_turns} in=${u.input_tokens ?? '?'} ` +
+          `cacheW=${u.cache_creation_input_tokens ?? '?'} cacheR=${u.cache_read_input_tokens ?? '?'} ` +
+          `out=${u.output_tokens ?? '?'} cost=$${e.total_cost_usd?.toFixed?.(4) ?? '?'}`,
       });
     }
     // --- Codex ThreadEvents ---
@@ -146,8 +150,8 @@ function normalize(lines) {
         kind: 'final',
         text: '',
         info:
-          `in=${e.usage.input_tokens} cached=${e.usage.cached_input_tokens} ` +
-          `out=${e.usage.output_tokens}`,
+          `in=${e.usage.input_tokens} cacheW=${e.usage.cache_write_input_tokens ?? '?'} ` +
+          `cacheR=${e.usage.cached_input_tokens} out=${e.usage.output_tokens}`,
       });
     }
   }

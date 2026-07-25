@@ -547,8 +547,8 @@ function medianLines(results) {
     '',
     '## Per-task medians across repeats',
     '',
-    '| condition | task | pass | med turns | med cost (USD) | med api (s) | med wall (s) |',
-    '|---|---|---|---|---|---|---|',
+    '| condition | task | pass | med turns | med input | med cache write | med cache read | med output | med cost (USD) | med api (s) | med wall (s) |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const [key, rs] of groups) {
     const [condition, task] = key.split('|');
@@ -556,6 +556,8 @@ function medianLines(results) {
     const cost = median(rs.map((r) => r.cost_usd));
     lines.push(
       `| ${condition} | ${task} | ${passed}/${rs.length} | ${median(rs.map((r) => r.turns)) ?? ''} | ` +
+        `${median(rs.map((r) => r.input_tokens)) ?? ''} | ${median(rs.map((r) => r.cache_creation)) ?? ''} | ` +
+        `${median(rs.map((r) => r.cache_read)) ?? ''} | ${median(rs.map((r) => r.output_tokens)) ?? ''} | ` +
         `${cost != null ? cost.toFixed(4) : ''} | ${median(rs.map((r) => r.api_s)) ?? ''} | ` +
         `${median(rs.map((r) => r.wall_s)) ?? ''} |`
     );
@@ -587,12 +589,13 @@ function markdownReport({ meta, results, totals }) {
     );
   }
   lines.push('', '## Per-task results', '',
-    '| condition | task | pass | turns | cache read | output | cost | api (s) | wall (s) | notes |',
-    '|---|---|---|---|---|---|---|---|---|---|');
+    '| condition | task | pass | turns | input | cache write | cache read | output | cost | api (s) | wall (s) | notes |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
     const task = r.rep ? `${r.task} (r${r.rep})` : r.task;
     lines.push(
       `| ${r.condition} | ${task} | ${r.success ? 'PASS' : 'FAIL'} | ${r.turns ?? ''} | ` +
+        `${r.input_tokens ?? ''} | ${r.cache_creation ?? ''} | ` +
         `${r.cache_read ?? ''} | ${r.output_tokens ?? ''} | ${r.cost_usd?.toFixed?.(4) ?? ''} | ` +
         `${r.api_s ?? ''} | ${r.wall_s ?? ''} | ${r.detail ?? r.error ?? ''} |`
     );
@@ -784,7 +787,8 @@ async function runCondition(backendName, condition, shared) {
       const r = await runTask(backendName, condition, label, task, ctx, item.rep);
       console.log(
         `[${label}] ${tag}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
-          `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
+          `in=${r.input_tokens} cacheW=${r.cache_creation} cacheR=${r.cache_read} ` +
+          `out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
           `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
           (r.detail ? ` (${r.detail})` : '')
       );
