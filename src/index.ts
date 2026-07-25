@@ -450,7 +450,12 @@ export async function run(
 
   // Clean up the Marionette session so Firefox accepts new connections.
   // Without this, the session stays locked after the MCP client disconnects.
+  let cleaningUp = false;
   const cleanup = async () => {
+    if (cleaningUp) {
+      return;
+    }
+    cleaningUp = true;
     await resetFirefox();
     await server.close();
     await flushLogs().catch(() => {});
@@ -542,7 +547,8 @@ async function startHttpTransport(
         endpoint: `http://127.0.0.1:${port}/mcp`,
         pid: process.pid,
         auth: 'none',
-      })
+      }),
+      { mode: 0o600 }
     );
     removeDiscoveryFile = () => fsPromises.unlink(discoveryFile).catch(() => {});
     // Self-terminate if the discovery file disappears: the launcher owns that
@@ -562,7 +568,12 @@ async function startHttpTransport(
   log(`Firefox DevTools MCP server running on http://127.0.0.1:${port}/mcp`);
   log('Ready to accept tool requests');
 
+  let cleaningUp = false;
   const cleanup = async () => {
+    if (cleaningUp) {
+      return;
+    }
+    cleaningUp = true;
     await removeDiscoveryFile?.();
     await resetFirefox();
     for (const transport of transports.values()) {

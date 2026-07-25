@@ -8,9 +8,12 @@
 //   added as a writable root. The harness env (PATH with the firefox-cli
 //   wrapper, FIREFOX_CLI_STATE_DIR) is passed to the codex process, which
 //   shell commands inherit.
-// condition 'mcp': the MCP server at `endpoint` is attached via a
+// condition 'mcp': the MCP server is spawned over stdio (`mcpStdio`) by
+//   default, or attached via the streamable HTTP `endpoint`, through a
 //   `mcp_servers` config override (the SDK flattens `config` into --config
-//   flags). MCP tool calls bypass the command sandbox, so read-only is enough.
+//   flags). Tools are auto-approved (default_tools_approval_mode) since
+//   codex otherwise cancels non-read-only MCP tools under approval 'never';
+//   MCP tool calls bypass the command sandbox, so read-only is enough.
 //
 // maxTurns is not enforced — the SDK has no equivalent option.
 // cost_usd / api_duration_ms are not reported by codex.

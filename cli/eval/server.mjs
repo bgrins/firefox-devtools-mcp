@@ -31,7 +31,12 @@ export async function startPagesServer({ port = 0 } = {}) {
       (url.pathname === '/api/form-submit' || url.pathname === '/api/form-progress')
     ) {
       let body = '';
-      req.on('data', (chunk) => (body += chunk));
+      req.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 65536) {
+          req.destroy();
+        }
+      });
       req.on('end', () => {
         const bucket = url.pathname.endsWith('submit') ? state.submissions : state.progress;
         bucket.push({ body, at: Date.now() });
@@ -41,12 +46,19 @@ export async function startPagesServer({ port = 0 } = {}) {
       return;
     }
 
-    let pathname = normalize(decodeURIComponent(url.pathname));
+    let pathname;
+    try {
+      pathname = normalize(decodeURIComponent(url.pathname));
+    } catch {
+      res.writeHead(400);
+      res.end('bad request');
+      return;
+    }
     if (pathname.endsWith('/')) {
       pathname += 'index.html';
     }
     const file = join(root, pathname);
-    if (!file.startsWith(root)) {
+    if (file !== root && !file.startsWith(root + '/')) {
       res.writeHead(403);
       res.end('forbidden');
       return;

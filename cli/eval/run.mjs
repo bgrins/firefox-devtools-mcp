@@ -2,11 +2,10 @@
 // an agent backend twice — once with only a shell + firefox-cli, once with the
 // MCP server attached — and compare success, turns, tokens, cost, duration.
 //
-//   node eval/run.mjs [--suite basic|web|all] [--task <id>] [--model <id>]
-//                     [--backend anthropic|codex] [--headed] [--parallel]
+//   node eval/run.mjs [options] — see --help for the full flag list.
 //
-// Suites: 'basic' = tiny data:-URL tasks; 'web' = simulated sites served from
-// eval/pages/ (no live web). --headed launches visible Firefox windows.
+// Suites: 'basic' = tiny smoke pages, 'web' = simulated sites; both are
+// served locally from eval/pages/ (no live web). --headed shows Firefox.
 // Results land in eval/results/ (gitignored) as JSON plus a shareable
 // markdown report.
 
@@ -26,7 +25,12 @@ const cliBin = join(here, '..', 'bin', 'firefox-cli.mjs');
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
-  return i !== -1 ? args[i + 1] : fallback;
+  if (i === -1) return fallback;
+  const value = args[i + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`--${name} requires a value`);
+  }
+  return value;
 };
 const BACKEND_ARG = flag('backend', 'anthropic');
 const BACKEND_NAMES =
@@ -69,6 +73,9 @@ const PARALLEL = args.includes('--parallel');
 // 'stdio' spawns the MCP server per agent session, like real client configs
 // (npx firefox-devtools-mcp); 'http' attaches the shared instance's endpoint.
 const MCP_TRANSPORT = flag('mcp-transport', 'stdio');
+if (!['stdio', 'http'].includes(MCP_TRANSPORT)) {
+  throw new Error(`--mcp-transport must be stdio or http, got "${MCP_TRANSPORT}"`);
+}
 
 function basicTasks(base) {
   return [
@@ -261,6 +268,9 @@ async function runTask(backendName, condition, label, task, ctx) {
     transcriptStream = createWriteStream(
       join(ctx.transcriptsDir, `${label.replace('/', '--')}--${task.id}.jsonl`)
     );
+    transcriptStream.on('error', (error) =>
+      console.error(`transcript write failed: ${error.message}`)
+    );
     spec.onMessage = (message) =>
       transcriptStream.write(JSON.stringify(message) + '\n');
   }
@@ -307,9 +317,11 @@ function totalsByCondition(results) {
     for (const key of ['turns', 'input_tokens', 'cache_creation', 'cache_read', 'output_tokens', 'cost_usd', 'duration_s', 'api_s', 'wall_s']) {
       t[key] += r[key] ?? 0;
     }
+    t.cost_known ||= r.cost_usd != null;
   }
   for (const t of Object.values(totals)) {
-    t.cost_usd = Math.round(t.cost_usd * 10000) / 10000;
+    t.cost_usd = t.cost_known ? Math.round(t.cost_usd * 10000) / 10000 : null;
+    delete t.cost_known;
     for (const key of ['duration_s', 'api_s', 'wall_s']) {
       t[key] = Math.round(t[key] * 10) / 10;
     }
@@ -409,27 +421,30 @@ async function runCondition(backendName, condition, shared) {
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const results = [];
   const needsInstance = condition === 'cli' || MCP_TRANSPORT === 'http';
-  // stdio MCP servers launch their own Firefox; seed a profile so headed
-  // windows still tile into their grid slot.
-  const stdioProfile =
-    !needsInstance && HEADED ? seedWindowGeometry(stateDir, backendName, condition) : null;
+  // Seed window geometry so headed windows tile into their grid slot
+  // (stdio MCP servers launch their own Firefox and get it via --profile-path).
+  const headedProfile = HEADED
+    ? seedWindowGeometry(stateDir, backendName, condition)
+    : null;
+  const stdioProfile = !needsInstance ? headedProfile : null;
   console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
-  const instance = !needsInstance ? null : await withEnvLock(async () => {
-    process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-    const inst = await launch({
-      headless: !HEADED,
-      ...(HEADED ? { profile: seedWindowGeometry(stateDir, backendName, condition) } : {}),
-    });
-    // Firefox starts lazily on the first tool call. Warm it up while still
-    // serialized: concurrent cold starts can SIGABRT in macOS
-    // RegisterApplication/LaunchServices when several instances register at
-    // once (TransformProcessType abort).
-    await callTool(inst.discovery.endpoint, 'list_pages', {}).catch((error) =>
-      console.log(`[${label}] warm-up failed: ${error.message}`)
-    );
-    return inst;
-  });
+  let instance = null;
   try {
+    instance = !needsInstance ? null : await withEnvLock(async () => {
+      process.env.FIREFOX_CLI_STATE_DIR = stateDir;
+      const inst = await launch({
+        headless: !HEADED,
+        ...(headedProfile ? { profile: headedProfile } : {}),
+      });
+      // Firefox starts lazily on the first tool call. Warm it up while still
+      // serialized: concurrent cold starts can SIGABRT in macOS
+      // RegisterApplication/LaunchServices when several instances register at
+      // once (TransformProcessType abort).
+      await callTool(inst.discovery.endpoint, 'list_pages', {}).catch((error) =>
+        console.log(`[${label}] warm-up failed: ${error.message}`)
+      );
+      return inst;
+    });
     const ctx = {
       ...shared,
       stateDir,
@@ -490,14 +505,24 @@ async function main() {
   const runs = BACKEND_NAMES.flatMap((backendName) =>
     ['cli', 'mcp'].map((condition) => [backendName, condition])
   );
-  let results;
+  let results = [];
   if (PARALLEL) {
     console.log('(parallel mode: runs execute side by side; wall timings may include contention)\n');
-    results = (
-      await Promise.all(runs.map(([b, c]) => runCondition(b, c, shared)))
-    ).flat();
+    // allSettled so one condition's failure still lets the others finish and
+    // tear down their instances/servers.
+    const settled = await Promise.allSettled(
+      runs.map(([b, c]) => runCondition(b, c, shared))
+    );
+    for (const [i, outcome] of settled.entries()) {
+      if (outcome.status === 'fulfilled') {
+        results.push(...outcome.value);
+      } else {
+        const [b, c] = runs[i];
+        console.error(`[${b}/${c}] condition failed: ${outcome.reason?.message}`);
+        results.push({ backend: b, condition: `${b}/${c}`, task: '(condition)', success: false, error: outcome.reason?.message });
+      }
+    }
   } else {
-    results = [];
     for (const [b, c] of runs) {
       results.push(...(await runCondition(b, c, shared)));
     }

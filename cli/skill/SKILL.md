@@ -72,7 +72,7 @@ The full MCP tool surface is reachable without a dedicated subcommand:
 
 ```bash
 firefox-cli tools                                  # list all tools
-firefox-cli call resize_viewport '{"width":1280,"height":720}'
+firefox-cli call set_viewport_size '{"width":1280,"height":720}'
 ```
 
 ## Instances

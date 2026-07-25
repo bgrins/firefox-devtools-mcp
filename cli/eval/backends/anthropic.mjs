@@ -1,10 +1,13 @@
 // Anthropic backend: drives tasks through the Claude Agent SDK.
 // Backend interface (shared with backends/codex.mjs):
-//   run({ prompt, model, maxTurns, condition, env, endpoint, cwd, onMessage }) ->
+//   run({ prompt, model, maxTurns, condition, env, endpoint, cwd, onMessage,
+//         mcpStdio }) ->
 //     { text, turns, input_tokens, cache_creation, cache_read, output_tokens,
-//       cost_usd, duration_ms }
+//       cost_usd, duration_ms, api_duration_ms }
 // condition 'cli': `env` contains PATH with a firefox-cli wrapper — expose a
-//   bash/shell tool only. condition 'mcp': attach the MCP server at `endpoint`.
+//   bash/shell tool only. condition 'mcp': spawn the MCP server over stdio
+//   when `mcpStdio` ({command, args}) is provided, else attach the streamable
+//   HTTP server at `endpoint`.
 // onMessage (optional): called with every raw agent message as it streams
 // (thinking, tool calls, tool results, final result) for transcript logging.
 

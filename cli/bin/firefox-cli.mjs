@@ -22,7 +22,10 @@ const VALUE_FLAGS = new Set([
   'timeout',
   'lines',
   'context',
+  'pref',
 ]);
+// Value flags that may repeat and accumulate into arrays.
+const ARRAY_FLAGS = new Set(['pref']);
 
 function parseArgv(argv) {
   const positional = [];
@@ -35,12 +38,17 @@ function parseArgv(argv) {
     }
     if (arg.startsWith('--')) {
       const eq = arg.indexOf('=');
+      const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
+      let value = true;
       if (eq !== -1) {
-        flags[arg.slice(2, eq)] = arg.slice(eq + 1);
-      } else if (VALUE_FLAGS.has(arg.slice(2))) {
-        flags[arg.slice(2)] = argv[++i];
+        value = arg.slice(eq + 1);
+      } else if (VALUE_FLAGS.has(key)) {
+        value = argv[++i];
+      }
+      if (ARRAY_FLAGS.has(key)) {
+        flags[key] = [...(flags[key] ?? []), value];
       } else {
-        flags[arg.slice(2)] = true;
+        flags[key] = value;
       }
     } else if (arg === '-i') {
       flags.instance = argv[++i];
@@ -59,6 +67,7 @@ function help() {
     '',
     'Instances:',
     '  launch [--headless] [--binary <path>] [--profile <path>]',
+    '         [--pref name=value ...] [--timeout <s>]',
     '                              launch a Firefox instance (prints instance id)',
     '  servers                     list instances',
     '  stop [--instance <id>]      stop an instance',

@@ -192,7 +192,9 @@ export async function findInSnapshot(endpoint, pattern, flags) {
 
 function parseRegex(pattern) {
   const slashed = pattern.match(/^\/(.*)\/([a-z]*)$/);
-  return slashed ? [slashed[1], slashed[2]] : [pattern, ''];
+  const [source, flags] = slashed ? [slashed[1], slashed[2]] : [pattern, ''];
+  // A sticky/global regex reused across .test() calls skips matches.
+  return [source, flags.replace(/[gy]/g, '')];
 }
 
 export function printResult(result, flags) {

@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function stateDir() {
+function stateDir() {
   return (
     process.env.FIREFOX_CLI_STATE_DIR || join(homedir(), '.firefox-devtools-mcp', 'cli')
   );
@@ -166,7 +166,11 @@ export async function stop(instance) {
   if (!pidAlive(instance.runnerPid)) {
     return false;
   }
-  process.kill(instance.runnerPid, 'SIGTERM');
+  try {
+    process.kill(instance.runnerPid, 'SIGTERM');
+  } catch {
+    return false;
+  }
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     if (!pidAlive(instance.runnerPid)) {
@@ -174,7 +178,9 @@ export async function stop(instance) {
     }
     await sleep(100);
   }
-  process.kill(instance.runnerPid, 'SIGKILL');
+  try {
+    process.kill(instance.runnerPid, 'SIGKILL');
+  } catch {}
   return true;
 }
 
