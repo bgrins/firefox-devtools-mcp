@@ -9,7 +9,7 @@
 // Results land in eval/results/ (gitignored) as JSON plus a shareable
 // markdown report.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { chmodSync, createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -66,7 +66,11 @@ Usage: node eval/run.mjs [options]
   --effort <level>        reasoning effort for both backends (default: medium;
                           'default' = leave backend defaults)
   --backend <names>       anthropic (default), codex, comma list, or 'all'
-  --headed                visible Firefox windows (side-by-side with --parallel)
+  --headed                visible Firefox windows, tiled into a screen-sized
+                          grid (one cell per browser; wraps with a cascade
+                          offset past capacity)
+  --screen <WxH>          screen size for the headed grid (default: detected
+                          on macOS, else 1920x1080)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
                           client configs do) or http (shared instance endpoint)
   --conditions <list>     comma list of cli, mcp, playwright (default: cli,mcp);
@@ -562,21 +566,65 @@ async function buildTasks(base) {
   return tasks;
 }
 
-// Pre-seed window geometry so headed windows tile side by side (cli left,
-// mcp right) instead of stacking.
-function seedWindowGeometry(stateDir, backendName, condition) {
+// --- headed window grid ---------------------------------------------------
+// Every positionable headed env (cli instances and stdio firefox-devtools-mcp;
+// playwright has no window-position knob) claims a grid cell sized from the
+// screen. Slots beyond capacity wrap with a cascade offset so stacked windows
+// stay distinguishable.
+
+// Conditions whose windows we can position via a seeded profile.
+const POSITIONABLE = CONDITIONS.filter((c) => c !== 'playwright');
+const TOTAL_SLOTS = BACKEND_NAMES.length * POSITIONABLE.length * PARALLEL_TASKS;
+
+let SCREEN = { w: 1920, h: 1080 };
+function detectScreen() {
+  const arg = flag('screen', null);
+  if (arg) {
+    const m = arg.match(/^(\d+)x(\d+)$/);
+    if (!m) {
+      throw new Error(`--screen must look like 1920x1080, got "${arg}"`);
+    }
+    SCREEN = { w: Number(m[1]), h: Number(m[2]) };
+    return;
+  }
+  if (process.platform === 'darwin') {
+    const out = spawnSync('osascript', [
+      '-e',
+      'tell application "Finder" to get bounds of window of desktop',
+    ]);
+    const m = String(out.stdout ?? '').match(/(\d+),\s*(\d+)$/);
+    if (m) {
+      SCREEN = { w: Number(m[1]), h: Number(m[2]) };
+    }
+  }
+}
+
+// Deterministic slot per (backend, condition, worker) keeps a condition's
+// workers adjacent in the grid.
+function slotFor(backendName, condition, workerIndex) {
+  const runIdx =
+    BACKEND_NAMES.indexOf(backendName) * POSITIONABLE.length +
+    POSITIONABLE.indexOf(condition);
+  return runIdx * PARALLEL_TASKS + workerIndex;
+}
+
+function seedWindowGeometry(stateDir, slot) {
   const profileDir = join(stateDir, 'profile');
   mkdirSync(profileDir, { recursive: true });
-  const col = Math.max(0, CONDITIONS.indexOf(condition));
-  const row = BACKEND_NAMES.indexOf(backendName);
-  const rows = BACKEND_NAMES.length;
-  const height = rows > 1 ? 470 : 920;
+  const cols = Math.ceil(Math.sqrt(TOTAL_SLOTS));
+  const rows = Math.ceil(TOTAL_SLOTS / cols);
+  const capacity = cols * rows;
+  const cell = slot % capacity;
+  const cascade = Math.floor(slot / capacity) * 30;
+  const menubar = 40;
+  const width = Math.floor(SCREEN.w / cols);
+  const height = Math.floor((SCREEN.h - menubar) / rows);
   const geometry = {
     'chrome://browser/content/browser.xhtml': {
       'main-window': {
-        screenX: String(col * 880),
-        screenY: String(40 + row * (height + 30)),
-        width: '860',
+        screenX: String((cell % cols) * width + cascade),
+        screenY: String(menubar + Math.floor(cell / cols) * height + cascade),
+        width: String(width),
         height: String(height),
         sizemode: 'normal',
       },
@@ -590,18 +638,19 @@ function seedWindowGeometry(stateDir, backendName, condition) {
 // conditions that share a browser across tool calls) a managed instance.
 // Sequential runs use one env per condition; --parallel-tasks uses one per
 // worker.
-async function makeEnv(backendName, condition, label) {
+async function makeEnv(backendName, condition, label, workerIndex = 0) {
   // Each env gets its own pages server so validator state (sessions/beacons)
   // never mixes across concurrent agents.
   const pages = await startPagesServer();
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
   const needsInstance =
     condition === 'cli' || (condition === 'mcp' && MCP_TRANSPORT === 'http');
-  // Seed window geometry so headed windows tile into their grid slot
+  // Seed window geometry so headed windows tile into their grid cell
   // (stdio MCP servers launch their own Firefox and get it via --profile-path).
-  const headedProfile = HEADED
-    ? seedWindowGeometry(stateDir, backendName, condition)
-    : null;
+  const headedProfile =
+    HEADED && POSITIONABLE.includes(condition)
+      ? seedWindowGeometry(stateDir, slotFor(backendName, condition, workerIndex))
+      : null;
   const stdioProfile = !needsInstance ? headedProfile : null;
   let instance = null;
   if (needsInstance) {
@@ -677,8 +726,8 @@ async function runCondition(backendName, condition, shared) {
     const byId = new Map();
     const workerCount = Math.min(PARALLEL_TASKS, queue.length);
     await Promise.all(
-      Array.from({ length: workerCount }, async () => {
-        const env = await makeEnv(backendName, condition, label);
+      Array.from({ length: workerCount }, async (_, workerIndex) => {
+        const env = await makeEnv(backendName, condition, label, workerIndex);
         try {
           while (queue.length) {
             const id = queue.shift();
@@ -724,6 +773,9 @@ async function main() {
 
   if (CONDITIONS.includes('playwright')) {
     await ensurePlaywrightFirefox();
+  }
+  if (HEADED) {
+    detectScreen();
   }
 
   const runs = BACKEND_NAMES.flatMap((backendName) =>
