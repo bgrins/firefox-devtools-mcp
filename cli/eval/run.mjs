@@ -46,6 +46,12 @@ if (MODEL_FLAG && BACKEND_NAMES.length > 1) {
   throw new Error('--model cannot be combined with multiple backends; each uses its default');
 }
 const modelFor = (name) => MODEL_FLAG ?? BACKENDS[name].DEFAULT_MODEL;
+// Pin reasoning effort symmetrically across backends (Agent SDK `effort`,
+// codex `model_reasoning_effort`); 'default' leaves each backend's own default.
+const EFFORT = flag('effort', 'medium');
+if (!['default', 'low', 'medium', 'high', 'xhigh', 'max'].includes(EFFORT)) {
+  throw new Error(`--effort must be default|low|medium|high|xhigh|max, got "${EFFORT}"`);
+}
 const SUITE = flag('suite', 'basic');
 const ONLY_TASK = flag('task', null);
 if (args.includes('--help') || args.includes('help')) {
@@ -57,6 +63,8 @@ Usage: node eval/run.mjs [options]
   --suite basic|web|all   task suite (default: basic; web = simulated sites)
   --task <id>             run a single task by id
   --model <id>            model for the agent backend
+  --effort <level>        reasoning effort for both backends (default: medium;
+                          'default' = leave backend defaults)
   --backend <names>       anthropic (default), codex, comma list, or 'all'
   --headed                visible Firefox windows (side-by-side with --parallel)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
@@ -405,6 +413,7 @@ async function runTask(backendName, condition, label, task, ctx) {
   const spec = {
     prompt: taskPrompt(condition, task),
     model: modelFor(backendName),
+    effort: EFFORT === 'default' ? null : EFFORT,
     maxTurns: task.maxTurns,
     condition,
     cwd: ctx.scratchDir,
@@ -445,6 +454,7 @@ async function runTask(backendName, condition, label, task, ctx) {
     backend: backendName,
     condition: label,
     task: task.id,
+    model: modelFor(backendName) || '(backend default)',
     success: verdict.pass,
     detail: verdict.detail,
     answer: r.text.slice(0, 160).replace(/\n/g, ' '),
@@ -696,7 +706,10 @@ async function main() {
   const meta = {
     date: startedAt.toISOString(),
     backend: BACKEND_NAMES.join(','),
-    model: MODEL_FLAG ?? '(backend defaults)',
+    models: Object.fromEntries(
+      BACKEND_NAMES.map((n) => [n, modelFor(n) || '(backend default)'])
+    ),
+    effort: EFFORT,
     suite: SUITE,
     task: ONLY_TASK ?? undefined,
     conditions: CONDITIONS.join(','),

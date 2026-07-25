@@ -201,8 +201,14 @@ const out = [];
 out.push(`# Transcripts — ${runDir.split('/').pop()}`);
 if (resultsMeta?.meta) {
   const m = resultsMeta.meta;
+  const models = m.models
+    ? Object.entries(m.models)
+        .map(([b, mod]) => `${b}:${mod}`)
+        .join(' ')
+    : m.model;
   out.push(
-    `backend=${m.backend} model=${m.model} suite=${m.suite} mcp=${m.mcpTransport}` +
+    `backend=${m.backend} model=${models} effort=${m.effort ?? '(default)'} ` +
+      `suite=${m.suite} mcp=${m.mcpTransport}` +
       (m.mcpCommand ? ` mcpCommand="${m.mcpCommand}"` : '')
   );
 }

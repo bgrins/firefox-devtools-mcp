@@ -21,15 +21,20 @@
 import { Codex } from '@openai/codex-sdk';
 import { tmpdir } from 'node:os';
 
-// Empty = defer to the user's codex config (~/.codex/config.toml model).
-export const DEFAULT_MODEL = '';
+// Pinned explicitly (rather than deferring to ~/.codex/config.toml) so runs
+// are reproducible and the model is recorded in results. terra is the
+// sonnet-4-6-equivalent tier.
+export const DEFAULT_MODEL = 'gpt-5.6-terra';
 
-export async function run({ prompt, model, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
+export async function run({ prompt, model, effort, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const codexOptions = {
     // When env is provided the SDK does not inherit process.env, so run.mjs
     // builds it from the full process.env.
     env: { ...env },
-    config: { approval_policy: 'never' },
+    config: {
+      approval_policy: 'never',
+      ...(effort ? { model_reasoning_effort: effort } : {}),
+    },
   };
   if (condition === 'cli') {
     codexOptions.config.sandbox_workspace_write = {
