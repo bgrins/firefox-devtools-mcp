@@ -75,7 +75,10 @@ Usage: node eval/run.mjs [options]
   --mcp-command "<cmd>"   custom stdio MCP server for the mcp condition, e.g.
                           "npx @playwright/mcp@latest --browser firefox";
                           replaces the built-in firefox-devtools-mcp server
-  --parallel              run cli and mcp conditions concurrently
+  --parallel              run conditions concurrently
+  --parallel-tasks <n>    run up to n tasks concurrently within each condition
+                          (each worker gets its own browser + pages server;
+                          wall timings gain contention noise)
   --help                  show this help
 
 Results land in eval/results/run-<timestamp>/ (gitignored): results.json,
@@ -86,6 +89,12 @@ Render transcripts with: node eval/transcript.mjs [run-dir] [--task <id>] [--md]
 
 const HEADED = args.includes('--headed');
 const PARALLEL = args.includes('--parallel');
+// Tasks-within-a-condition concurrency; each worker gets an isolated env
+// (own pages server, state dir, and browser where the condition shares one).
+const PARALLEL_TASKS = Number(flag('parallel-tasks', '1'));
+if (!Number.isInteger(PARALLEL_TASKS) || PARALLEL_TASKS < 1) {
+  throw new Error(`--parallel-tasks must be a positive integer`);
+}
 // 'stdio' spawns the MCP server per agent session, like real client configs
 // (npx firefox-devtools-mcp); 'http' attaches the shared instance's endpoint.
 const MCP_TRANSPORT = flag('mcp-transport', 'stdio');
@@ -577,14 +586,15 @@ function seedWindowGeometry(stateDir, backendName, condition) {
   return profileDir;
 }
 
-async function runCondition(backendName, condition, shared) {
-  const label = BACKEND_NAMES.length > 1 ? `${backendName}/${condition}` : condition;
-  // Each condition gets its own pages server so form-state validation
-  // (submissions/progress) stays isolated when running in parallel.
+// One isolated execution environment: pages server + state dir + (for
+// conditions that share a browser across tool calls) a managed instance.
+// Sequential runs use one env per condition; --parallel-tasks uses one per
+// worker.
+async function makeEnv(backendName, condition, label) {
+  // Each env gets its own pages server so validator state (sessions/beacons)
+  // never mixes across concurrent agents.
   const pages = await startPagesServer();
-  const tasks = await buildTasks(pages.url);
   const stateDir = mkdtempSync(join(tmpdir(), `ffcli-eval-${condition}-`));
-  const results = [];
   const needsInstance =
     condition === 'cli' || (condition === 'mcp' && MCP_TRANSPORT === 'http');
   // Seed window geometry so headed windows tile into their grid slot
@@ -593,60 +603,105 @@ async function runCondition(backendName, condition, shared) {
     ? seedWindowGeometry(stateDir, backendName, condition)
     : null;
   const stdioProfile = !needsInstance ? headedProfile : null;
-  console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
   let instance = null;
-  try {
-    instance = !needsInstance ? null : await withEnvLock(async () => {
+  if (needsInstance) {
+    // launch()/listInstances() read FIREFOX_CLI_STATE_DIR from process.env;
+    // the lock only guards that mutation. Concurrent Firefox cold starts are
+    // fine (the old SIGABRT was codex-sandboxed launches, not contention).
+    instance = await withEnvLock(async () => {
       process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-      const inst = await launch({
+      return launch({
         headless: !HEADED,
         ...(headedProfile ? { profile: headedProfile } : {}),
       });
-      // Firefox starts lazily on the first tool call. Warm it up while still
-      // serialized: concurrent cold starts can SIGABRT in macOS
-      // RegisterApplication/LaunchServices when several instances register at
-      // once (TransformProcessType abort).
-      await callTool(inst.discovery.endpoint, 'list_pages', {}).catch((error) =>
-        console.log(`[${label}] warm-up failed: ${error.message}`)
-      );
-      return inst;
     });
-    const ctx = {
-      ...shared,
-      stateDir,
-      pages,
-      endpoint: instance?.discovery.endpoint ?? null,
-      stdioProfile,
-    };
-    for (const task of tasks) {
-      pages.state.reset();
-      try {
-        const r = await runTask(backendName, condition, label, task, ctx);
-        results.push(r);
-        console.log(
-          `[${label}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
-            `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
-            `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
-            (r.detail ? ` (${r.detail})` : '')
-        );
-      } catch (error) {
-        console.log(`[${label}] ${task.id}: ERROR ${error.message}`);
-        results.push({ backend: backendName, condition: label, task: task.id, success: false, error: error.message });
-      }
-    }
-  } finally {
-    if (needsInstance) {
-      await withEnvLock(async () => {
-        process.env.FIREFOX_CLI_STATE_DIR = stateDir;
-        for (const inst of listInstances()) {
-          await stop(inst).catch(() => {});
-        }
-      });
-    }
-    await pages.close();
-    rmSync(stateDir, { recursive: true, force: true });
+    // Firefox starts lazily on the first tool call; warm it up so startup
+    // never counts against the first task.
+    await callTool(instance.discovery.endpoint, 'list_pages', {}).catch((error) =>
+      console.log(`[${label}] warm-up failed: ${error.message}`)
+    );
   }
-  return results;
+  return {
+    pages,
+    stateDir,
+    stdioProfile,
+    endpoint: instance?.discovery.endpoint ?? null,
+    async close() {
+      if (needsInstance) {
+        await withEnvLock(async () => {
+          process.env.FIREFOX_CLI_STATE_DIR = stateDir;
+          for (const inst of listInstances()) {
+            await stop(inst).catch(() => {});
+          }
+        });
+      }
+      await pages.close();
+      rmSync(stateDir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function runCondition(backendName, condition, shared) {
+  const label = BACKEND_NAMES.length > 1 ? `${backendName}/${condition}` : condition;
+  console.log(`[${label}] starting (model: ${modelFor(backendName) || '(backend default)'})`);
+
+  async function runOne(env, taskId) {
+    // Task asks embed the env's pages URL, so rebuild against this env.
+    const task = (await buildTasks(env.pages.url)).find((t) => t.id === taskId);
+    env.pages.state.reset();
+    try {
+      const ctx = {
+        ...shared,
+        stateDir: env.stateDir,
+        pages: env.pages,
+        endpoint: env.endpoint,
+        stdioProfile: env.stdioProfile,
+      };
+      const r = await runTask(backendName, condition, label, task, ctx);
+      console.log(
+        `[${label}] ${task.id}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
+          `cacheR=${r.cache_read} out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
+          `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
+          (r.detail ? ` (${r.detail})` : '')
+      );
+      return r;
+    } catch (error) {
+      console.log(`[${label}] ${taskId}: ERROR ${error.message}`);
+      return { backend: backendName, condition: label, task: taskId, success: false, error: error.message };
+    }
+  }
+
+  const taskIds = (await buildTasks('http://placeholder')).map((t) => t.id);
+  if (PARALLEL_TASKS > 1) {
+    const queue = [...taskIds];
+    const byId = new Map();
+    const workerCount = Math.min(PARALLEL_TASKS, queue.length);
+    await Promise.all(
+      Array.from({ length: workerCount }, async () => {
+        const env = await makeEnv(backendName, condition, label);
+        try {
+          while (queue.length) {
+            const id = queue.shift();
+            byId.set(id, await runOne(env, id));
+          }
+        } finally {
+          await env.close().catch(() => {});
+        }
+      })
+    );
+    return taskIds.map((id) => byId.get(id)).filter(Boolean);
+  }
+
+  const env = await makeEnv(backendName, condition, label);
+  try {
+    const results = [];
+    for (const id of taskIds) {
+      results.push(await runOne(env, id));
+    }
+    return results;
+  } finally {
+    await env.close().catch(() => {});
+  }
 }
 
 async function main() {
@@ -716,6 +771,7 @@ async function main() {
     mcpTransport: MCP_TRANSPORT,
     mcpCommand: MCP_COMMAND ?? undefined,
     parallel: PARALLEL || undefined,
+    parallelTasks: PARALLEL_TASKS > 1 ? PARALLEL_TASKS : undefined,
   };
   const jsonPath = join(runDir, 'results.json');
   const mdPath = join(runDir, 'report.md');
