@@ -576,7 +576,8 @@ async function buildTasks(base) {
 const POSITIONABLE = CONDITIONS.filter((c) => c !== 'playwright');
 const TOTAL_SLOTS = BACKEND_NAMES.length * POSITIONABLE.length * PARALLEL_TASKS;
 
-let SCREEN = { w: 1920, h: 1080 };
+// Usable desktop area in top-left-origin coordinates.
+let SCREEN = { w: 1920, h: 1040, top: 40, left: 0 };
 function detectScreen() {
   const arg = flag('screen', null);
   if (arg) {
@@ -584,17 +585,26 @@ function detectScreen() {
     if (!m) {
       throw new Error(`--screen must look like 1920x1080, got "${arg}"`);
     }
-    SCREEN = { w: Number(m[1]), h: Number(m[2]) };
+    SCREEN = { w: Number(m[1]), h: Number(m[2]) - 40, top: 40, left: 0 };
     return;
   }
   if (process.platform === 'darwin') {
+    // NSScreen.visibleFrame excludes the menu bar and Dock, and (unlike
+    // AppleScript app automation) needs no TCC permission. AppKit frames are
+    // bottom-left-origin; convert the top offset.
     const out = spawnSync('osascript', [
+      '-l',
+      'JavaScript',
       '-e',
-      'tell application "Finder" to get bounds of window of desktop',
+      'ObjC.import("AppKit"); const s = $.NSScreen.mainScreen; const v = s.visibleFrame; ' +
+        'JSON.stringify({w: v.size.width, h: v.size.height, left: v.origin.x, ' +
+        'top: s.frame.size.height - v.origin.y - v.size.height})',
     ]);
-    const m = String(out.stdout ?? '').match(/(\d+),\s*(\d+)$/);
-    if (m) {
-      SCREEN = { w: Number(m[1]), h: Number(m[2]) };
+    try {
+      const v = JSON.parse(String(out.stdout ?? ''));
+      SCREEN = { w: v.w, h: v.h, top: v.top, left: v.left };
+    } catch {
+      // keep the default
     }
   }
 }
@@ -616,14 +626,13 @@ function seedWindowGeometry(stateDir, slot) {
   const capacity = cols * rows;
   const cell = slot % capacity;
   const cascade = Math.floor(slot / capacity) * 30;
-  const menubar = 40;
   const width = Math.floor(SCREEN.w / cols);
-  const height = Math.floor((SCREEN.h - menubar) / rows);
+  const height = Math.floor(SCREEN.h / rows);
   const geometry = {
     'chrome://browser/content/browser.xhtml': {
       'main-window': {
-        screenX: String((cell % cols) * width + cascade),
-        screenY: String(menubar + Math.floor(cell / cols) * height + cascade),
+        screenX: String(SCREEN.left + (cell % cols) * width + cascade),
+        screenY: String(SCREEN.top + Math.floor(cell / cols) * height + cascade),
         width: String(width),
         height: String(height),
         sizemode: 'normal',
