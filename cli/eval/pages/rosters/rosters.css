@@ -1,0 +1,84 @@
+body {
+  margin: 0;
+  background: #f4f2ed;
+  color: #23211d;
+  font: 15px/1.55 Georgia, 'Times New Roman', serif;
+}
+a { color: #1b4f72; }
+a:visited { color: #5b3a86; }
+#banner {
+  background: #1f3b2c;
+  color: #f4f2ed;
+  padding: 14px 24px 10px;
+  border-bottom: 4px solid #b58b2a;
+}
+#banner .mark {
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+  border: 2px solid #b58b2a;
+  color: #b58b2a;
+  text-align: center;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+#banner h1 { display: inline-block; margin: 0; font-size: 19px; font-weight: 400; vertical-align: middle; }
+#banner .sub { display: block; font-size: 12px; color: #c9c2b4; letter-spacing: 0.5px; }
+#nav {
+  background: #2d5540;
+  padding: 6px 24px;
+  font: 13px/1.4 Verdana, Geneva, sans-serif;
+}
+#nav a { color: #eae5d8; text-decoration: none; margin-right: 18px; }
+#nav a:hover { text-decoration: underline; }
+#crumbs { padding: 8px 24px 0; font: 12px Verdana, Geneva, sans-serif; color: #6a655c; }
+#shell { max-width: 940px; margin: 0 auto; padding: 0 24px 32px; }
+#main { display: block; }
+h2 { font-size: 20px; font-weight: 400; border-bottom: 1px solid #d5cfc0; padding-bottom: 4px; margin-top: 26px; }
+h3 { font-size: 15px; margin-bottom: 4px; }
+p.note { font: 12px/1.5 Verdana, Geneva, sans-serif; color: #57524a; }
+ul.plain { padding-left: 20px; }
+table.roster {
+  border-collapse: collapse;
+  width: 100%;
+  font: 13px/1.4 Verdana, Geneva, sans-serif;
+  margin: 12px 0 18px;
+}
+table.roster caption {
+  caption-side: top;
+  text-align: left;
+  font: italic 13px Georgia, serif;
+  color: #57524a;
+  padding-bottom: 6px;
+}
+table.roster th, table.roster td {
+  border: 1px solid #ccc5b4;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+table.roster thead th { background: #e3ddcd; font-weight: 700; }
+table.roster tbody tr:nth-child(even) td { background: #faf8f3; }
+table.roster tr.dept th {
+  background: #cfd9cf;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+table.roster td.ext { text-align: right; width: 74px; }
+.aside {
+  background: #eae5d8;
+  border-left: 3px solid #b58b2a;
+  padding: 8px 12px;
+  font: 12px/1.5 Verdana, Geneva, sans-serif;
+  margin: 16px 0;
+}
+#foot {
+  border-top: 1px solid #d5cfc0;
+  margin-top: 28px;
+  padding-top: 10px;
+  font: 11px/1.6 Verdana, Geneva, sans-serif;
+  color: #6a655c;
+}

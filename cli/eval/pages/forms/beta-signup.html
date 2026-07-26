@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fernlight Atlas 3 — Join the private beta waitlist</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 640px; margin: 24px auto; color: #1f2733; padding: 0 16px; }
+  h1 { margin-bottom: 4px; }
+  .tagline { color: #5a6675; margin-top: 0; }
+  .termsbox { border: 1px solid #b6c2d1; background: #f4f7fb; padding: 12px 16px; margin: 18px 0; }
+  .termsbox p { margin: 0; font-size: 14px; }
+  .termsbox a { font-size: 16px; font-weight: 700; }
+  fieldset { border: 1px solid #b6c2d1; padding: 16px; margin-bottom: 14px; background: #fbfcfe; }
+  legend { font-weight: 700; padding: 0 6px; }
+  label { display: block; margin: 10px 0 2px; font-weight: 700; font-size: 14px; }
+  .hint { font-weight: 400; color: #5a6675; font-size: 12px; }
+  .req { color: #a33; }
+  input { padding: 8px; width: 100%; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  .error { color: #a33; font-size: 13px; margin-top: 2px; }
+  button { padding: 10px 22px; font-size: 15px; margin-top: 12px; }
+  #done { border: 2px solid #3f6f8e; background: #eef4f8; padding: 16px; margin-top: 16px; }
+  #queueline { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+  footer { margin-top: 40px; border-top: 1px solid #b6c2d1; padding-top: 12px; font-size: 12px; color: #5a6675; }
+</style>
+</head>
+<body>
+<h1>Fernlight Atlas 3</h1>
+<p class="tagline">Field mapping and survey tooling for small crews.</p>
+
+<p>Atlas 3 is in private beta. Seats are released in weekly batches from a
+single waitlist; we email an install link and a workspace key when your seat
+opens. Everything you build during the beta carries over to general release.</p>
+
+<div class="termsbox">
+  <p><a href="beta-terms.html">Read the beta terms (all requirements are binding)</a></p>
+  <p>Submitting the form below confirms that you have read the beta terms in
+  full and that your request complies with every clause of them.</p>
+</div>
+
+<form id="signup" novalidate>
+  <fieldset>
+    <legend>Waitlist request</legend>
+    <label for="name">Full name <span class="req">*</span></label>
+    <input id="name" autocomplete="off">
+    <div class="error" id="err-name" role="alert"></div>
+    <label for="email">Email address <span class="req">*</span></label>
+    <input id="email" autocomplete="off">
+    <div class="error" id="err-email" role="alert"></div>
+    <label for="referral">Referral code <span class="hint">optional</span></label>
+    <input id="referral" autocomplete="off">
+  </fieldset>
+  <button type="submit" id="joinbtn">Join the waitlist</button>
+</form>
+
+<div id="done" hidden>
+  <p id="donemsg"></p>
+  <p id="queuewrap" hidden>Your queue position: <span id="queueline"></span></p>
+  <p id="donenote"></p>
+</div>
+<div class="error" id="err-submit" role="alert"></div>
+
+<footer>
+  Fernlight Software — 42 Alder Row, Suite 5 · Support Mon–Fri ·
+  beta@fernlight.example · Fernlight Software and Atlas are fictional and exist
+  only for local browser testing.
+</footer>
+
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const value = (id) => document.getElementById(id).value.trim();
+
+  document.getElementById('signup').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = value('name');
+    const email = value('email');
+    document.getElementById('err-name').textContent =
+      name ? '' : 'Full name is required.';
+    const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    document.getElementById('err-email').textContent =
+      emailOk ? '' : 'Enter a valid email address.';
+    if (!name || !emailOk) return;
+
+    const response = await fetch('/api/beta-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, name, email, referral: value('referral') }),
+    });
+    if (!response.ok) {
+      document.getElementById('err-submit').textContent =
+        'Something went wrong sending your request. Please try again.';
+      return;
+    }
+    const result = await response.json();
+    document.getElementById('signup').hidden = true;
+    document.getElementById('err-submit').textContent = '';
+    document.getElementById('donemsg').textContent = result.message ?? '';
+    if (result.position != null) {
+      document.getElementById('queueline').textContent = String(result.position);
+      document.getElementById('queuewrap').hidden = false;
+      document.getElementById('donenote').textContent =
+        'Quote this position if you write to us about your request.';
+    } else {
+      document.getElementById('queuewrap').hidden = true;
+      document.getElementById('donenote').textContent =
+        'We will be in touch by email.';
+    }
+    document.getElementById('done').hidden = false;
+  });
+</script>
+</body>
+</html>

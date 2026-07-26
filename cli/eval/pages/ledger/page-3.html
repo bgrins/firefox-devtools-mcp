@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transaction Ledger - Page 3 - Kestrel Hollow Land Trust</title>
+<style>
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f6f5f1; color: #23291f; margin: 0; }
+  header { background: #2f4230; color: #f0ece1; padding: 16px 34px; }
+  header .brand { font-size: 19px; letter-spacing: 0.02em; }
+  header .tag { font-size: 12px; color: #bcc9b5; margin-top: 3px; }
+  main { max-width: 830px; margin: 26px auto 40px; padding: 0 20px; }
+  h1 { font-size: 21px; font-weight: normal; margin: 0 0 4px; }
+  .meta { font-size: 13px; color: #5a6353; margin: 0 0 18px; }
+  .toolbar { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #d8d6cb; padding: 10px 14px; margin-bottom: 14px; }
+  button { font: inherit; font-size: 13px; padding: 6px 12px; background: #3d5c3e; color: #fff; border: 0; border-radius: 3px; cursor: pointer; }
+  button:hover { background: #4a6f4b; }
+  .toolbar .hint { font-size: 12px; color: #6b7364; }
+  #export-status { font-size: 12px; color: #3d5c3e; margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d8d6cb; font-size: 13px; }
+  caption { text-align: left; font-size: 12px; color: #6b7364; padding: 8px 0; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #ebe9e0; text-align: left; }
+  thead th { background: #e8e6da; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.amount, th.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  td.date { white-space: nowrap; color: #4c5446; }
+  td.tag { color: #4c5446; }
+  tfoot td { font-weight: 700; border-top: 2px solid #d8d6cb; border-bottom: 0; }
+  .pager { margin: 16px 0 6px; font-size: 13px; }
+  .pager a { color: #2f4230; }
+  .pager .current { font-weight: 700; padding: 0 4px; }
+  .pager .nums a { padding: 0 4px; }
+  .pager .off { color: #a5a89c; }
+  .pageline { font-size: 12px; color: #6b7364; }
+  footer { border-top: 1px solid #ddd9cc; margin-top: 26px; padding-top: 12px; font-size: 12px; color: #7d8375; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Kestrel Hollow Land Trust</div>
+  <div class="tag">Operating fund &middot; fiscal year 2026</div>
+</header>
+<main>
+  <h1>Transaction Ledger</h1>
+  <p class="meta">Operating fund postings for fiscal year 2026, oldest first.
+  Every posting carries one tag: hardware, travel, software, or misc.</p>
+  <div class="toolbar">
+    <button id="export" type="button">Export CSV</button>
+    <span class="hint">Exports every posting in the ledger, not just this page.</span>
+    <span id="export-status" role="status"></span>
+  </div>
+  <nav class="pager" aria-label="Ledger pages">
+    <a href="page-2.html">Previous</a>
+    <span class="nums"><a href="index.html">1</a>
+    <a href="page-2.html">2</a>
+    <span class="current" aria-current="page">3</span>
+    <a href="page-4.html">4</a>
+    <a href="page-5.html">5</a>
+    <a href="page-6.html">6</a>
+    <a href="page-7.html">7</a></span>
+    <a href="page-4.html">Next</a>
+  </nav>
+  <p class="pageline">Page 3 of 7</p>
+  <table>
+    <caption>Ledger postings &middot; page 3</caption>
+    <thead>
+      <tr><th>Date</th><th>Description</th><th>Tag</th><th class="amount">Amount</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="date">2026-03-05</td>
+        <td>Accounting seat license</td>
+        <td class="tag">software</td>
+        <td class="amount">$479.15</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-06</td>
+        <td>Rail fare - state capital</td>
+        <td class="tag">travel</td>
+        <td class="amount">$432.84</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-10</td>
+        <td>Parking - permit office</td>
+        <td class="tag">travel</td>
+        <td class="amount">$325.79</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-12</td>
+        <td>Gate hardware and locks</td>
+        <td class="tag">hardware</td>
+        <td class="amount">$1,280.57</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-12</td>
+        <td>Soil probe kit</td>
+        <td class="tag">hardware</td>
+        <td class="amount">$281.44</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-13</td>
+        <td>Cloud backup tier</td>
+        <td class="tag">software</td>
+        <td class="amount">$851.95</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-13</td>
+        <td>Legal notice publication</td>
+        <td class="tag">misc</td>
+        <td class="amount">$19.86</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-13</td>
+        <td>Website hosting renewal</td>
+        <td class="tag">software</td>
+        <td class="amount">$714.05</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-13</td>
+        <td>Bench grinder for shop</td>
+        <td class="tag">hardware</td>
+        <td class="amount">$994.83</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-17</td>
+        <td>First aid restock</td>
+        <td class="tag">misc</td>
+        <td class="amount">$266.24</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-19</td>
+        <td>First aid restock</td>
+        <td class="tag">misc</td>
+        <td class="amount">$409.52</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-19</td>
+        <td>Sign printing - trailhead</td>
+        <td class="tag">misc</td>
+        <td class="amount">$222.51</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-20</td>
+        <td>Website hosting renewal</td>
+        <td class="tag">software</td>
+        <td class="amount">$273.19</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-23</td>
+        <td>Storage unit rent</td>
+        <td class="tag">misc</td>
+        <td class="amount">$341.61</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-23</td>
+        <td>Battery bank for cabin</td>
+        <td class="tag">hardware</td>
+        <td class="amount">$372.27</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-24</td>
+        <td>First aid restock</td>
+        <td class="tag">misc</td>
+        <td class="amount">$398.87</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-25</td>
+        <td>Mileage - county hearing</td>
+        <td class="tag">travel</td>
+        <td class="amount">$731.80</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-26</td>
+        <td>Airfare - land trust forum</td>
+        <td class="tag">travel</td>
+        <td class="amount">$637.45</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-27</td>
+        <td>Survey app annual plan</td>
+        <td class="tag">software</td>
+        <td class="amount">$880.85</td>
+      </tr>
+      <tr>
+        <td class="date">2026-03-27</td>
+        <td>Storage unit rent</td>
+        <td class="tag">misc</td>
+        <td class="amount">$140.29</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr><td colspan="3">Page subtotal</td><td class="amount">$10,055.08</td></tr>
+    </tfoot>
+  </table>
+  <nav class="pager" aria-label="Ledger pages">
+    <a href="page-2.html">Previous</a>
+    <span class="nums"><a href="index.html">1</a>
+    <a href="page-2.html">2</a>
+    <span class="current" aria-current="page">3</span>
+    <a href="page-4.html">4</a>
+    <a href="page-5.html">5</a>
+    <a href="page-6.html">6</a>
+    <a href="page-7.html">7</a></span>
+    <a href="page-4.html">Next</a>
+  </nav>
+  <p class="pageline">Page 3 of 7</p>
+  <footer>Kestrel Hollow Land Trust is a fictional organisation used for local browser
+  testing. Figures are invented and have no relationship to any real entity.</footer>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const status = document.getElementById('export-status');
+  document.getElementById('export').addEventListener('click', async () => {
+    status.textContent = 'Preparing export...';
+    try {
+      const res = await fetch('/api/ledger/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, page: 3 }),
+      });
+      if (!res.ok) {
+        status.textContent = 'Export failed - reload the page and try again.';
+        return;
+      }
+      const data = await res.json();
+      status.textContent = 'Export ready - opening CSV.';
+      window.location.assign(data.url);
+    } catch {
+      status.textContent = 'Export failed - reload the page and try again.';
+    }
+  });
+</script>
+</body>
+</html>

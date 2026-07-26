@@ -1,0 +1,29 @@
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; color: #24291f; background: #faf9f5; }
+header { background: #2f4034; color: #f3f1e7; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+header img { display: block; border-radius: 4px; }
+header .brand { font-size: 19px; font-weight: 700; letter-spacing: .04em; }
+header .tag { font-size: 12px; color: #b9c7ac; margin-left: auto; }
+nav { background: #3d5443; color: #dfe6d5; font-size: 13px; padding: 7px 20px; }
+nav a { color: #dfe6d5; text-decoration: none; margin-right: 16px; }
+nav a.here { border-bottom: 2px solid #d9a13b; padding-bottom: 3px; }
+.crumbs { font-size: 12px; color: #6d7364; padding: 10px 20px 0; }
+main { display: flex; align-items: flex-start; }
+aside { width: 190px; padding: 16px 20px; font-size: 13px; color: #4a5044; }
+aside h4 { margin: 14px 0 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #6d7364; }
+aside label { display: block; margin: 3px 0; }
+.results { flex: 1; padding: 8px 20px 0; }
+.results h1 { font-size: 21px; margin: 6px 0 2px; }
+.results .count { font-size: 13px; color: #6d7364; margin: 0 0 14px; }
+#grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+.card { border: 1px solid #e0ded2; border-radius: 6px; background: #fff; padding: 12px; font-size: 13px; }
+.card .thumb { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 4px; background: #f1efe6; font-size: 12px; color: #8a8f80; }
+.card h3 { font-size: 14px; margin: 10px 0 2px; }
+.card .sku { font-size: 11px; color: #8a8f80; letter-spacing: .04em; }
+.card .price { font-size: 17px; font-weight: 700; color: #8a3b1f; margin: 6px 0 4px; }
+.card .blurb { margin: 0 0 8px; line-height: 1.45; color: #4a5044; }
+.card .rating { color: #b8862f; font-size: 12px; }
+.card .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #6d7364; margin-top: 6px; }
+.card button { margin-top: 8px; width: 100%; background: #d9a13b; border: 1px solid #c08d2c; border-radius: 4px; padding: 7px 0; font-size: 13px; cursor: pointer; }
+#pager { padding: 18px 20px 0; font-size: 13px; color: #6d7364; }
+footer { margin-top: 28px; padding: 20px; background: #2f4034; color: #a8b79c; font-size: 12px; line-height: 1.6; }
+footer a { color: #dfe6d5; }

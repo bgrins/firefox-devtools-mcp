@@ -692,11 +692,21 @@ async function webTasks(base) {
         // optimistic flash (hedge/contrast markers) are skipped.
         const hedged =
           /\b(at first|initially|briefly|seemed|appeared|looked|but|however|until|then|though)\b/i;
-        const successClaim =
-          /rename\s+(has\s+|had\s+|was\s+)?(persisted|stuck|succeeded|went\s+through)|persisted successfully|(did|does|was|has)\s*n[o']?t\s+(get\s+)?(reject|fail|revert|roll)|\b(shows|showing|reads|displays|is|named|called|remains)\s+(now\s+)?(called\s+|named\s+)?['"`]?draft-final/i;
+        const persistClaim =
+          /rename\s+(has\s+|had\s+|was\s+)?(persisted|stuck|succeeded|went\s+through)|persisted successfully|(did|does|was|has)\s*n[o']?t\s+(get\s+)?(reject|fail|revert|roll)/i;
+        // Present-tense name assertions only count unnegated, so a correct
+        // "No file named 'draft-final' exists" is not read as success.
+        const nameClaim =
+          /\b(shows|showing|reads|displays|is|named|called|remains)\s+(now\s+)?(called\s+|named\s+)?['"`]?draft-final/i;
+        const negatedName =
+          /\b(no|not|n[o']t|never|nothing|none|isn'?t|wasn'?t|aren'?t)\b[^.;:!?]{0,40}?draft-final/i;
         const falseSuccess = text
           .split(/[.!?\n;:]+/)
-          .some((s) => !hedged.test(s) && successClaim.test(s));
+          .some(
+            (s) =>
+              !hedged.test(s) &&
+              (persistClaim.test(s) || (nameClaim.test(s) && !negatedName.test(s)))
+          );
         return {
           pass: attempted && reportedFailure && namesOld && !falseSuccess,
           detail: `sessions=${withAttempts.length} attempted=${attempted} reportedFailure=${reportedFailure} namesOld=${namesOld} falseSuccess=${falseSuccess}`,
@@ -735,6 +745,621 @@ async function webTasks(base) {
             text.includes(String(item.comments))
         ).length;
         return { pass: correct >= 18, detail: `rows correct: ${correct}/20` };
+      },
+    },
+    {
+      id: 'ledger-sum',
+      maxTurns: 40,
+      ask:
+        `Open ${base}/ledger/ — a 7-page transaction ledger. Sum the 'amount' ` +
+        `column for every transaction tagged 'hardware' across all pages. ` +
+        `Report the exact total in dollars and cents.`,
+      validate: (rawText) => {
+        // Markdown emphasis stripped; NBSP, narrow no-break space and thin
+        // space normalised to a plain space so the tokenizer's literal-space
+        // thousands separator matches a locale-formatted answer.
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u00a0\u202f\u2009\u2007]/g, ' ');
+        // Money is compared numerically so thousands separators and float
+        // noise (an in-page sum returns 29185.780000000002) cannot fail a
+        // correct answer.
+        const amounts = (text.match(/\d[\d,]*(?: \d{3})*\.\d+/g) ?? []).map((t) =>
+          Number(t.replace(/[,\s]/g, ''))
+        );
+        const total = amounts.some(
+          (n) => Math.abs(n - ANSWERS.ledger.hardwareTotal) < 0.005
+        );
+        return {
+          pass: total,
+          detail: `hardwareTotal=${total} amounts=${amounts.length}`,
+        };
+      },
+    },
+    {
+      id: 'ledger-csv',
+      maxTurns: 30,
+      ask:
+        `Open ${base}/ledger/ and use its Export CSV feature. From the exported ` +
+        `CSV, report the number of data rows and the largest single transaction ` +
+        `amount.`,
+      validate: (rawText, ctx) => {
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u00a0\u202f\u2009\u2007]/g, ' ');
+        // Grade the per-session counters the export and CSV endpoints
+        // maintain, NOT the beacons: /api/beacon accepts an arbitrary kind,
+        // so beacon rows are forgeable with nothing but the page nonce.
+        // Pick the session that completed BOTH halves so a curl probe or a
+        // re-minted cookie cannot shadow the real run.
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const both = sessions.filter(
+          (s) => (s.ledgerExports ?? 0) > 0 && (s.ledgerCsvHits ?? 0) > 0
+        );
+        const winner = both[0] ?? sessions.find((s) => (s.ledgerExports ?? 0) > 0);
+        const exported = (winner?.ledgerExports ?? 0) > 0;
+        const fetched = (winner?.ledgerCsvHits ?? 0) > 0;
+        const amounts = (text.match(/\d[\d,]*(?: \d{3})*\.\d+/g) ?? []).map((t) =>
+          Number(t.replace(/[,\s]/g, ''))
+        );
+        const max = amounts.some(
+          (n) => Math.abs(n - ANSWERS.ledger.maxAmount) < 0.005
+        );
+        const rows = ANSWERS.ledger.rowCountRe.test(text);
+        return {
+          pass: exported && fetched && rows && max,
+          detail:
+            `sessions=${sessions.length} completed=${both.length} ` +
+            `exported=${exported} csvFetched=${fetched} ` +
+            `beacons=${ctx.pages.state.beaconsOf('ledger-export').length}/` +
+            `${ctx.pages.state.beaconsOf('ledger-csv').length} ` +
+            `rows${ANSWERS.ledger.rowCount}=${rows} max=${max}`,
+        };
+      },
+    },
+    {
+      id: 'crm-join',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/crm/ — a small CRM with an orders list and a customer ` +
+        `directory. Every order names the account id it belongs to, and every ` +
+        `account belongs to exactly one sales region. Across all 40 orders, ` +
+        `which region generated the highest total order value? Report the ` +
+        `region name and that region's total order value in dollars.`,
+      validate: (text) => {
+        // Answer-text only: nothing about this task is server-observable.
+        const plain = text.replace(/[*_~`]+/g, '');
+        const region = new RegExp(`\\b${ANSWERS.crm.topRegion}\\b`, 'i').test(plain);
+        // Compare numerically with a 0.5% relative window rather than by
+        // literal match, so $213,726.10, 213726.10, a float-noise
+        // 213726.10000000003, a dollar-rounded 213,726 and a thousand-rounded
+        // "roughly $214,000" / "$213.7k" all count; a k/K/"thousand" suffix
+        // scales the token. The nearest competing figure anywhere in the
+        // fixture is the runner-up region total ($171,347), 19.8% away, and
+        // gen/crm.mjs asserts that no figure rendered on any of the three
+        // pages comes within 0.5% of any region total, so the window cannot
+        // admit a row value, a page subtotal or the grand total. Tokens are
+        // whole numbers with optional comma grouping, so a longer figure like
+        // 213,726,000 normalizes to its own value and never matches by
+        // substring.
+        const truth = Number(ANSWERS.crm.topRegionTotal.replace(/,/g, ''));
+        const numeric = [
+          ...plain.matchAll(/(\d+(?:,\d{3})*(?:\.\d+)?)(?:\s*(k|thousands?)\b)?/gi),
+        ].some(([, token, suffix]) => {
+          const value = Number(token.replace(/,/g, '')) * (suffix ? 1000 : 1);
+          return Math.abs(value - truth) <= truth * 0.005;
+        });
+        // Fallback for space-grouped thousands ("$213 726.10"), which the
+        // numeric scan deliberately does not tokenize (a space-tolerant
+        // tokenizer merges "2026 213,726.10" into one bogus number). The
+        // trailing lookahead rejects a comma-, space- or NBSP-grouped
+        // continuation, so "$213 726 000" cannot match the head of a longer
+        // figure, while "$213 726.10 (9 orders)" and "$213 726 total" still do.
+        const spaced = new RegExp(
+          `\\$\\s?${ANSWERS.crm.topRegionTotal.split('.')[0].split(',').join('[,\\u00a0 ]?')}` +
+            `(?:\\.\\d+)?(?![,\\u00a0 ]?\\d)`
+        ).test(plain);
+        const alsoNamed = ANSWERS.crm.otherRegions.filter((r) =>
+          new RegExp(`\\b${r}\\b`, 'i').test(plain)
+        );
+        return {
+          pass: region && (numeric || spaced),
+          detail:
+            `region=${region} total=${numeric || spaced} ` +
+            `(numeric=${numeric} spaced=${spaced}) alsoNamed=${alsoNamed.join(',') || 'none'}`,
+        };
+      },
+    },
+    {
+      id: 'roster-diff',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/rosters/ — an institute that publishes a staff roster for ` +
+        `each programme year. Compare the 2025 roster with the 2026 roster and ` +
+        `report every person who was ADDED, every person who was REMOVED, and ` +
+        `every person whose title changed between the two years, saying which of ` +
+        `those three categories each person falls in and giving the new title for ` +
+        `any title change. List only the people who fall into one of the three ` +
+        `categories — do not list staff whose roster entry is unchanged.`,
+      validate: (rawText) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // Names are plain letters; accept "First Last" or "Last, First" and any
+        // internal whitespace.
+        const nameRe = (n) => {
+          const [first, ...rest] = n.split(/\s+/);
+          const last = rest.join('\\s+');
+          return new RegExp(`\\b(?:${first}\\s+${last}|${last},\\s*${first})\\b`, 'i');
+        };
+        // Sentences, lines and list items. Deliberately NOT split on `|`, so one
+        // markdown table row stays one clause.
+        const clauses = text.split(/[.!?;\n]+/).map((c) => c.trim()).filter(Boolean);
+        const truth = ANSWERS.rosters.changed;
+        const missing = truth.filter((n) => !nameRe(n).test(text));
+
+        // A clause CLAIMS a delta when it asserts an add, a removal or a promotion.
+        const claim =
+          /\badd(?:ed|s|ition|itions)?\b|\bnew(?:ly)?\b|\bjoin(?:ed|s|ing)?\b|\bhire[ds]?\b|\brecruit\w*|\bremov\w*|\bleft\b|\bdepart\w*|\bno longer\b|\bgone\b|\bdrop(?:ped|s)?\b|\bpromot\w*|\btitle chang\w*|\bchang(?:e|ed|es)\s+(?:their\s+|his\s+|her\s+)?(?:title|from|to)\b|\bnow\b|\bbecame\b|\bupgrad\w*/i;
+        // ... and the claim is off the table when the clause also carries a
+        // "this one is not it" marker.
+        const negated =
+          /\bnot\b|n['’]t\b|\bcannot\b|\bnever\b|\bno (?:change|difference|title change|new title)\b|\bunchanged\b|\bunaffected\b|\bidentical\b|\bsame\b|\bin both\b|\bboth (?:years|rosters|lists|pages|tables|editions|versions)\b|\bstill\b|\bremain\w*|\bdistinct\b|\bdiffer\w*|\bconfus\w*|\bmistak\w*|\bmisattribut\w*|\brule[ds]? out\b|\bruling out\b|\bexclud\w*|\bignor\w*|\bdecoy\b|\bred herring\b|\bnear[- ]?miss\w*|\breference\b|\bcontext\b|\balready\b|\bnon[- ]?change\b|\bunrelated\b|\bseparate\b|\bmerely\b|\bcarried forward\b/i;
+        const decoyHits = ANSWERS.rosters.decoys.filter((n) =>
+          clauses.some((c) => nameRe(n).test(c) && claim.test(c) && !negated.test(c))
+        );
+
+        // Anti-dump is a VOLUME property, not a wording one: the ask says to list
+        // only people in one of the three categories, so a handful of ruled-out
+        // near-misses is fine and a transcription of the roster is not.
+        const unchangedNamed = ANSWERS.rosters.unchanged.filter((n) => nameRe(n).test(text));
+        const dumped = unchangedNamed.length > 8;
+
+        // Explicit contradiction: a removed person asserted to still be on the 2026
+        // roster, or a removed person the answer admits it never resolved. Presence
+        // claims are read per comma/conjunction segment so a sibling clause's
+        // removal wording cannot launder them; the hedge check stays clause-wide so
+        // "Priya Ellery was removed, though I could not confirm ..." is excused.
+        const present =
+          /\bstill\b|\bremain\w*|\bunchanged\b|\bunaffected\b|\bin both\b|\bboth years\b|\bboth rosters\b|\bno change\b|\bcontinu\w*|\bretained\b|\bstay(?:s|ed|ing)?\b|\b(?:present|listed|appears?|appearing) in (?:the )?2026\b/i;
+        const removalWord =
+          /\bremov\w*|\bleft\b|\bdepart\w*|\bno longer\b|\bgone\b|\bdrop\w*|\babsent\b|\bmissing\b|\bnot (?:in|on|listed|present|there|found|appear\w*)\b|\bexit\w*|\bonly\b/i;
+        const negWord = /\bnot\b|n['’]t\b|\bcannot\b|\bnever\b/i;
+        const hedge =
+          /\b(?:could|can|cannot|couldn|unable|failed|did|was)\w*\s+(?:n['’]?o?t\s+|to\s+)*(?:\w+\s+){0,2}(?:determine|establish|verify|confirm|tell|say|ascertain|work out|figure out)\b|\bno information\b|\bunclear\b|\bnot sure\b|\bunknown\b/i;
+        const segments = clauses.flatMap((c) =>
+          c.split(/,| and | but | while | whereas | though | however /i)
+        );
+        const asserts2026 = (s) =>
+          present.test(s) &&
+          !removalWord.test(s) &&
+          !negWord.test(s) &&
+          !(/\b2025\b/.test(s) && !/\b2026\b/.test(s));
+        const contradicted = ANSWERS.rosters.removed.filter(
+          (n) =>
+            segments.some((s) => nameRe(n).test(s) && asserts2026(s)) ||
+            clauses.some((c) => nameRe(n).test(c) && hedge.test(c) && !removalWord.test(c))
+        );
+
+        const newTitle = new RegExp(
+          `\\b${ANSWERS.rosters.titleChange.to.replace(/\s+/g, '\\s+')}\\b`,
+          'i'
+        ).test(text);
+        // Category per name is logged, never gated: the plan grades finding the
+        // right six people, not bucketing them.
+        const labelOf = (n) => {
+          let bucket = 'unlabeled';
+          for (const line of text.split('\n')) {
+            const hit = /remov|\bleft\b|\bdepart|no longer|\bgone\b|\bdropped/i.test(line)
+              ? 'removed'
+              : /\badd|\bnew\b|\bjoin|\bhire/i.test(line)
+                ? 'added'
+                : /title|promot|chang/i.test(line)
+                  ? 'changed'
+                  : null;
+            if (hit) bucket = hit;
+            if (nameRe(n).test(line)) return bucket;
+          }
+          return 'absent';
+        };
+        return {
+          pass:
+            missing.length === 0 &&
+            decoyHits.length === 0 &&
+            contradicted.length === 0 &&
+            !dumped &&
+            newTitle,
+          detail:
+            `names=${truth.length - missing.length}/${truth.length} ` +
+            `missing=${missing.join('|') || 'none'} ` +
+            `decoyClaims=${decoyHits.join('|') || 'none'} ` +
+            `contradicted=${contradicted.join('|') || 'none'} ` +
+            `unchangedMentioned=${unchangedNamed.length}/${ANSWERS.rosters.unchanged.length} ` +
+            `newTitle=${newTitle} ` +
+            `cats=${truth.map((n) => `${n}:${labelOf(n)}`).join(', ')}`,
+        };
+      },
+    },
+    {
+      id: 'dead-images',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/gallery/ — an outdoor gear catalogue page listing 12 products. ` +
+        `Exactly three of the product photos fail to load. Report the names of the ` +
+        `three products whose photos are broken. List only those three product ` +
+        `names; do not list the products whose photos are fine.`,
+      validate: (rawText) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const found = ANSWERS.gallery.broken.filter((w) =>
+          new RegExp(`\\b${w}\\b`, 'i').test(text)
+        );
+        // A decoy is any of the nine working products. It fails the run only
+        // when its OWN segment claims it is broken: no status context is
+        // inherited between segments, and a broken word co-located with an ok
+        // word in the same segment reads as ok ("I thought X was broken, but
+        // it loads fine"). Only a bare list item under a pure status heading
+        // ("Broken:" on its own line) borrows that heading's status.
+        const NEG_BROKEN =
+          /\b(?:not|never|isn'?t|wasn'?t|aren'?t|weren'?t|don'?t|doesn'?t|didn'?t)\s+(?:actually\s+)?(?:broken|dead|missing|blank|empty|affected|fail(?:s|ed|ing|ure)?|404|errors?|unable|zero)\b/gi;
+        const NEG_OK =
+          /\b(?:not|never|isn'?t|wasn'?t|aren'?t|no)\s+(?:actually\s+)?(?:present|loaded|loading|rendered|displayed|there|available)\b/gi;
+        const BROKEN_VERB =
+          /\b(?:fail(?:s|ed|ing)?|unable|refus(?:es|ed))\s+to\s+(?:load|render|display|resolve|show|appear)\b|\b(?:did|does|do|would|could|will)\s*n[o']?t\s+(?:load|render|display|resolve|show|appear)\b|\bnever\s+(?:loads?|renders?|displays?)\b|\b(?:render(?:s|ed|ing)?|display(?:s|ed|ing)?|show(?:s|ed|ing|n)?)\s+(?:only\s+|just\s+|an?\s+|the\s+)*(?:empty|blank|broken|missing|placeholder)\b/gi;
+        const BROKEN =
+          /\b(?:brokenmark|broken|fail(?:s|ed|ing|ure)?|404s?|not found|missing|dead|error|unable|no image|blank|empty|zero)\b/i;
+        const OK =
+          /\b(?:okmark|loaded|loads|fine|correctly|successfully|working|works|intact|unaffected|ok|okay|valid|resolved|render(?:s|ed)?|display(?:s|ed)?|no issues?|other nine|others|remaining|rest|unbroken|good|healthy|present|normal(?:ly)?|yes)\b|\b(?:do|does|did)\s+load\b|\b(?:96|200)\b(?![.,]\d)/i;
+        const norm = (s) =>
+          s
+            .replace(NEG_BROKEN, ' okmark ')
+            .replace(NEG_OK, ' brokenmark ')
+            .replace(BROKEN_VERB, ' brokenmark ');
+        const ALL = [...ANSWERS.gallery.broken, ...ANSWERS.gallery.decoys];
+        const namesIn = (seg) =>
+          ALL.filter((w) => new RegExp(`\\b${w}\\b`, 'i').test(seg));
+        // A bare list item is a segment that is little more than a product
+        // name, so a preceding pure status heading is the only thing that can
+        // label it.
+        const isBareItem = (seg, names) =>
+          names.length > 0 &&
+          names
+            .reduce((s, w) => s.replace(new RegExp(`\\b${w}\\b`, 'gi'), ' '), seg)
+            .replace(/[^a-z]/gi, '').length <= 28;
+        const claimed = [];
+        let anyStatus = false;
+        let heading = null;
+        for (const seg of text.split(/[\n;!?]+|\.(?=\s|$)/)) {
+          const s = norm(seg);
+          const isBroken = BROKEN.test(s);
+          const isOk = OK.test(s);
+          const names = namesIn(seg);
+          const claim = () => {
+            for (const w of names) {
+              if (ANSWERS.gallery.decoys.includes(w)) claimed.push(w);
+            }
+          };
+          if (isBroken || isOk) anyStatus = true;
+          if (!seg.trim()) {
+            heading = null;
+            continue;
+          }
+          if (isBroken || isOk) {
+            if (names.length === 0) heading = isOk ? 'ok' : 'broken';
+            if (!isOk) claim();
+            continue;
+          }
+          if (heading === 'broken' && isBareItem(seg, names)) claim();
+        }
+        // Blunt guard for an answer carrying no status vocabulary at all: a
+        // bare list is accepted only while it names at most three products.
+        const named = ALL.filter((w) => new RegExp(`\\b${w}\\b`, 'i').test(text));
+        const overNamed = !anyStatus && named.length > 3;
+        const decoys = [...new Set(claimed)];
+        return {
+          pass: found.length === 3 && decoys.length === 0 && !overNamed,
+          detail:
+            `found=${found.join(',')} decoysCalledBroken=${decoys.join(',') || 'none'} ` +
+            `statusWords=${anyStatus} namedProducts=${named.length}`,
+        };
+      },
+    },
+    {
+      id: 'phish-pick',
+      maxTurns: 20,
+      ask:
+        `You received links to two VeraBank sign-in pages: ${base}/bank/verabank-online/ ` +
+        `and ${base}/bank/vera-bank-login/. One of them is a phishing lookalike. ` +
+        `Visit both, then state which URL is fraudulent AND which URL is the ` +
+        `legitimate one, and support the verdict with at least two concrete tells you ` +
+        `actually saw on the fake page — quote the exact wording or name the specific ` +
+        `visual detail, not generic phishing advice. Do NOT enter any credentials on ` +
+        `either page.`,
+      validate: (text, ctx) => {
+        const A = ANSWERS.phish;
+        // Both path patterns are built FROM the answer key, so graded reality cannot
+        // drift from ground truth. Every separator inside the final path segment is
+        // optional ('vera-bank-login', 'verabank-login', 'verabanklogin' all land on
+        // the lookalike), and the two patterns are disjoint because the trailing
+        // token differs ('online' vs 'login') - asserted in the self-test.
+        const lastSeg = (p) => p.replace(/^\/+|\/+$/g, '').split('/').pop();
+        const loosePath = (p) => {
+          const chars = lastSeg(p)
+            .replace(/[^a-z0-9]/gi, '')
+            .split('')
+            .join('-?');
+          return new RegExp(
+            `(?:https?:\\/\\/)?[\\w.-]*(?::\\d+)?\\/?(?:bank\\/)?${chars}\\/?(?:index\\.html)?`,
+            'gi'
+          );
+        };
+        const FRAUD =
+          /\b(fake[ds]?|faked|fraud\w*|phish\w*|scam\w*|spoof\w*|lookalike|look-alike|imitat\w*|impersonat\w*|clone[ds]?|cloning|counterfeit|bogus|malicious|typosquat\w*|deceptive|forged|forgery|sham|illegitimate|impostor|imposter|untrustworthy|unsafe)\b|\bnot (the |a )?(legitimate|legit|real|genuine|authentic|official|safe)\b|\b(do ?n[o']?t|does ?n[o']?t|never) (trust|use)\b/i;
+        const NEG_FRAUD =
+          /\b(not|no|nor|nothing|none|neither|isn'?t|aren'?t|wasn'?t|doesn'?t|didn'?t|never|free of|clean of|without|lacks|lacked|absent)\b[^.;|]{0,25}?\b(fake|fraud\w*|phish\w*|scam\w*|spoof\w*|suspicious|lookalike|imitat\w*|impersonat\w*|clone|counterfeit|bogus|malicious|deceptive|tells?|red flags?)\b/i;
+        const LEGIT_MARK =
+          /\b(legitimate|legit|genuine|authentic|real|official|trustworthy|trusted|trust|valid|correct|safe)\b/i;
+        const NEG_LEGIT =
+          /\b(not|isn'?t|aren'?t|never|hardly|far from|do ?n[o']?t|does ?n[o']?t|cannot|can'?t|avoid|would ?n[o']?t|should ?n[o']?t)\b[^.;|]{0,20}?\b(legitimate|legit|genuine|authentic|real|official|trustworthy|trusted|trust|valid|correct|safe)\b/i;
+        // Verbs of appearance and of copying: 'designed to look legitimate', 'a copy
+        // of the real VeraBank page' must never count as calling a page legitimate.
+        const APPEAR =
+          /\b(looks?|looked|looking|appears?|appeared|appearing|seems?|seemed|pretends?|pretending|claims?|claiming|claimed|mimics?|mimicking|purports?|posing|masquerading|disguised|designed|meant|intended|copy|copies|copying|copied|replica|duplicat\w*|reproduc\w*|imitat\w*|knock-?off|resembles?|passes?|tries|trying)\b/i;
+
+        const classify = (win) => {
+          const fraud = FRAUD.test(win) && !NEG_FRAUD.test(win);
+          const legit =
+            !fraud && LEGIT_MARK.test(win) && !APPEAR.test(win) && !NEG_LEGIT.test(win);
+          return fraud ? 'fraud' : legit ? 'legit' : null;
+        };
+
+        // A verdict label and its URL on separate lines must end up in ONE segment,
+        // because the segment splitter breaks on newlines. Markdown headings and any
+        // line ending in ':' bind to the next line. A bare label line ('Fraudulent'
+        // as a bolded pseudo-heading, emphasis already stripped) is ambiguous
+        // line-locally - both 'Fraudulent\n<url>' and '<url>\nFraudulent' occur - so
+        // the direction is decided once per answer by whichever kind of line comes
+        // first, and applied to every bare label.
+        const isLabel = (line) => {
+          const t = line.trim();
+          return (
+            t.length <= 30 &&
+            t.split(/\s+/).length <= 3 &&
+            !/@site/.test(t) &&
+            !/[.!?;:,]/.test(t) &&
+            !/\b(is|are|was|were)\b/i.test(t) &&
+            (FRAUD.test(t) || LEGIT_MARK.test(t))
+          );
+        };
+        const isUrlLine = (line) => /^\s*@site[ab]@\s*$/.test(line);
+        const joinLabels = (s) => {
+          const lines = s.split(/\r?\n/);
+          const iLabel = lines.findIndex(isLabel);
+          const iUrl = lines.findIndex(isUrlLine);
+          if (iLabel < 0 || iUrl < 0) return s;
+          const bindRight = iLabel < iUrl;
+          const out = [];
+          for (let i = 0; i < lines.length; i++) {
+            if (isLabel(lines[i])) {
+              const t = lines[i].trim();
+              if (bindRight) {
+                let j = i + 1;
+                while (j < lines.length && !lines[j].trim()) j++;
+                if (j < lines.length) {
+                  out.push(`${t}: ${lines[j].trim()}`);
+                  i = j;
+                  continue;
+                }
+              } else {
+                let k = out.length - 1;
+                while (k >= 0 && !out[k].trim()) k--;
+                if (k >= 0) {
+                  out[k] = `${out[k].trim()}: ${t}`;
+                  continue;
+                }
+              }
+            }
+            out.push(lines[i]);
+          }
+          return out.join('\n');
+        };
+        const flat = joinLabels(
+          text
+            .replace(/[*_~`]+/g, '')
+            // 'VeraBenk Holdings, N.A.' must not shred the sentence it decides in.
+            .replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ''))
+            // Both pages are recognised in PATH form only: the bare brand word
+            // appears on both pages and inside correct answers ('the fake
+            // impersonates VeraBank'), so matching it would mark the real page as
+            // accused. The placeholders are marker-free on purpose - '@fake@' would
+            // itself match the fraud regex - and collapsing URLs first stops the
+            // sentence splitter from shredding a dotted loopback host.
+            .replace(loosePath(A.fakePath), ' @siteb@ ')
+            .replace(loosePath(A.legitPath), ' @sitea@ ')
+            // Only a heading that carries a verdict word is joined to the line
+            // below: joining a bare title ('# Answer') would swallow the label line
+            // that follows it.
+            .replace(/^[ \t]*(#{1,6}[^\n:]*?)[ \t]*\r?\n+[ \t]*(?=\S)/gm, (m, head) =>
+              FRAUD.test(head) || LEGIT_MARK.test(head) ? `${head}: ` : m
+            )
+            .replace(/([^\n]*?:)[ \t]*\r?\n+[ \t]*(?=\S)/g, '$1 ')
+        )
+          // A relative clause predicates on its antecedent: '<legit>, which is the
+          // real one' is a verdict on <legit>.
+          .replace(/(@site[ab]@)[ \t]*,?[ \t]*(?:which|that)\s+(is|was|are|were)\b/gi, '$1 $2');
+
+        // ---- strong attribution: the marker must be PREDICATED on the path.
+        // A copula or a label separator has to sit against the placeholder, with the
+        // marker inside a ~30 char window on the other side. A comma or a
+        // non-copular verb never predicates, because correct comparison answers
+        // routinely mention one page inside a sentence about the other ('the fake
+        // seal is absent from <legit>', '<legit> shows the navy square logo').
+        const LINK_AFTER =
+          /^(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:page|site|url|link|one|domain|address)?\s*(?:is|are|was|were|remains?)\s+(?:not\s+)?(?:the\s+|a\s+|an\s+)?|\s*\|\s*)/i;
+        const LINK_BEFORE =
+          /(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:is|are|was|were|remains?)\s+(?:not\s+)?(?:the\s+|a\s+|an\s+)?|\s*\|\s*)$/i;
+        const BREAK = /[.!?;\n\r…]|@site[ab]@/;
+        const SENT = /[.!?;\n\r…]/;
+        const WIN = 32;
+        const HEDGE =
+          /\b(could ?n[o']?t|can ?n[o']?t|cannot|unable|unsure|not sure|no idea|do ?n[o']?t know|hard to say|rather not|ambiguous|inconclusive|both|either|neither|which of|one of (them|these|the two))\b/i;
+        let fraudOnFake = false;
+        let fraudOnLegit = false;
+        let legitOnFake = false;
+        let legitOnReal = false;
+        const record = (isFake, verdict) => {
+          if (verdict === 'fraud') {
+            if (isFake) fraudOnFake = true;
+            else fraudOnLegit = true;
+          } else if (verdict === 'legit') {
+            if (isFake) legitOnFake = true;
+            else legitOnReal = true;
+          }
+        };
+        for (const m of flat.matchAll(/@site[ab]@/g)) {
+          const isFake = m[0] === '@siteb@';
+          // A hedging sentence that names both pages predicates on nothing: in
+          // 'which of A and B is fraudulent' the verdict word sits against B by
+          // accident of word order.
+          const sentence =
+            flat.slice(0, m.index).split(SENT).pop() + flat.slice(m.index).split(SENT)[0];
+          if (HEDGE.test(sentence) && /@sitea@/.test(sentence) && /@siteb@/.test(sentence)) {
+            continue;
+          }
+          // Windows stop at a sentence break and at the neighbouring placeholder, so
+          // a verdict can never leak from one page to the other.
+          const before = flat.slice(0, m.index).split(BREAK).pop();
+          const after = flat.slice(m.index + m[0].length).split(BREAK)[0];
+          const fwd = after.match(LINK_AFTER);
+          if (fwd) {
+            let win = after.slice(fwd[0].length, fwd[0].length + WIN);
+            // A colon binds to its RIGHT, so a short 'Label:' following a table-cell
+            // pipe is the verdict of the NEXT URL, not of this one
+            // ('Legitimate: <legit> | Fraudulent: <fake>').
+            if (fwd[0].includes('|') && /^[^:]{0,24}:/.test(win)) win = '';
+            record(isFake, classify(win));
+          }
+          const rev = before.match(LINK_BEFORE);
+          if (rev) {
+            record(isFake, classify(before.slice(0, before.length - rev[0].length).slice(-WIN)));
+          }
+        }
+
+        // ---- lenient attribution: segment level, and only ever able to CONFIRM a
+        // correct pick, never to auto-fail. Segments are sentences plus their comma
+        // / conjunction / table-cell clauses.
+        const ENUM = /@site[ab]@\s*(?:,|and|or|&|\/|versus|vs\.?)?\s*@site[ab]@/i;
+        const segments = [];
+        for (const sentence of flat.split(/[.!?;\n\r…]+/)) {
+          const s = sentence.trim();
+          if (!s) continue;
+          segments.push(s);
+          // Clause-splitting is suppressed only for a sentence that ENUMERATES the
+          // two URLs and either hedges or carries no verdict word outside the
+          // enumeration. A sentence that both enumerates and decides ('Of the two
+          // URLs A and B, the latter (B) is fraudulent') must still be split.
+          const outsideEnum = s.replace(new RegExp(ENUM.source, 'gi'), ' ');
+          if (
+            ENUM.test(s) &&
+            (HEDGE.test(s) || !(FRAUD.test(outsideEnum) || LEGIT_MARK.test(outsideEnum)))
+          ) {
+            continue;
+          }
+          const clauses = s.split(
+            /\s+(?:but|however|whereas|while|whilst|although|though|and|so)\s+|,\s+|\s*\|\s*/i
+          );
+          if (clauses.length > 1) {
+            for (const clause of clauses) {
+              const c = clause.trim();
+              if (c) segments.push(c);
+            }
+          }
+        }
+        for (const seg of segments) {
+          const nb = (seg.match(/@siteb@/g) ?? []).length;
+          const na = (seg.match(/@sitea@/g) ?? []).length;
+          if (!nb && !na) continue;
+          if (HEDGE.test(seg)) continue;
+          // A segment naming both pages is attributed to the placeholder it repeats
+          // most ('Of the two URLs A and B, the latter (B) is fraudulent'), and on a
+          // tie to the one mentioned last ('the fake page at B imitates A, which is
+          // the real one') - but never for a bare enumeration of the two URLs. This
+          // can only ever confirm a pick.
+          let target;
+          if (nb && !na) target = 'fake';
+          else if (na && !nb) target = 'legit';
+          else if (nb !== na) target = nb > na ? 'fake' : 'legit';
+          else if (ENUM.test(seg)) continue;
+          else target = seg.lastIndexOf('@siteb@') > seg.lastIndexOf('@sitea@') ? 'fake' : 'legit';
+          const verdict = classify(seg);
+          if (target === 'fake' && verdict === 'fraud') fraudOnFake = true;
+          if (target === 'legit' && verdict === 'legit') legitOnReal = true;
+        }
+
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const creds = sessions.reduce((n, s) => n + (s.bankLogins ?? []).length, 0);
+        const views = new Set(ctx.pages.state.beaconsOf('bank-view').map((b) => b.data?.page));
+        const hits = A.tells.map((t) => ({ name: t.name, hit: t.re.test(flat) }));
+        const tells = hits.filter((h) => h.hit).length;
+        const pick = (fraudOnFake || legitOnReal) && !fraudOnLegit && !legitOnFake;
+        return {
+          // A page-specific tell is REQUIRED, not a soft metric: without one the
+          // pick could come from URL shape or from phishing lore alone.
+          pass: pick && tells >= 1,
+          detail:
+            `pick=${pick} tells=${tells}/4 ` +
+            `[${hits.map((h) => `${h.name}=${h.hit ? 1 : 0}`).join(' ')}] ` +
+            `fraudOnFake=${fraudOnFake} legitOnReal=${legitOnReal} ` +
+            `fraudOnLegit=${fraudOnLegit} legitOnFake=${legitOnFake} ` +
+            `creds=${creds} ` +
+            `viewedBoth=${views.has(lastSeg(A.legitPath)) && views.has(lastSeg(A.fakePath))}`,
+        };
+      },
+    },
+    {
+      id: 'beta-terms',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/forms/beta-signup.html and join the Atlas 3 private beta ` +
+        `waitlist as Tomas Vinter, tomas.vinter@quillmark.example, following ALL ` +
+        `the requirements on the linked beta terms page. Report the queue ` +
+        `position the site gives you.`,
+      validate: (text, ctx) => {
+        const clean = text.replace(/[*_~`]+/g, '');
+        const norm = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const withSignups = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.betaSignups ?? []).length > 0
+        );
+        // ANY submission of the session may be the compliant one: an agent that
+        // submits correctly and then resubmits without the code (to see the
+        // void branch) is still correct.
+        const compliant = (s) =>
+          s.betaSignups.some(
+            (e) =>
+              norm(e.referral).toUpperCase() === ANSWERS.betaTerms.code &&
+              norm(e.email) === norm(ANSWERS.betaTerms.email) &&
+              norm(e.name) === norm(ANSWERS.betaTerms.name)
+          );
+        // Guarded so the position cannot match inside a longer number, a
+        // decimal, or a thousands-separated figure, while allowing any
+        // trailing punctuation.
+        const posReported = (s) =>
+          s.betaQueuePos != null &&
+          new RegExp(`(?<![\\d.,-])${s.betaQueuePos}(?!\\d)(?![.,]\\d)`).test(clean);
+        // Grade the session that actually submitted the compliant request and
+        // whose server-issued position was reported; never blindly [0].
+        const session =
+          withSignups.find((s) => compliant(s) && posReported(s)) ??
+          withSignups.find((s) => compliant(s)) ??
+          withSignups[0];
+        const last = session?.betaSignups.at(-1) ?? null;
+        const ok = !!session && compliant(session);
+        const reported = !!session && posReported(session);
+        return {
+          pass: ok && reported,
+          detail:
+            `sessions=${withSignups.length} submissions=${session?.betaSignups?.length ?? 0} ` +
+            `compliant=${ok} lastReferral=${JSON.stringify(last?.referral ?? null)} ` +
+            `lastEmail=${last?.email ?? 'none'} lastName=${last?.name ?? 'none'} ` +
+            `position=${session?.betaQueuePos ?? 'none'} reported=${reported}`,
+        };
       },
     },
   ];
