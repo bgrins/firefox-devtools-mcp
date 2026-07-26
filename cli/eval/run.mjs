@@ -660,7 +660,10 @@ async function webTasks(base) {
         `Open ${base}/filemgr/ and rename the file 'draft-old' to 'draft-final'. ` +
         `Then verify the rename actually stuck (refresh or re-check the list). ` +
         `Report whether the rename persisted and what the file is called now.`,
-      validate: (text, ctx) => {
+      validate: (rawText, ctx) => {
+        // Markdown emphasis ("did **not** persist") must not break the
+        // failure-verb regexes.
+        const text = rawText.replace(/[*_~`]+/g, '');
         // Grade the session that attempted the locked rename; stray curl
         // sessions must not shadow the real run.
         const withAttempts = [...ctx.pages.state.sessions.values()].filter(

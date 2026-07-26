@@ -18,6 +18,18 @@
 > eval bypasses — validator catches it); snapshot formatter `MAX_ATTR_LENGTH=30` truncates
 > element text, causing an mcp news-thread failure where the agent echoed the truncated
 > title verbatim — tool-caused, cli passed. Integration specs archived in staging/ (gitignored).
+>
+> **Wave 3 (2026-07-25): P0 COMPLETE.** T011 (`mfa-login`), T012 (`session-expiry`), T080
+> (`popup-storm`), T022 (`checkout-stop`), T089 (`rename-rollback`). Acceptance (24 tasks x
+> cli+mcp): mcp 24/24; cli 21/24 with three instructive fails — (1) rename-rollback validator
+> broken by markdown bold ("did **not** persist"; fixed by stripping emphasis chars), (2)
+> checkout-stop: snapshot bubble-up flattening makes Add-to-Cart buttons ambiguous across
+> product cards; agent bought the wrong monitor and the cartOk gate caught it (tool finding,
+> legit fail), (3) popup-storm: cli agent used eval innerText to bypass the modal chain and
+> left prompts unhandled (legit behavioral fail; good cli/mcp discriminator). MAJOR platform
+> finding from T080's verify-first probe: the BiDi session auto-dismisses native
+> window.confirm() instantly — accept_dialog/dismiss_dialog can never catch one — while
+> playwright-mcp holds dialogs pending; task shipped with in-page modals for parity.
 
 This document has been through adversarial review (round 1): a validity/cheatability pass and a
 value/cost pass. **68 of the original 100 ideas survive.** Ids are stable (no renumbering); killed
