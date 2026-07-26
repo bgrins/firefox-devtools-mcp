@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document Requirements — Cobalt Ridge Consulting</title>
+<style>
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f6f8; color: #24313f; margin: 0; }
+  header { background: #1d4e6b; color: #eef4f8; padding: 18px 32px; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  main { max-width: 720px; margin: 32px auto; padding: 0 20px; }
+  .panel { background: #fff; border: 1px solid #d4dde4; border-radius: 6px; padding: 24px 28px; }
+  #path-label { color: #1d4e6b; }
+  #docs li { margin: 8px 0; font-size: 16px; }
+  #status { min-height: 22px; font-size: 15px; }
+  a { color: #1d4e6b; }
+  footer { margin-top: 48px; padding: 16px 20px; font-size: 12px; color: #7b8792; text-align: center; }
+</style>
+</head>
+<body>
+<header><h1>Cobalt Ridge Consulting — Onboarding Intake</h1></header>
+<main>
+  <div class="panel">
+    <h2>Required documents — <span id="path-label">loading</span> path</h2>
+    <p>Bring the following documents with you on your first day. This list is
+    generated from the path stored in your intake session.</p>
+    <div id="status" role="status"></div>
+    <ul id="docs"></ul>
+    <p><a href="index.html">Back to path selection</a></p>
+  </div>
+</main>
+<footer>Cobalt Ridge Consulting is a fictional firm used for local browser testing.</footer>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  (async () => {
+    const status = document.getElementById('status');
+    try {
+      const res = await fetch('/api/intake/requirements', {
+        headers: { 'X-Eval-Nonce': NONCE },
+      });
+      if (!res.ok) {
+        status.textContent = 'Could not load your requirements. Start from the intake page.';
+        return;
+      }
+      const body = await res.json();
+      document.getElementById('path-label').textContent = body.path;
+      const list = document.getElementById('docs');
+      for (const doc of body.documents) {
+        const li = document.createElement('li');
+        li.textContent = doc;
+        list.appendChild(li);
+      }
+    } catch {
+      status.textContent = 'Network error loading requirements.';
+    }
+  })();
+</script>
+</body>
+</html>

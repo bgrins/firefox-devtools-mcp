@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekly Promotions — Larkfield Market</title>
+<style>
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f2efe9; color: #27231c; margin: 0; }
+  header { background: #2d4a22; color: #f4f1e8; padding: 22px 36px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header p { margin: 6px 0 0; font-size: 14px; color: #cdddc2; }
+  main { max-width: 640px; margin: 32px auto; padding: 0 24px; }
+  .intro { font-size: 15px; color: #4c463a; }
+  .stack { position: relative; height: 280px; margin-top: 20px; }
+  .offer {
+    position: absolute; inset: 0; box-sizing: border-box;
+    border-radius: 6px; padding: 26px 30px;
+    border: 1px solid #c9c2b2;
+    display: flex; flex-direction: column; align-items: flex-start;
+  }
+  .offer h2 { margin: 0 0 10px; font-size: 20px; }
+  .offer p { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
+  .offer .terms { font-size: 12px; color: #7a7362; }
+  .offer button {
+    margin-top: auto; font: inherit; font-weight: 600;
+    padding: 10px 26px; border: 0; border-radius: 4px; cursor: pointer;
+    background: #2d4a22; color: #fff;
+  }
+  .offer button:hover { background: #1f3517; }
+  #offer-under { z-index: 10; background: #fbf3dd; }
+  #offer-top { z-index: 20; background: #ffffff; }
+  #result { margin-top: 22px; font-size: 16px; min-height: 24px; }
+  #result.ok { color: #2d4a22; font-weight: 600; }
+  #result.err { color: #8c2f1b; }
+  .fine { color: #8a8371; font-size: 12px; margin-top: 44px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Larkfield Market</h1>
+  <p>Member promotions — one offer may be claimed per visit</p>
+</header>
+<main>
+  <p class="intro">The promotion board below shows the current member offer.
+  Press its Claim offer button to receive your voucher code.</p>
+  <div class="stack">
+    <section id="offer-under" class="offer" aria-label="Offer LM-118">
+      <h2>Double Points Weekend</h2>
+      <p>Earn double loyalty points on every purchase this Saturday and Sunday.
+      Points post to your account within 48 hours.</p>
+      <p class="terms">Offer LM-118. Valid in-store only. Excludes gift cards.</p>
+      <button id="claim-under" type="button">Claim offer</button>
+    </section>
+    <section id="offer-top" class="offer" aria-label="Offer LM-121">
+      <h2>Midweek Bakery Voucher</h2>
+      <p>Claim a voucher for one free bakery item with any purchase,
+      Tuesday through Thursday this week.</p>
+      <p class="terms">Offer LM-121. One voucher per member. While supplies last.</p>
+      <button id="claim-top" type="button">Claim offer</button>
+    </section>
+  </div>
+  <div id="result" role="status"></div>
+  <p class="fine">Larkfield Market is a fictional grocer used for local browser
+  testing. Voucher codes are issued server-side per claim.</p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const result = document.getElementById('result');
+
+  async function claim(button) {
+    result.className = '';
+    result.textContent = 'Submitting claim…';
+    try {
+      const res = await fetch('/api/promo/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, button }),
+      });
+      const body = await res.json();
+      if (res.ok && body.claimed) {
+        result.className = 'ok';
+        result.textContent = 'Offer claimed. Your voucher code: ' + body.voucher;
+      } else {
+        result.className = 'err';
+        result.textContent = body.message || 'Claim failed.';
+      }
+    } catch {
+      result.className = 'err';
+      result.textContent = 'Network error — try again.';
+    }
+  }
+
+  document.getElementById('claim-top').addEventListener('click', () => claim('top'));
+  document.getElementById('claim-under').addEventListener('click', () => claim('under'));
+</script>
+</body>
+</html>

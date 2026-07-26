@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lakefront Vendor Network — Partner Registration</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 640px; margin: 24px auto; color: #222; }
+  h1 { font-size: 24px; }
+  .tagline { color: #555; font-size: 14px; margin-top: -8px; }
+  fieldset { border: 1px solid #ccc; padding: 16px; margin-bottom: 12px; }
+  label { display: block; margin: 10px 0 2px; font-weight: 700; font-size: 14px; }
+  .req { color: #b00020; }
+  input { padding: 8px; width: 100%; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  .hint { font-size: 12px; color: #666; }
+  .error { color: #b00020; font-size: 13px; margin-top: 2px; }
+  button { padding: 10px 22px; font-size: 15px; margin-top: 12px; }
+  #status { margin-top: 14px; font-size: 15px; min-height: 22px; }
+  #status.rejected { color: #b00020; }
+  #done { display: none; border: 1px solid #2b6777; background: #eef6f7; padding: 16px; margin-top: 16px; }
+  #confcode { font-size: 20px; font-weight: 700; background: #fdf3d8; padding: 6px 10px; display: inline-block; }
+  footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<h1>Lakefront Vendor Network</h1>
+<p class="tagline">Partner registration for the 2026 procurement season</p>
+<p>Register your company contact below. Submissions are validated by our records
+office; if anything does not match what we have on file, the flagged fields will
+be returned with correction instructions. Fields marked
+<span class="req">*</span> are required.</p>
+
+<form id="reg" novalidate>
+  <fieldset>
+    <legend>Contact and company details</legend>
+    <label for="name">Full name <span class="req">*</span></label>
+    <input id="name" autocomplete="off">
+    <div class="error" id="err-name" role="alert"></div>
+    <label for="email">Work email <span class="req">*</span></label>
+    <input id="email" autocomplete="off">
+    <div class="error" id="err-email" role="alert"></div>
+    <label for="company">Company <span class="req">*</span></label>
+    <input id="company" autocomplete="off">
+    <div class="error" id="err-company" role="alert"></div>
+    <label for="zip">Company ZIP code <span class="req">*</span></label>
+    <input id="zip" autocomplete="off">
+    <div class="error" id="err-zip" role="alert"></div>
+    <label for="referral">Referral code</label>
+    <input id="referral" autocomplete="off">
+    <div class="hint">Leave blank if you were not referred.</div>
+    <div class="error" id="err-referral" role="alert"></div>
+  </fieldset>
+  <button type="submit" id="submitBtn">Submit registration</button>
+  <div id="status" role="status"></div>
+</form>
+
+<div id="done">
+  <h2>Registration accepted</h2>
+  <p>Keep this confirmation code for your records:</p>
+  <p><span id="confcode"></span></p>
+</div>
+
+<footer>
+  Lakefront Vendor Network — Records Office, 1200 Canal Row ·
+  vendors@lakefront-vn.example · Lakefront Vendor Network is a fictional
+  organization used for local browser testing.
+</footer>
+
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const FIELDS = ['name', 'email', 'company', 'zip', 'referral'];
+  const status = document.getElementById('status');
+
+  document.getElementById('reg').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('submitBtn');
+    button.disabled = true;
+    status.className = '';
+    status.textContent = 'Submitting to the records office…';
+    for (const field of FIELDS) {
+      document.getElementById('err-' + field).textContent = '';
+      document.getElementById(field).removeAttribute('aria-invalid');
+    }
+    const payload = { nonce: NONCE };
+    for (const field of FIELDS) {
+      payload[field] = document.getElementById(field).value.trim();
+    }
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        const errors = body.errors ?? {};
+        for (const [field, message] of Object.entries(errors)) {
+          const slot = document.getElementById('err-' + field);
+          if (slot) {
+            slot.textContent = message;
+            document.getElementById(field).setAttribute('aria-invalid', 'true');
+          }
+        }
+        status.className = 'rejected';
+        status.textContent =
+          'The records office rejected this submission. Correct the flagged ' +
+          'field(s) below and submit again.';
+        return;
+      }
+      document.getElementById('confcode').textContent = body.confirmation;
+      document.getElementById('done').style.display = 'block';
+      document.getElementById('reg').style.display = 'none';
+      status.textContent = '';
+    } catch {
+      status.className = 'rejected';
+      status.textContent = 'Network error — try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

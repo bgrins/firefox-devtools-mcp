@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cobalt Ridge Consulting — Onboarding Intake</title>
+<style>
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f6f8; color: #24313f; margin: 0; }
+  header { background: #1d4e6b; color: #eef4f8; padding: 18px 32px; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  main { max-width: 720px; margin: 32px auto; padding: 0 20px; }
+  .paths { display: flex; gap: 16px; margin-top: 20px; }
+  .card { flex: 1; background: #fff; border: 1px solid #d4dde4; border-radius: 6px; padding: 20px; }
+  .card h2 { margin-top: 0; font-size: 17px; }
+  .card p { font-size: 14px; color: #4a5a68; min-height: 56px; }
+  button { font: inherit; padding: 9px 18px; background: #1d4e6b; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #163d55; }
+  #status { margin-top: 18px; min-height: 22px; font-size: 15px; }
+  #next { font-size: 15px; }
+  footer { margin-top: 48px; padding: 16px 20px; font-size: 12px; color: #7b8792; text-align: center; }
+</style>
+</head>
+<body>
+<header><h1>Cobalt Ridge Consulting — Onboarding Intake</h1></header>
+<main>
+  <h2>Welcome to day-one intake</h2>
+  <p>Select the engagement path that matches your offer or engagement letter.
+  Your selection is stored for this intake session and determines which
+  documents you must bring on your first day.</p>
+  <div class="paths">
+    <div class="card">
+      <h2>Employee</h2>
+      <p>Salaried or hourly staff joining under a standard employment offer
+      from Cobalt Ridge Consulting.</p>
+      <button id="pick-employee">Choose Employee path</button>
+    </div>
+    <div class="card">
+      <h2>Contractor</h2>
+      <p>Independent contractors engaged under a signed scope of work or
+      master services agreement.</p>
+      <button id="pick-contractor">Choose Contractor path</button>
+    </div>
+  </div>
+  <div id="status" role="status"></div>
+  <p id="next" hidden><a href="requirements.html">Continue to document requirements</a></p>
+</main>
+<footer>Cobalt Ridge Consulting is a fictional firm used for local browser testing.</footer>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const status = document.getElementById('status');
+  async function choose(choice) {
+    status.textContent = 'Saving your selection...';
+    try {
+      const res = await fetch('/api/intake/choice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, choice }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        status.textContent = 'Could not save your selection. Reload and try again.';
+        return;
+      }
+      status.textContent = 'Path saved: ' + body.choice + '.';
+      document.getElementById('next').hidden = false;
+    } catch {
+      status.textContent = 'Network error. Try again.';
+    }
+  }
+  document.getElementById('pick-employee').addEventListener('click', () => choose('employee'));
+  document.getElementById('pick-contractor').addEventListener('click', () => choose('contractor'));
+</script>
+</body>
+</html>

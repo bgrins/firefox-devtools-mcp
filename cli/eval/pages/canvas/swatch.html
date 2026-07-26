@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swatch Calibration — TintForge Studio</title>
+<style>
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f3ef; color: #26251f; margin: 0; }
+  header { background: #26332b; color: #ece9dd; padding: 18px 36px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: normal; }
+  main { max-width: 640px; margin: 36px auto; padding: 0 24px; }
+  .card { background: #fff; border: 1px solid #d8d4c6; border-radius: 4px; padding: 26px 30px; }
+  #grid { display: block; margin: 18px 0 0; border: 1px solid #b9b4a3; cursor: crosshair; }
+  #revealed { margin-top: 16px; font-size: 15px; min-height: 22px; }
+  #revealed.ok { color: #1f6b3a; font-weight: bold; }
+  #revealed.error { color: #a03123; }
+  .fine { color: #86816f; font-size: 12px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<header><h1>TintForge Studio — Print Calibration</h1></header>
+<main>
+  <div class="card">
+    <h2>Swatch Calibration Check</h2>
+    <p>The swatch sheet below is rendered directly onto a canvas, exactly as it
+    comes off the proofing press. To confirm your monitor is calibrated, click
+    the swatch matching the target hue named in your work order. A correct pick
+    reveals your calibration code.</p>
+    <canvas id="grid" width="320" height="240"></canvas>
+    <div id="revealed" role="status"></div>
+  </div>
+  <p class="fine">TintForge Studio is a fictional company used for local browser
+  testing. Calibration codes are issued server-side per session.</p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const CELL = 40;
+  const COLS = 8;
+  const ROWS = 6;
+  const PALETTE = [
+    ['#2b6cb0', '#3f9b6e', '#7a5fb5', '#d0312d', '#2ca6a4', '#4a4e69', '#9dbf3b', '#b23a7e'],
+    ['#35618f', '#c93a63', '#556b2f', '#e8850c', '#3e8ed0', '#7bb661', '#8e44ad', '#2f4858'],
+    ['#1f7a8c', '#d94f70', '#6a8caf', '#e6d022', '#46b1c9', '#5d576b', '#97c1a9', '#c94277'],
+    ['#3a7ca5', '#81a684', '#b565a7', '#2e5e4e', '#d64550', '#7692ff', '#4f6d7a', '#a3c1ad'],
+    ['#386641', '#6d597a', '#468faf', '#e5446d', '#52796f', '#9b5de5', '#2274a5', '#64a6bd'],
+    ['#713e8d', '#3c887e', '#ba324f', '#5c80bc', '#86bbd8', '#33658a', '#758e4f', '#f26ca7'],
+  ];
+
+  const canvas = document.getElementById('grid');
+  const ctx = canvas.getContext('2d');
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      ctx.fillStyle = PALETTE[row][col];
+      ctx.fillRect(col * CELL, row * CELL, CELL, CELL);
+    }
+  }
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.lineWidth = 1;
+  for (let col = 1; col < COLS; col++) {
+    ctx.beginPath();
+    ctx.moveTo(col * CELL + 0.5, 0);
+    ctx.lineTo(col * CELL + 0.5, ROWS * CELL);
+    ctx.stroke();
+  }
+  for (let row = 1; row < ROWS; row++) {
+    ctx.beginPath();
+    ctx.moveTo(0, row * CELL + 0.5);
+    ctx.lineTo(COLS * CELL, row * CELL + 0.5);
+    ctx.stroke();
+  }
+
+  const revealed = document.getElementById('revealed');
+  canvas.addEventListener('click', async (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const col = Math.floor(x / CELL);
+    const row = Math.floor(y / CELL);
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) {
+      revealed.className = 'error';
+      revealed.textContent = 'That click landed outside the swatch sheet.';
+      return;
+    }
+    const cell = 'C' + (col + 1) + 'R' + (row + 1);
+    revealed.className = '';
+    revealed.textContent = 'Checking swatch ' + cell + '…';
+    try {
+      const res = await fetch('/api/canvas/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, cell }),
+      });
+      const body = await res.json();
+      if (body.code) {
+        revealed.className = 'ok';
+        revealed.textContent = 'Calibration code: ' + body.code;
+      } else {
+        revealed.className = 'error';
+        revealed.textContent = body.error || 'Verification failed.';
+      }
+    } catch {
+      revealed.className = 'error';
+      revealed.textContent = 'Network error - try again.';
+    }
+  });
+</script>
+</body>
+</html>
