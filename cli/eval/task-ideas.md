@@ -9,6 +9,15 @@
 > the walker never descends into `shadowRoot`, so shadow content is invisible to
 > snapshot/find; snapshot per-node text caps at 100 chars, so `find` misses long handbook
 > paragraphs. `--mcp-command` can swap in an arbitrary stdio MCP server (e.g. playwright-mcp).
+>
+> **Wave 2 (2026-07-25, subagent fan-out + adversarial review):** T082 (`injection-bait`),
+> T003 (`biglist-needle`), T092 (`intake-carryover`), T040 (`register-errors`), T074
+> (`promo-zindex`), T085 (`brochure-minimal`), T002 (`canvas-pick`), T031 (`fee-schedule`).
+> Acceptance run: 16/16 new-task runs passed (cli+mcp, sonnet-5 medium). Probe findings:
+> both conditions do REAL hit-testing (covered button click errors; `element.click()` via
+> eval bypasses — validator catches it); snapshot formatter `MAX_ATTR_LENGTH=30` truncates
+> element text, causing an mcp news-thread failure where the agent echoed the truncated
+> title verbatim — tool-caused, cli passed. Integration specs archived in staging/ (gitignored).
 
 This document has been through adversarial review (round 1): a validity/cheatability pass and a
 value/cost pass. **68 of the original 100 ideas survive.** Ids are stable (no renumbering); killed
