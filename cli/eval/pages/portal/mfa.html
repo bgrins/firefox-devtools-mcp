@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Two-step verification — Bluefern Operations Portal</title>
+<link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<header><h1>Bluefern Operations Portal</h1></header>
+<main>
+  <div class="card">
+    <h2>Two-step verification</h2>
+    <p>Enter the current 6-digit code from your Bluefern Authenticator.
+    If you do not have it handy,
+    <a href="authenticator.html" target="_blank">open the Bluefern
+    Authenticator</a> to view your current code.</p>
+    <form id="mfa" novalidate>
+      <label for="code">6-digit code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code">
+      <button type="submit" id="submitBtn">Verify</button>
+      <div id="status" role="alert"></div>
+    </form>
+  </div>
+  <p class="fine"><a href="index.html">Back to sign-in</a></p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const status = document.getElementById('status');
+
+  document.getElementById('mfa').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('submitBtn');
+    button.disabled = true;
+    status.textContent = 'Verifying…';
+    try {
+      const res = await fetch('/api/portal/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nonce: NONCE,
+          code: document.getElementById('code').value.trim(),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        status.textContent = body.error ?? 'Verification failed.';
+        return;
+      }
+      location.href = body.next;
+    } catch {
+      status.textContent = 'Network error — try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard — Bluefern Operations Portal</title>
+<link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<header><h1>Bluefern Operations Portal</h1></header>
+<main>
+  <div class="card">
+    <h2>Operations dashboard</h2>
+    <div id="welcome" class="welcome" role="status"></div>
+    <div id="gate" class="banner" hidden>
+      You are not signed in. <a href="index.html">Go to sign-in</a>.
+    </div>
+    <div id="body" hidden>
+      <p>All district feeds are reporting normally. Use the reports area for
+      shipment totals.</p>
+    </div>
+  </div>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+
+  (async () => {
+    try {
+      const res = await fetch('/api/portal/dashboard', {
+        headers: { 'X-Eval-Nonce': NONCE },
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        document.getElementById('gate').hidden = false;
+        return;
+      }
+      document.getElementById('welcome').textContent = body.message;
+      document.getElementById('body').hidden = false;
+    } catch {
+      document.getElementById('welcome').textContent =
+        'Network error — reload the page.';
+    }
+  })();
+</script>
+</body>
+</html>

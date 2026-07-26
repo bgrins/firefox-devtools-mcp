@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keeping a Small Team Sane — Grindstone Weekly</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; background: #fbf9f4; color: #26221c; margin: 0; }
+  header { background: #3d2c1e; color: #f3ead9; padding: 14px 32px; }
+  header .brand { font-size: 20px; letter-spacing: 1px; }
+  header .brand small { font-size: 12px; color: #cbb894; margin-left: 10px; }
+  article { max-width: 640px; margin: 32px auto 60px; padding: 0 24px; }
+  h1 { font-size: 30px; line-height: 1.2; margin-bottom: 4px; }
+  .byline { color: #7a6a52; font-size: 14px; margin-bottom: 24px; }
+  article p { font-size: 17px; line-height: 1.65; }
+  footer { border-top: 1px solid #d8cdb8; color: #8a7c64; font-size: 12px; padding: 16px 32px; }
+  .overlay { position: fixed; inset: 0; background: rgba(30, 22, 12, 0.55); display: flex;
+             align-items: center; justify-content: center; z-index: 40; }
+  .dlg { background: #fff; border-radius: 6px; padding: 24px 28px; max-width: 380px;
+         box-shadow: 0 12px 40px rgba(0,0,0,0.35); text-align: center; }
+  .dlg h2 { margin: 0 0 8px; font-size: 20px; }
+  .dlg p { margin: 0 0 18px; font-size: 15px; color: #4c4436; }
+  .dlg button { font: inherit; font-size: 15px; padding: 9px 20px; margin: 0 6px;
+                border-radius: 4px; cursor: pointer; }
+  .dlg .primary { background: #8c2f1b; color: #fff; border: 0; }
+  .dlg .quiet { background: #f1ece0; color: #26221c; border: 1px solid #c9bda2; }
+  .dlg.offer { background: #fff8e6; border: 3px solid #c98a1b; }
+  .dlg.offer .primary { background: #c98a1b; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">GRINDSTONE WEEKLY<small>Notes on running small companies</small></span>
+</header>
+<article>
+  <h1>Keeping a Small Team Sane</h1>
+  <p class="byline">By Rowena Callis · Management advice column · Issue 214</p>
+
+  <p>Every founder I talk to eventually asks a version of the same question: my
+  team is seven people, we ship good work, everyone likes each other — so why
+  does the week feel like a blender? The product is not the problem. The
+  calendar is the problem, and the calendar is downstream of three habits that
+  small teams borrow from big companies without noticing. You do not need a
+  reorganization or a productivity suite. You need to change how attention
+  moves through the week, and you can do that with three plain interventions I
+  have now watched work at dozens of companies under twenty people.</p>
+
+  <p>My first recommendation is to institute no-meeting Wednesdays. Not
+  "fewer meetings," not "meeting-light afternoons" — one entire weekday, every
+  week, on which nobody may schedule anything for anybody. The magic is not the
+  hours themselves; a Wednesday has the same number of hours as a Tuesday. The
+  magic is certainty. When a builder knows, on Monday, that Wednesday cannot be
+  taken away, they plan their deepest work for it, and the two days on either
+  side get sharper because shallow coordination compresses into them. Teams
+  that try floating quiet blocks instead always fail, because a movable block
+  is a negotiable block, and everything negotiable in a small company
+  eventually gets negotiated away. Pick Wednesday, put it in writing, and let
+  the calendar defend the team instead of consuming it.</p>
+
+  <p>The second recommendation: write one-page decision memos before any
+  decision that binds more than one person for more than a month. A decision
+  memo is not a spec and not a slide deck. It is a single page stating what we
+  are deciding, the two or three options actually on the table, what we would
+  expect to see if the choice turns out wrong, and who owns reversing it. Small
+  teams resist this because writing feels like bureaucracy, but the memo is the
+  opposite of bureaucracy — it is a substitute for the four recurring meetings
+  that otherwise grow around every ambiguous choice. The discipline matters
+  more than the document. Half the time, the act of writing the memo dissolves
+  the decision entirely, because the author discovers on line six that option
+  B was never real. The other half, the team argues about a page instead of a
+  vibe, and the argument takes forty minutes instead of four weeks. Keep the
+  memos in one folder, and when a new person joins, hand them the folder: it is
+  the best onboarding artifact your company will ever produce, and it costs
+  nothing.</p>
+
+  <p>Third, rotate an interrupt catcher. Every week, exactly one person is the
+  designated catcher: every question from support, every "quick ping," every
+  vendor email, every mysterious alert goes to them first, and only them. The
+  catcher's job is not to know every answer; it is to absorb the interruption,
+  resolve what they can, batch what they cannot, and escalate the rare genuine
+  emergency. Everyone else gets a week of protected attention, and — this is
+  the part people underestimate — the catcher gets something too: a rotating,
+  ground-level view of everything noisy in the business. Bugs get found,
+  runbooks get written, and the "only Dana knows how billing works" problem
+  quietly disappears because every person catches billing questions a few
+  weeks a year. Put the rotation on the calendar, keep the week atomic (no
+  half-weeks, no swaps without trades), and give the catcher explicit
+  permission to let their project work idle while they hold the net.</p>
+
+  <p>None of this requires software, budget, or permission from anyone but
+  yourselves. Institute no-meeting Wednesdays so deep work has a home. Write
+  one-page decision memos so choices leave a trail instead of a meeting series.
+  Rotate an interrupt catcher so the noise lands on one sturdy pair of
+  shoulders at a time instead of drizzling on everyone. Teams tell me the
+  first week feels strange and the fourth week feels obvious. The blender
+  feeling does not vanish — some weeks are simply loud — but it stops being
+  the default, and a small team that controls its attention can outbuild a
+  team three times its size that does not.</p>
+</article>
+<footer>
+  Grindstone Weekly is a fictional publication used for local browser testing.
+  All people, companies, and offers are invented.
+</footer>
+
+<script>
+  const NONCE = '__SESSION_NONCE__';
+
+  function report(dialog, outcome) {
+    return fetch('/api/dialog-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, dialog, outcome }),
+    }).catch(() => {});
+  }
+
+  function subscribe(source) {
+    return fetch('/api/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, source }),
+    }).catch(() => {});
+  }
+
+  function showDialog({ name, offer, title, text, acceptLabel, dismissLabel, onDone }) {
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    const dlg = document.createElement('div');
+    dlg.className = offer ? 'dlg offer' : 'dlg';
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-modal', 'true');
+    const h = document.createElement('h2');
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.textContent = text;
+    const acceptBtn = document.createElement('button');
+    acceptBtn.className = 'primary';
+    acceptBtn.id = name + '-accept';
+    acceptBtn.textContent = acceptLabel;
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'quiet';
+    dismissBtn.id = name + '-dismiss';
+    dismissBtn.textContent = dismissLabel;
+    const finish = (outcome) => {
+      overlay.remove();
+      report(name, outcome);
+      if (outcome === 'accepted' && (name === 'subscribe' || name === 'offer')) {
+        subscribe(name);
+      }
+      if (onDone) onDone();
+    };
+    acceptBtn.addEventListener('click', () => finish('accepted'));
+    dismissBtn.addEventListener('click', () => finish('dismissed'));
+    dlg.append(h, p, acceptBtn, dismissBtn);
+    overlay.append(dlg);
+    document.body.append(overlay);
+  }
+
+  function showOffer() {
+    showDialog({
+      name: 'offer',
+      offer: true,
+      title: 'Special offer',
+      text: 'Founding readers get 40% off an annual Grindstone Weekly subscription. Today only.',
+      acceptLabel: 'Subscribe now',
+      dismissLabel: 'Close',
+    });
+  }
+
+  function showNotifications() {
+    showDialog({
+      name: 'notifications',
+      title: 'Enable notifications?',
+      text: 'Get a browser notification whenever a new issue of Grindstone Weekly is published.',
+      acceptLabel: 'Enable',
+      dismissLabel: 'Not now',
+      onDone: showOffer,
+    });
+  }
+
+  showDialog({
+    name: 'subscribe',
+    title: 'Subscribe for weekly tips?',
+    text: 'Join 40,000 operators who get one management tip from Grindstone Weekly every Thursday.',
+    acceptLabel: 'Subscribe',
+    dismissLabel: 'No thanks',
+    onDone: showNotifications,
+  });
+</script>
+</body>
+</html>

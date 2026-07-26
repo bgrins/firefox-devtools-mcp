@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boxelder Workspace — Files</title>
+<style>
+  body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; background: #f4f5f2; color: #23301f; margin: 0; }
+  header { background: #2f4a2a; color: #eef3ea; padding: 16px 32px; display: flex; align-items: baseline; gap: 14px; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  header .crumb { font-size: 13px; color: #b9ccb0; }
+  main { max-width: 760px; margin: 28px auto; padding: 0 20px; }
+  .panel { background: #fff; border: 1px solid #d5dccf; border-radius: 6px; padding: 20px 24px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6a755f; border-bottom: 2px solid #d5dccf; padding: 6px 10px; }
+  td { border-bottom: 1px solid #e6eadf; padding: 9px 10px; font-size: 14px; }
+  td.name { font-weight: 600; }
+  td.meta { color: #6a755f; font-size: 13px; }
+  button { font: inherit; font-size: 13px; padding: 5px 14px; border: 1px solid #4a6b3f; background: #fff; color: #2f4a2a; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #eef3ea; }
+  button.primary { background: #2f4a2a; color: #fff; }
+  input.rename { font: inherit; font-size: 14px; padding: 4px 8px; width: 180px; }
+  #toast { display: none; margin-top: 16px; border: 1px solid #b0483a; background: #fbeeec; color: #7c2d22; border-radius: 5px; padding: 12px 16px; font-size: 14px; align-items: center; gap: 14px; }
+  #toast.show { display: flex; }
+  #toast .msg { flex: 1; }
+  #loading { color: #6a755f; font-size: 14px; margin-top: 10px; }
+  .fine { color: #8a927f; font-size: 12px; margin-top: 34px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Boxelder Workspace</h1>
+  <span class="crumb">Shared drive / Marketing / Working files</span>
+</header>
+<main>
+  <div class="panel">
+    <h2 style="margin-top:0;font-size:16px;">Working files</h2>
+    <p style="font-size:14px;color:#4b5644;margin:4px 0 0;">Use Rename to change a
+    file name in place. Changes sync to the workspace server.</p>
+    <div id="loading">Loading file list…</div>
+    <table id="files" style="display:none;">
+      <thead>
+        <tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="toast" role="alert">
+      <span class="msg" id="toastMsg"></span>
+      <button id="refreshBtn" type="button">Refresh</button>
+    </div>
+  </div>
+  <p class="fine">Boxelder Workspace is a fictional product used for local browser
+  testing. File entries are held server-side per session.</p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  let files = [];
+
+  async function loadFiles() {
+    const res = await fetch('/api/files', { headers: { 'X-Eval-Nonce': NONCE } });
+    const body = await res.json();
+    files = body.files ?? [];
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('files').style.display = 'table';
+    render();
+  }
+
+  function render() {
+    const tbody = document.getElementById('rows');
+    tbody.textContent = '';
+    for (const file of files) {
+      const tr = document.createElement('tr');
+      tr.dataset.id = file.id;
+
+      const nameCell = document.createElement('td');
+      nameCell.className = 'name';
+      nameCell.textContent = file.name;
+      tr.appendChild(nameCell);
+
+      const sizeCell = document.createElement('td');
+      sizeCell.className = 'meta';
+      sizeCell.textContent = file.size;
+      tr.appendChild(sizeCell);
+
+      const modCell = document.createElement('td');
+      modCell.className = 'meta';
+      modCell.textContent = file.modified;
+      tr.appendChild(modCell);
+
+      const actionCell = document.createElement('td');
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.textContent = 'Rename';
+      renameBtn.addEventListener('click', () => startEdit(file, tr, nameCell, actionCell));
+      actionCell.appendChild(renameBtn);
+      tr.appendChild(actionCell);
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  function startEdit(file, tr, nameCell, actionCell) {
+    const input = document.createElement('input');
+    input.className = 'rename';
+    input.value = file.name;
+    input.setAttribute('aria-label', 'New file name');
+    nameCell.textContent = '';
+    nameCell.appendChild(input);
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'primary';
+    save.textContent = 'Save';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.style.marginLeft = '6px';
+    actionCell.textContent = '';
+    actionCell.appendChild(save);
+    actionCell.appendChild(cancel);
+
+    cancel.addEventListener('click', render);
+    save.addEventListener('click', () => commit(file, input.value));
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') commit(file, input.value);
+    });
+    input.focus();
+    input.select();
+  }
+
+  async function commit(file, rawName) {
+    const newName = rawName.trim();
+    if (!newName || newName === file.name) {
+      render();
+      return;
+    }
+    const oldName = file.name;
+    file.name = newName;
+    render();
+    try {
+      const res = await fetch('/api/files/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, id: file.id, name: newName }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setTimeout(() => {
+          file.name = oldName;
+          render();
+          showToast(body.error ?? 'Rename failed.');
+        }, 2000);
+      }
+    } catch {
+      file.name = oldName;
+      render();
+      showToast('Network error — rename not saved.');
+    }
+  }
+
+  function showToast(message) {
+    document.getElementById('toastMsg').textContent = message;
+    document.getElementById('toast').classList.add('show');
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', async () => {
+    document.getElementById('toast').classList.remove('show');
+    await loadFiles();
+  });
+
+  loadFiles();
+</script>
+</body>
+</html>

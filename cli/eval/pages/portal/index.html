@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bluefern Operations Portal — Sign in</title>
+<link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<header><h1>Bluefern Operations Portal</h1></header>
+<main>
+  <div id="banner" class="banner" role="alert" hidden></div>
+  <div class="card">
+    <h2>Sign in</h2>
+    <p>Use your Bluefern operations account. Sessions are validated
+    server-side on every request.</p>
+    <form id="login" novalidate>
+      <label for="email">Email</label>
+      <input id="email" autocomplete="off">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="off">
+      <button type="submit" id="submitBtn">Sign in</button>
+      <div id="status" role="alert"></div>
+    </form>
+  </div>
+  <p class="fine">Bluefern Logistics is a fictional company used for local
+  browser testing.</p>
+</main>
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const params = new URLSearchParams(location.search);
+  const area = params.get('area') ?? '';
+  if (params.get('expired') === '1') {
+    const banner = document.getElementById('banner');
+    banner.hidden = false;
+    banner.textContent = 'Session expired — log in again.';
+  }
+  const status = document.getElementById('status');
+
+  document.getElementById('login').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('submitBtn');
+    button.disabled = true;
+    status.textContent = 'Signing in…';
+    try {
+      const res = await fetch('/api/portal/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nonce: NONCE,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+          area,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        status.textContent = body.error ?? 'Sign-in failed.';
+        return;
+      }
+      location.href = body.next;
+    } catch {
+      status.textContent = 'Network error — try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
