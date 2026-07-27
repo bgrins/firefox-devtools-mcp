@@ -19,8 +19,17 @@
 //   node eval/run.mjs --suite web --repeat 3
 //     sequential + repeats: use this for numbers you plan to share
 //     (parallel wall timings carry machine-contention noise)
+//   node eval/run.mjs --suite web --task cart-math,coupon-stack --parallel
+//     just the tasks you care about (comma list, * wildcards, --list-tasks
+//     to preview the selection)
+//   node eval/run.mjs --suite web --rerun-failed eval/results/run-<stamp>
+//     top up a run that hit flaky failures, without repeating the passes
 //   node eval/transcript.mjs [run-dir] [--task <id>]
 //     inspect what the agents actually did
+//
+// Runaway protection is --max-wall (default 600s, retried as infra slowness)
+// and --max-output; there is deliberately no turn limit, and turns should not
+// be compared across conditions or backends (see markdownReport's note).
 
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -141,7 +150,7 @@ Usage: node eval/run.mjs [options]
   --rerun-failed <dir>    re-run only the tasks that failed or errored in an
                           earlier run directory (overrides --task)
   --retries <n>           retry a task on transient API/infra errors
-                          (default: 2; turn exhaustion is never retried)
+                          (default: 2; an --max-output stop is never retried)
   --max-wall <s>          kill a task after s seconds of wall time
                           (default: 600; 0 = off). Retried as infra slowness
   --max-output <n>        kill a task after n cumulative output tokens (0 = off)
@@ -1979,6 +1988,9 @@ function markdownReport({ meta, results, totals }) {
     `- backend: ${meta.backend} · models: ${models} · effort: ${meta.effort} · suite: ${meta.suite}` +
       (meta.repeat ? ` · repeat: ${meta.repeat}` : ''),
     `- tasks are simulated local pages (no live web); harness: cli/eval/run.mjs`,
+    `- turns are NOT comparable across conditions: a cli Bash call can chain ` +
+      `several browser commands (measured 1.21 browser ops per call vs mcp's ` +
+      `1.00), and codex only approximates turns. Compare output tokens and cost.`,
     ...(meta.backend.includes('codex')
       ? [
           `- cost: anthropic is SDK-reported; codex is computed from token counts ` +
