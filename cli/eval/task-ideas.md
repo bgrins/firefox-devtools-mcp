@@ -125,6 +125,36 @@
 > behind specifically where the snapshot loses information, and ahead on multi-step
 > auth flows. See `findings.md` A2/A4.
 >
+> **Wave 8 (2026-07-27): navigation + consent. P1 COMPLETE except three stragglers.**
+> T044 (`dept-descent`), T045 (`breadcrumb-sibling`), T047 (`search-decoy`), T042
+> (`redirect-escape`), T043 (`mirror-reroute`), T069 (`floorplan-room`), T079
+> (`consent-reject`). Suite is now 58 web tasks. Acceptance 42/42, zero failures.
+> Output-token medians us vs playwright-mcp: all seven 9,428 vs 8,241 (+14.4%) —
+> but `search-decoy` is UNSTABLE (3.3x spread) and alone accounts for the sign;
+> the six stable tasks are 6,764 vs 7,172, i.e. **5.7% fewer tokens for us**.
+> We win all four wayfinding tasks: `redirect-escape` -21%, `dept-descent` -20%,
+> `floorplan-room` -13%, `breadcrumb-sibling` -12%. We lose modestly on
+> `mirror-reroute` +19% and `consent-reject` +7%.
+> Taken with waves 6 and 7 the pattern is consistent: **we are ahead on multi-step
+> navigation and behind where a single view loses information** (wave 6's
+> `oos-substitute` +57% on dropped table content). `search-decoy` may be the same
+> effect — gov pages are exactly the `<font>`-inside-`<p>` case of finding A2b —
+> but its variance makes that a hypothesis, not a result.
+>
+> Notable build decisions: T042's redirect loop was prototyped first, and Firefox
+> was measured to abort a chain at 21 hops (`network.http.redirection-limit = 20`)
+> with a BiDi `unknown error`, so the fixture bounces 6 times before its
+> interstitial; the archived page is served inline from server.mjs so `Rev. 11/2019`
+> exists nowhere under pages/. T043 added per-task server modes
+> (`startPagesServer({modes})` + a `serverModes` task field, reset inside runOne
+> after `state.reset()`, and taught to verify.mjs) so a store can be 'down' for one
+> task without leaking into `price-compare` in the same process.
+> VALIDATOR LESSON, same class as wave 4's: both T045 and T047 plans specified
+> "answer must NOT contain the decoy" rules, and those rules were MEASURED to reject
+> correct contrastive answers ("Surface Permits is (555) 014-8862, not 014-3391").
+> Replaced with unforgeable server-side gates — an agent reporting the wrong number
+> never opened the sibling page.
+>
 > **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
 > deterministically through our own MCP and asserts each validator accepts a correct
 > answer and rejects a plausible wrong one: 77 seconds, no API spend, 51/51 green
