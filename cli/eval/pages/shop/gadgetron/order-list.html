@@ -63,7 +63,7 @@
       <p style="font-size:12px;margin:4px 0 0 4px"><a href="#">Net terms</a></p>
       <p style="font-size:12px;margin:4px 0 0 4px"><a href="#">Tax exemption</a></p>
     </details>
-    <a class="reset" href="#">Clear the order list</a>
+    <a class="reset" href="#" id="clear">Clear the order list</a>
   </aside>
   <section class="desk">
     <div class="statline">
@@ -116,9 +116,19 @@
 const NONCE = '__SESSION_NONCE__';
 const banner = document.getElementById('banner');
 const lines = document.getElementById('lines');
+let queued = [];
+
+async function removeLine(sku) {
+  await fetch('/api/shop/cart/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nonce: NONCE, store: 'gadgetron', sku }),
+  });
+}
 
 function paint(body) {
   lines.innerHTML = '';
+  queued = body.lines.map((line) => line.sku);
   for (const line of body.lines) {
     const tr = document.createElement('tr');
     tr.innerHTML =
@@ -135,11 +145,7 @@ function paint(body) {
     drop.setAttribute('aria-label', 'Remove ' + line.sku);
     drop.addEventListener('click', async () => {
       drop.disabled = true;
-      await fetch('/api/shop/cart/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nonce: NONCE, store: 'gadgetron', sku: line.sku }),
-      });
+      await removeLine(line.sku);
       await load();
     });
     tr.querySelector('td.order').appendChild(drop);
@@ -168,7 +174,9 @@ async function load() {
   paint(await res.json());
 }
 
-document.getElementById('push').addEventListener('click', async () => {
+const push = document.getElementById('push');
+
+push.addEventListener('click', async () => {
   const part = document.getElementById('part').value.trim();
   banner.className = 'banner';
   banner.textContent = '';
@@ -177,31 +185,48 @@ document.getElementById('push').addEventListener('click', async () => {
     banner.textContent = 'Enter a part number.';
     return;
   }
-  const res = await fetch('/api/shop/cart/add', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      nonce: NONCE,
-      store: 'gadgetron',
-      sku: part,
-      qty: Number(document.getElementById('qty').value),
-    }),
-  });
-  const body = await res.json();
-  if (res.ok) {
-    banner.className = 'banner good';
-    banner.textContent = 'Added ' + body.added.sku + ' x' + body.added.qty;
-    paint(body);
-  } else {
-    banner.className = 'banner bad';
-    banner.textContent = body.error;
-    if (body.hint) {
-      const sub = document.createElement('span');
-      sub.className = 'sub';
-      sub.textContent = body.hint;
-      banner.appendChild(sub);
+  push.disabled = true;
+  try {
+    const res = await fetch('/api/shop/cart/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nonce: NONCE,
+        store: 'gadgetron',
+        sku: part,
+        qty: Number(document.getElementById('qty').value),
+      }),
+    });
+    const body = await res.json();
+    if (res.ok) {
+      banner.className = 'banner good';
+      banner.textContent = 'Added ' + body.added.sku + ' x' + body.added.qty;
+      paint(body);
+    } else {
+      banner.className = 'banner bad';
+      banner.textContent = body.error;
+      if (body.hint) {
+        const sub = document.createElement('span');
+        sub.className = 'sub';
+        sub.textContent = body.hint;
+        banner.appendChild(sub);
+      }
     }
+  } finally {
+    push.disabled = false;
   }
+});
+
+document.getElementById('clear').addEventListener('click', async (event) => {
+  event.preventDefault();
+  banner.className = 'banner';
+  banner.textContent = '';
+  for (const sku of queued.slice()) {
+    await removeLine(sku);
+  }
+  await load();
+  banner.className = 'banner good';
+  banner.textContent = 'Order list cleared.';
 });
 
 load();

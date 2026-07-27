@@ -103,6 +103,8 @@ const LIST_TASKS = args.includes('--list-tasks');
 // as ERROR rows that look like task failures and poison a whole run's numbers.
 // Retries re-run the task from scratch against freshly reset server state.
 // A maxTurns exhaustion is a real result, not a hiccup, so it is never retried.
+const MAX_WALL_S = Number(flag('max-wall', '0')) || 0;
+const MAX_OUTPUT = Number(flag('max-output', '0')) || 0;
 const RETRIES = Number(flag('retries', '2'));
 if (!Number.isInteger(RETRIES) || RETRIES < 0) {
   throw new Error('--retries must be a non-negative integer');
@@ -110,7 +112,7 @@ if (!Number.isInteger(RETRIES) || RETRIES < 0) {
 const TRANSIENT = /connection closed|connection error|econnreset|epipe|etimedout|socket hang up|overloaded|rate.?limit|too many requests|\b(429|500|502|503|504|529)\b|internal server error|service unavailable/i;
 function isTransient(error) {
   const message = String(error?.message ?? '');
-  if (/maximum number of turns/i.test(message)) return false;
+  if (/maximum number of turns|stopped by harness/i.test(message)) return false;
   return TRANSIENT.test(message);
 }
 function taskSelected(id) {
@@ -138,6 +140,9 @@ Usage: node eval/run.mjs [options]
                           earlier run directory (overrides --task)
   --retries <n>           retry a task on transient API/infra errors
                           (default: 2; turn exhaustion is never retried)
+  --max-wall <s>          kill a task after s seconds of wall time (0 = off).
+                          Backend-agnostic, unlike maxTurns
+  --max-output <n>        kill a task after n cumulative output tokens (0 = off)
   --repeat <n>            run each task n times; report adds per-task medians
   --model <id>            model for the agent backend
   --effort <level>        reasoning effort for both backends (default: medium;
@@ -1878,13 +1883,44 @@ async function runTask(backendName, condition, label, task, ctx, rep = 1) {
     spec.onMessage = (message) =>
       transcriptStream.write(JSON.stringify(message) + '\n');
   }
+  // Backend-agnostic runaway guards. maxTurns is honoured only by the anthropic
+  // SDK, and a "turn" means different things per backend and per condition (a
+  // cli Bash call can chain several browser commands), so turns cannot be the
+  // safety net. Output tokens and wall time are comparable across both.
+  const abortController = new AbortController();
+  spec.abortController = abortController;
+  let spent = 0;
+  let limitHit = null;
+  const stopFor = (reason) => {
+    if (limitHit) return;
+    limitHit = reason;
+    abortController.abort(reason);
+  };
+  const wallTimer = MAX_WALL_S
+    ? setTimeout(() => stopFor(`wall limit ${MAX_WALL_S}s`), MAX_WALL_S * 1000)
+    : null;
+  const userOnMessage = spec.onMessage;
+  spec.onMessage = (message) => {
+    userOnMessage?.(message);
+    const usage = message?.message?.usage ?? message?.usage;
+    if (usage?.output_tokens) spent += usage.output_tokens;
+    if (MAX_OUTPUT && spent > MAX_OUTPUT) {
+      stopFor(`output-token limit ${MAX_OUTPUT} (spent ${spent})`);
+    }
+  };
+
   const wallStart = Date.now();
   let r;
   try {
     r = await backend.run(spec);
+  } catch (error) {
+    if (limitHit) throw new Error(`stopped by harness ${limitHit}`);
+    throw error;
   } finally {
+    clearTimeout(wallTimer);
     transcriptStream?.end();
   }
+  if (limitHit) throw new Error(`stopped by harness ${limitHit}`);
   const wallMs = Date.now() - wallStart;
   const verdict = task.validate
     ? task.validate(r.text, ctx)

@@ -77,7 +77,7 @@ function priceRun(modelId, usage) {
   }
 }
 
-export async function run({ prompt, model, effort, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
+export async function run({ prompt, model, effort, condition, env, endpoint, cwd, onMessage, mcpStdio, abortController }) {
   const codexOptions = {
     // When env is provided the SDK does not inherit process.env, so run.mjs
     // builds it from the full process.env.
@@ -151,6 +151,12 @@ export async function run({ prompt, model, effort, condition, env, endpoint, cwd
   let toolCalls = 0;
   let failure = null;
   for await (const event of events) {
+    // The SDK exposes no cancellation, so honour the harness ceilings by
+    // leaving the stream. The codex process may linger briefly after this.
+    if (abortController?.signal.aborted) {
+      failure = { message: abortController.signal.reason ?? 'aborted by harness limit' };
+      break;
+    }
     onMessage?.(event);
     if (event.type === 'turn.completed') {
       usage = event.usage;

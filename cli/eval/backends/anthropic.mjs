@@ -24,7 +24,7 @@ function stripWrapperDir(path) {
     .join(':');
 }
 
-export async function run({ prompt, model, effort, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
+export async function run({ prompt, model, effort, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio, abortController }) {
   const options = {
     model,
     maxTurns,
@@ -32,6 +32,9 @@ export async function run({ prompt, model, effort, maxTurns, condition, env, end
     cwd,
     settingSources: [],
     ...(effort ? { effort } : {}),
+    // Lets run.mjs stop a task on its backend-agnostic token/wall ceilings;
+    // maxTurns alone is anthropic-only and turns are not comparable anyway.
+    ...(abortController ? { abortController } : {}),
   };
   if (condition === 'cli') {
     options.allowedTools = ['Bash'];

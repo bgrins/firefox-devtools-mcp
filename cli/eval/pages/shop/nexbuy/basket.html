@@ -93,7 +93,8 @@
         <button id="apply" type="button">Apply code</button>
       </div>
       <p class="result" id="result" role="status"></p>
-      <p class="hint">One code per order. Terms are on the <a href="promos.html">offers page</a>.</p>
+      <p class="hint">One code per order. A code you apply replaces the code already on
+      this order. Terms are on the <a href="promos.html">offers page</a>.</p>
     </div>
     <div class="summary">
       <h2>Order summary</h2>
@@ -124,6 +125,7 @@ const NONCE = '__SESSION_NONCE__';
 const cart = document.getElementById('cart');
 const emptynote = document.getElementById('emptynote');
 const result = document.getElementById('result');
+let onOrder = null;
 
 function money(n) {
   return '$' + Number(n).toFixed(2);
@@ -164,6 +166,7 @@ function paint(body) {
   document.getElementById('levy').textContent = money(body.levy);
   document.getElementById('tax').textContent = money(body.tax);
   document.getElementById('grand').textContent = money(body.total);
+  onOrder = body.coupon ? body.coupon.code : null;
   const offrow = document.getElementById('offrow');
   offrow.innerHTML = body.coupon
     ? '<div class="sumline off"><span>Code ' + body.coupon.code + '</span>' +
@@ -191,6 +194,7 @@ document.getElementById('apply').addEventListener('click', async () => {
     result.textContent = 'Enter a code first.';
     return;
   }
+  const previous = onOrder;
   const res = await fetch('/api/shop/coupon', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -199,7 +203,10 @@ document.getElementById('apply').addEventListener('click', async () => {
   const body = await res.json();
   if (res.ok) {
     result.className = 'result good';
-    result.textContent = code + ' applied.';
+    result.textContent =
+      previous && previous !== code
+        ? code + ' applied. ' + previous + ' removed.'
+        : code + ' applied.';
     paint(body);
   } else {
     result.className = 'result bad';
