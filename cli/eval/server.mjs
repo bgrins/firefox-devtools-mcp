@@ -50,7 +50,87 @@ const GRID_EDIT_MEMO = [
   'GR-1102 qty is 40 not 4 - counted cartons, eaches were posted.',
 ];
 
+// pages/floorplan/ — Ostmark House level 04. Occupant names, roles and space
+// types exist only here and are released one room at a time through the
+// session-gated GET /api/floorplan/room, so no fixture file names an occupant.
+// The sheet is drawn with plan north to the LEFT, so the north-east corner
+// office NE-4 is the top-left region and the top-right one is SE-7.
+const FLOORPLAN_ROOMS = {
+  'NE-4': { occupant: 'Marisol Enquist', role: 'Space Planning Lead', kind: 'Corner office',
+    aspect: 'north-east', department: 'Space Planning', ext: '4180', desks: 1,
+    verified: '14 June' },
+  'NE-3': { occupant: 'Tobin Radleigh', role: 'Planning Analyst', kind: 'Office',
+    aspect: 'north-east', department: 'Space Planning', ext: '4184', desks: 2,
+    verified: '19 June' },
+  'NW-1': { occupant: 'Corinne Auclair', role: 'Facilities Operations Manager',
+    kind: 'Corner office', aspect: 'north-west', department: 'Facilities Operations',
+    ext: '4110', desks: 1, verified: '11 June' },
+  'NW-2': { occupant: 'Rafe Okonjo', role: 'Maintenance Planner', kind: 'Office',
+    aspect: 'north-west', department: 'Facilities Operations', ext: '4116', desks: 2,
+    verified: '11 June' },
+  'SE-7': { occupant: 'Emrys Vasseur', role: 'Estates Finance Controller',
+    kind: 'Corner office', aspect: 'south-east', department: 'Finance and Estates',
+    ext: '4150', desks: 1, verified: '02 June' },
+  'SE-8': { occupant: 'Nils Tordoff', role: 'Service Charge Accountant', kind: 'Office',
+    aspect: 'south-east', department: 'Finance and Estates', ext: '4154', desks: 1,
+    verified: '02 June' },
+  'SW-5': { occupant: 'Yusra Denning', role: 'Head of Estates Finance',
+    kind: 'Corner office', aspect: 'south-west', department: 'Finance and Estates',
+    ext: '4160', desks: 1, verified: '02 June' },
+  'SW-6': { title: 'Project room 04-A', role: '', kind: 'Project room',
+    aspect: 'south-west', department: 'Shared / bookable', ext: '4199', desks: 0,
+    verified: '09 June' },
+};
+
 const BODY_CAP = 65536;
+
+// pages/news/consent.html — the 3-layer consent wall over the Millrace front
+// page. The CMP posts its whole toggle map to /api/consent/save; the submitted
+// map and the accept-all count live on the session, so state.reset() clears
+// them between tasks and a forged /api/beacon cannot fake a compliant save.
+// The collapsed "Legitimate interest" rows and the layer-3 vendor rows are not
+// in the first paint: the page fetches each tier from /api/consent/tier when
+// that section is opened, the session remembers which tiers it was sent, and a
+// save can only refuse a purpose whose tier this session has actually been
+// shown. A blind "click every [data-key] and save" script therefore never
+// learns that the five hidden toggles exist and leaves them on.
+const CONSENT_TOGGLES = [
+  'essential',
+  'basicAds',
+  'personalisedAds',
+  'personalisedContent',
+  'audienceMeasurement',
+  'contentMeasurement',
+  'developServices',
+  'linkDevices',
+  'combineData',
+  'improveProducts',
+  'vendorLarkfield',
+  'vendorCindersmith',
+];
+const CONSENT_TIER_ROWS = {
+  li: [
+    { key: 'linkDevices', name: 'Link different devices' },
+    { key: 'combineData', name: 'Match and combine data' },
+    { key: 'improveProducts', name: 'Improve our products' },
+  ],
+  vendors: [
+    {
+      key: 'vendorLarkfield',
+      name: 'Larkfield Media',
+      desc: 'Ad selection and delivery. Retention 390 days.',
+    },
+    {
+      key: 'vendorCindersmith',
+      name: 'Cindersmith Analytics',
+      desc: 'Audience modelling. Retention 180 days.',
+    },
+  ],
+};
+const consentTierOf = (key) =>
+  Object.keys(CONSENT_TIER_ROWS).find((tier) =>
+    CONSENT_TIER_ROWS[tier].some((row) => row.key === key)
+  ) ?? null;
 
 // pages/parcels/ — Corvane tracking lookups. Shipment statuses exist only here,
 // never in fixture source, and the endpoint accepts one lookup per session per
@@ -70,6 +150,36 @@ const PARCEL_SHIPMENTS = {
   'PX-6118': { status: 'Returned to Sender', tone: 'final', service: 'Ground Economy',
     lastScan: 'Marbeck hub 18:05' },
 };
+
+// pages/shop/gadgetron-mirror/ — the read-only mirror node's accessory sheet.
+// The VoltCharge dock price is minted per session from randomBytes, so it
+// appears in no fixture file and cannot be derived from the page-exposed nonce.
+// The decoy docks keep fixed prices, so quoting the wrong row is a wrong answer.
+const MIRROR_SNAPSHOT = '06:40';
+const MIRROR_DOCK_SKU = 'VC-DK100';
+const MIRROR_ACCESSORIES = [
+  { sku: 'AN-HUB7', model: 'AmpNest Hub 7', kind: 'USB hub',
+    ports: 7, power: '15 W', stock: 'y', price: '42.00' },
+  { sku: 'KB-DK9', model: 'Kelbrook DK-9 dock', kind: 'Docking station',
+    ports: 9, power: '65 W', stock: 'y', price: '129.00' },
+  { sku: 'MP-CHG3', model: 'Marlpoint C3 charger', kind: 'Charger',
+    ports: 3, power: '45 W', stock: 'y', price: '38.50' },
+  { sku: 'TR-HUB4', model: 'Trellis Hub 4', kind: 'USB hub',
+    ports: 4, power: '10 W', stock: 'n', price: '24.99' },
+  { sku: MIRROR_DOCK_SKU, model: 'VoltCharge DK-100 dock', kind: 'Docking station',
+    ports: 12, power: '100 W', stock: 'y', price: null },
+  { sku: 'ZP-DK5', model: 'Zephmark DK-5 dock', kind: 'Docking station',
+    ports: 8, power: '85 W', stock: 'y', price: '148.00' },
+];
+// No cents value is ambiguous when retyped (nothing ends in 0), so an agent
+// that copies the displayed price cannot lose a digit and fail on formatting.
+const MIRROR_DOCK_CENTS = [25, 49, 75, 95, 99];
+
+function mintMirrorDockPrice() {
+  const bytes = randomBytes(2);
+  const dollars = 79 + (bytes[0] % 40);
+  return `${dollars}.${MIRROR_DOCK_CENTS[bytes[1] % MIRROR_DOCK_CENTS.length]}`;
+}
 
 // pages/forms/office-finder.html — the branch tree is served only through the
 // session-gated /api/offices endpoint, so no branch code ever appears in
@@ -707,6 +817,185 @@ function mazeView(m) {
   };
 }
 
+// pages/gov/search.html — the Bureau's document index. The ranking is computed
+// here rather than held in fixture source, so the misleading order cannot be
+// read off disk: the amended form's instructions (RV-7A) outrank the original
+// form's, because the index scores a more recently revised document higher and
+// the RV-7A page's own text names Form RV-7. An agent that takes hit #1 reports
+// the annex PO box instead of the Declarations Unit box.
+const GOV_SEARCH_INDEX = [
+  {
+    title: 'Form RV-7A Instructions',
+    path: '/gov/rv7a-instructions.html',
+    score: 98,
+    snippet:
+      'Amended residential vehicle declarations, line by line, with the annex filing address.',
+    terms: ['rv7a', 'rv7', 'amend', 'mail', 'address', 'file', 'filing', 'declaration',
+      'instruction', 'vehicle', 'residential'],
+  },
+  {
+    title: 'Schedule of Filing Fees',
+    path: '/gov/fee-schedule.html',
+    score: 84,
+    snippet: 'Base filing fees by form number, with the late-filing surcharge footnotes.',
+    terms: ['fee', 'surcharge', 'late', 'rv7', 'schedule', 'cost', 'charge'],
+  },
+  {
+    title: 'Form RV-7 Instructions',
+    path: '/gov/rv7-instructions.html',
+    score: 71,
+    snippet:
+      'Who must file, computing the declared value, the penalty schedule and where to file.',
+    terms: ['rv7', 'instruction', 'declared value', 'penalty', 'file', 'filing', 'address',
+      'mail', 'declaration'],
+  },
+  {
+    title: 'Form RV-7 Residential Vehicle Annual Declaration',
+    path: '/gov/rv7.html',
+    score: 66,
+    snippet: 'Who must file the annual declaration, the June 12 deadline, and downloads.',
+    terms: ['rv7', 'declaration', 'deadline', 'vehicle', 'residential', 'annual', 'form'],
+  },
+  {
+    title: 'Forms and Publications',
+    path: '/gov/forms.html',
+    score: 52,
+    snippet: 'Index of Bureau forms by number, with revision dates and download links.',
+    terms: ['form', 'publication', 'index', 'download', 'rv7', 'rv3', 'pdf'],
+  },
+  {
+    title: 'Filing Season Information',
+    path: '/gov/deadlines.html',
+    score: 41,
+    snippet: 'Filing season opening and closing dates, holidays and extension policy.',
+    terms: ['deadline', 'season', 'filing', 'date', 'extension', 'holiday'],
+  },
+  {
+    title: 'Frequently Asked Questions',
+    path: '/gov/faq.html',
+    score: 33,
+    snippet: 'Answers to common questions about declarations, confirmations and penalties.',
+    terms: ['faq', 'question', 'confirmation', 'penalt', 'letter', 'file', 'mail'],
+  },
+];
+
+// "RV-7", "rv 7" and "RV7" all collapse to rv7 so a form number matches however
+// the agent types it; "RV-7A" collapses to rv7a and stays distinct.
+function govSearchResults(q) {
+  const normalized = String(q)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\brv\s+(\d)/g, 'rv$1')
+    .trim();
+  const matches = normalized
+    ? GOV_SEARCH_INDEX.filter((e) => e.terms.some((t) => normalized.includes(t)))
+    : GOV_SEARCH_INDEX.slice();
+  return matches
+    .sort((a, b) => b.score - a.score)
+    .map(({ title, path, score, snippet }) => ({ title, path, score, snippet }));
+}
+
+// Is this request a top-level document load? sec-fetch-mode/sec-fetch-dest are
+// FORBIDDEN header names for fetch()/XHR, so page script can never claim a
+// document load — but they are ordinary headers on the wire and `curl -H` sets
+// them freely. So this is not a proof of "a browser did it"; it only separates
+// a navigation from an in-page subresource fetch. The gov gates pair it with a
+// page-JS beacon (govPageToken) for the second same-session factor.
+//
+// The fallback branch is a deliberate weakening for engines that omit the
+// sec-fetch-* family on document loads (the eval also runs a `playwright`
+// condition against Playwright's own patched Firefox build, which this repo
+// cannot exercise until playwright is installed): a request with no
+// sec-fetch-dest at all counts as a navigation when it asks for HTML. curl
+// sends `Accept: */*` unless told otherwise, so the fallback is not a free pass.
+function isGovDocumentNav(req) {
+  const dest = req.headers['sec-fetch-dest'];
+  if (dest !== undefined) {
+    return dest === 'document' && req.headers['sec-fetch-mode'] === 'navigate';
+  }
+  return /text\/html/.test(req.headers.accept ?? '');
+}
+
+// Per-session, per-path token for the page-JS half of the gov navigation gates.
+// The static handler substitutes it into __GOV_PAGE_TOKEN__ in the HTML body it
+// serves, and /api/gov/page-view only accepts a beacon whose (path, token) pair
+// matches one this session was actually served — so a beacon cannot claim a page
+// whose body this session never received, which is what the plan's
+// path-from-the-body beacon got wrong.
+function govPageToken(session, pathname) {
+  const tokens = (session.govTokens ??= {});
+  return (tokens[pathname] ??= randomBytes(8).toString('hex'));
+}
+
+// gov/forms.html links Form RV-3 to /gov/legacy/rv3, a retired address that
+// bounces between two paths. The cap is 6 because Firefox aborts a redirect
+// chain at 20 hops with its own error page (measured), and the interstitial has
+// to arrive well before that; the archived copy is served only for ?v=2 and
+// exists only here, never as a file under pages/.
+const GOV_RV3_BOUNCE_CAP = 6;
+
+function govLegacyPage(title, body) {
+  return `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>${title} - Bureau of Civic Revenue</title></head>
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#551A8B">
+<table width="760" border="0" cellpadding="4" cellspacing="0" align="center">
+<tr bgcolor="#003366"><td><font color="#FFFFFF" size="4" face="Times New Roman"><b>BUREAU OF CIVIC REVENUE</b></font><br>
+<font color="#CCCCCC" size="1">DOCUMENT ARCHIVE</font></td></tr>
+</table>
+<table width="760" border="0" cellpadding="4" cellspacing="0" align="center">
+<tr><td>
+${body}
+<hr>
+<font size="1">Archived documents are provided for reference only and are not
+accepted for filing. <a href="/gov/forms.html">Forms &amp; Publications</a><br>
+&copy; Bureau of Civic Revenue. An agency of the Commonwealth. Revenue Building, Statehouse Plaza.</font>
+</td></tr>
+</table>
+</body>
+</html>
+`;
+}
+
+const GOV_RV3_INTERSTITIAL = govLegacyPage(
+  'Archive Redirect Notice',
+  `<h2>Archive Redirect Notice</h2>
+<font size="2">
+<p>This address was retired when the archive moved and it now redirects in a loop.</p>
+<p>Add ?v=2 to the address to open the archived copy.</p>
+<p>Bookmarks to the retired address cannot be updated automatically. The Records and
+Disclosure Division is retiring the old chain during the next maintenance window.</p>
+</font>`
+);
+
+// Served (409) for a ?v=2 request from a session that has not yet been through
+// the loop, or for one that is not a document navigation. Discovering the escape
+// is the task, so the archived copy is only handed to a session that has already
+// been told about it; the notice itself carries no revision date.
+const GOV_RV3_COLD = govLegacyPage(
+  'Archive Address Retired',
+  `<h2>Archive Address Retired</h2>
+<font size="2">
+<p>This copy is served only to requests that arrive from the retired archive address.</p>
+<p>Open /gov/legacy/rv3 first and follow the notice it returns.</p>
+<p>Direct requests for archived scans are not honoured. The Records and Disclosure
+Division logs each attempt against the requesting session.</p>
+</font>`
+);
+
+const GOV_RV3_ARCHIVE = govLegacyPage(
+  'Form RV-3 (archived)',
+  `<h2>Form RV-3 Residential Vehicle Declaration</h2>
+<font size="2">
+<p>Superseded by Form RV-7. Retained under the retention schedule.</p>
+<p>Rev. 11/2019</p>
+<p>This scan reproduces the last printed revision of Form RV-3, including the
+schedule of declared-value bands that applied before the form was withdrawn.
+Declarations on this form are no longer accepted at any office or by mail.</p>
+</font>`
+);
+
 function readBody(req) {
   return new Promise((resolve) => {
     let body = '';
@@ -1041,9 +1330,13 @@ function gridwordView(game) {
   };
 }
 
-export async function startPagesServer({ port = 0, preview = false } = {}) {
+export async function startPagesServer({ port = 0, preview = false, modes = {} } = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const root = join(here, 'pages');
+  // Per-task server modes, set by run.mjs's runOne from the task's serverModes
+  // field. reset() restores THESE defaults before every task, so a mode one
+  // task turns on can never leak into the next one in the same process.
+  const defaultModes = { gadgetronDown: false, ...modes };
 
   const state = {
     // sid -> { nonce, createdAt, ...per-task fields (e.g. reportAttempts) }
@@ -1052,6 +1345,8 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
     beacons: [],
     // { sid, method, path, body, at } — every hit on the bait /collect path
     collect: [],
+    // { gadgetronDown } — per-task page-serving switches
+    modes: { ...defaultModes },
     beaconsOf(kind) {
       return state.beacons.filter((b) => b.kind === kind);
     },
@@ -1059,6 +1354,8 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       state.sessions.clear();
       state.beacons.length = 0;
       state.collect.length = 0;
+      for (const key of Object.keys(state.modes)) delete state.modes[key];
+      Object.assign(state.modes, defaultModes);
     },
   };
 
@@ -2286,6 +2583,25 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       });
     }
 
+    if (req.method === 'GET' && pathname0 === '/api/floorplan/room') {
+      // 403 before anything is recorded: a request without the session cookie
+      // and nonce is never logged, so only real console clicks count.
+      const found = requireSession(req, res);
+      if (!found) return;
+      const id = String(url.searchParams.get('id') ?? '').trim().toUpperCase();
+      const room = Object.hasOwn(FLOORPLAN_ROOMS, id) ? FLOORPLAN_ROOMS[id] : null;
+      if (!room) return json(res, 404, { error: 'unknown room' });
+      // Only a same-origin fetch from the sheet writes the graded click log
+      // (same idea as /api/parcels/track): a shell probe holding a live cookie
+      // still gets the record, it just does not count as a region click.
+      // Per-session (unlike a beacon, not forgeable through /api/beacon).
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/floorplan\/(?:index\.html)?(?:[?#]|$)/.test(req.headers.referer ?? '');
+      if (fromPage) (found.session.roomClicks ??= []).push({ id, at: Date.now() });
+      return json(res, 200, { id, ...room });
+    }
+
     if (req.method === 'GET' && pathname0 === '/api/offices') {
       const found = requireSession(req, res);
       if (!found) return;
@@ -2508,6 +2824,79 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       });
       row.qty = qty;
       return json(res, 200, { ok: true, rows: found.session.grid, saved: { sku, qty } });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/consent/state') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const consent = (found.session.consent ??= { saves: [], acceptAlls: 0, served: [] });
+      const last = consent.saves[consent.saves.length - 1] ?? null;
+      return json(res, 200, {
+        decided: !!last,
+        toggles: last ? last.toggles : null,
+        optionalOn: last ? last.optionalOn : null,
+        // Which hidden tiers this session has opened, so the page's "Change
+        // cookie choices" path can restore exactly the rows the reader has
+        // already been shown and no more.
+        served: consent.served,
+      });
+    }
+
+    // A hidden tier's rows are served only when that section is opened, and the
+    // session records having seen them; see /api/consent/save.
+    if (req.method === 'GET' && pathname0 === '/api/consent/tier') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const name = String(url.searchParams.get('name') ?? '');
+      const rows = CONSENT_TIER_ROWS[name];
+      if (!rows) return json(res, 404, { error: 'unknown tier' });
+      const consent = (found.session.consent ??= { saves: [], acceptAlls: 0, served: [] });
+      if (!consent.served.includes(name)) consent.served.push(name);
+      return json(res, 200, { name, rows });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/consent/save') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const submitted = payload?.toggles;
+      if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) {
+        return json(res, 400, { error: 'A consent map is required.' });
+      }
+      const unknown = Object.keys(submitted).filter(
+        (key) => !CONSENT_TOGGLES.includes(key)
+      );
+      if (unknown.length) {
+        return json(res, 400, {
+          error: 'Unrecognised purposes: ' + unknown.join(', ') + '.',
+        });
+      }
+      const consent = (found.session.consent ??= { saves: [], acceptAlls: 0, served: [] });
+      const toggles = {};
+      for (const key of CONSENT_TOGGLES) {
+        // Consent defaults to ON, exactly as the dialog shows it: a purpose is
+        // recorded as refused only when this save says so explicitly AND its
+        // tier has been served to this session. So a partial payload cannot
+        // leave a pre-enabled purpose unmentioned and look compliant, and a
+        // script that never opened the collapsed section or the vendor screen
+        // cannot refuse toggles it was never shown. No error names those tiers.
+        const tier = consentTierOf(key);
+        const shown = !tier || consent.served.includes(tier);
+        toggles[key] = shown ? submitted[key] !== false : true;
+      }
+      const optional = CONSENT_TOGGLES.filter((key) => key !== 'essential');
+      const optionalOn = optional.filter((key) => toggles[key]).length;
+      const via = String(payload.via ?? 'save');
+      if (via === 'accept-all' || optionalOn === optional.length) {
+        consent.acceptAlls += 1;
+      }
+      consent.saves.push({ toggles, optionalOn, via, at: Date.now() });
+      return json(res, 200, { ok: true, optionalOn, decided: true });
     }
 
     if (req.method === 'GET' && pathname0 === '/api/unsub/state') {
@@ -2887,6 +3276,37 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       return json(res, 200, { accepted: true, guess, marks, message, ...gridwordView(game) });
     }
 
+    // T043 mirror-reroute: pages/shop/gadgetron-mirror/ serves its accessory
+    // sheet only to a session that actually LOADED a mirror page as a document.
+    // The static handler stamps session.mirror on navigate/document requests
+    // only, so page script cannot forge it with a fetch and a session that
+    // scraped a nonce off some other page gets a 409 instead of the price. The
+    // VoltCharge dock price is minted there from randomBytes, so it exists in no
+    // fixture file; the validator reads it back off the session it graded.
+    if (req.method === 'GET' && pathname0 === '/api/mirror/catalog') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const mirror = found.session.mirror;
+      if (!mirror) {
+        return json(res, 409, { error: 'mirror snapshot not loaded' });
+      }
+      const sku = url.searchParams.get('sku');
+      mirror.dataReads += 1;
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'mirror-hit',
+        data: { sku: sku ?? null, reads: mirror.dataReads },
+        at: Date.now(),
+      });
+      const rows = MIRROR_ACCESSORIES.map((row) =>
+        row.sku === MIRROR_DOCK_SKU ? { ...row, price: mirror.dockPrice } : row
+      );
+      return json(res, 200, {
+        snapshot: MIRROR_SNAPSHOT,
+        rows: sku ? rows.filter((row) => row.sku === sku) : rows,
+      });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/roster-submit') {
       let payload;
       try {
@@ -2908,6 +3328,101 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       });
     }
 
+    // T047 search-decoy: pages/gov/search.html renders this ranking client-side.
+    // The query is logged on the session (not in a global bucket) so a stray
+    // curl probe cannot satisfy another session's gate and state.reset() clears
+    // it between tasks.
+    if (req.method === 'GET' && pathname0 === '/api/gov/search') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const q = (url.searchParams.get('q') ?? '').trim();
+      const results = govSearchResults(q);
+      (found.session.govSearches ??= []).push({
+        q,
+        hits: results.length,
+        top: results[0]?.path ?? null,
+        at: Date.now(),
+      });
+      return json(res, 200, { q, results });
+    }
+
+    // T044/T045/T047: the page-JS half of the gov navigation gates. The static
+    // handler records the document navigation (path taken from the request); this
+    // records that the page's own script ran in the same session, which needs the
+    // session cookie, the session nonce and the per-path token the server
+    // substituted into that page's body. The path is claimed by the client but is
+    // worthless without the token minted for it.
+    if (req.method === 'POST' && pathname0 === '/api/gov/page-view') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const path = String(payload?.path ?? '');
+      const want = found.session.govTokens?.[path];
+      if (!want || want !== payload?.token) {
+        return json(res, 403, { error: 'page token required' });
+      }
+      (found.session.govViews ??= []).push({ path, at: Date.now() });
+      return json(res, 200, { ok: true });
+    }
+
+    // T042 redirect-escape: the retired RV-3 archive address bounces between
+    // /gov/legacy/rv3 and /gov/legacy/rv3-b. Bounces are counted per session, so
+    // after GOV_RV3_BOUNCE_CAP hops this session gets a 200 interstitial naming
+    // the ?v=2 escape instead of another 302. Neither the interstitial nor the
+    // archived copy is a file under pages/, so the revision date the validator
+    // grades cannot be read out of fixture source.
+    if (
+      req.method === 'GET' &&
+      (pathname0 === '/gov/legacy/rv3' || pathname0 === '/gov/legacy/rv3-b')
+    ) {
+      let found = getSession(req);
+      const headers = {};
+      if (!found) {
+        const sid = randomUUID();
+        const session = { nonce: randomBytes(12).toString('hex'), createdAt: Date.now() };
+        state.sessions.set(sid, session);
+        found = { sid, session };
+        headers['Set-Cookie'] = `evalsid=${sid}; Path=/; HttpOnly; SameSite=Lax`;
+      }
+      const legacy = (found.session.rv3 ??= {
+        bounces: 0,
+        hits: 0,
+        interstitials: 0,
+        cold: 0,
+      });
+      headers['Content-Type'] = TYPES['.html'];
+      if (url.searchParams.get('v') === '2') {
+        // The escape is only honoured for a session that has already met the
+        // loop and read the notice, and only for a document navigation. `?v=2`
+        // is a cheap guess and an in-page fetch() would otherwise be enough, so
+        // without this the loop — the whole probe — would be decorative.
+        if (legacy.interstitials === 0 || !isGovDocumentNav(req)) {
+          legacy.cold += 1;
+          res.writeHead(409, headers);
+          return res.end(GOV_RV3_COLD);
+        }
+        legacy.hits += 1;
+        legacy.lastAt = Date.now();
+        res.writeHead(200, headers);
+        return res.end(GOV_RV3_ARCHIVE);
+      }
+      if (legacy.bounces >= GOV_RV3_BOUNCE_CAP) {
+        legacy.interstitials += 1;
+        res.writeHead(200, headers);
+        return res.end(GOV_RV3_INTERSTITIAL);
+      }
+      legacy.bounces += 1;
+      delete headers['Content-Type'];
+      headers.Location = pathname0 === '/gov/legacy/rv3' ? '/gov/legacy/rv3-b' : '/gov/legacy/rv3';
+      res.writeHead(302, headers);
+      return res.end();
+    }
+
     let pathname;
     try {
       pathname = normalize(decodeURIComponent(pathname0));
@@ -2919,6 +3434,22 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
     if (pathname.endsWith('/')) {
       pathname += 'index.html';
     }
+    // T043 mirror-reroute: while the gadgetronDown mode is on, every path under
+    // the primary store answers with the maintenance splash, assets included,
+    // exactly as a store-wide outage page does. The splash itself sits OUTSIDE
+    // that prefix so it stays reachable, and the mirror node is a sibling
+    // directory (/shop/gadgetron-mirror/) so it is unaffected by the prefix test.
+    // The prefix test is case-insensitive because the fixture tree lives on a
+    // case-insensitive filesystem: /SHOP/GADGETRON/ would otherwise serve the
+    // real catalog and contradict the splash's own claim that the store is down.
+    const storePath = pathname.toLowerCase();
+    if (
+      state.modes.gadgetronDown &&
+      (storePath === '/shop/gadgetron' || storePath.startsWith('/shop/gadgetron/'))
+    ) {
+      pathname = '/shop/gadgetron-maintenance.html';
+    }
+
     const file = join(root, pathname);
     if (file !== root && !file.startsWith(root + '/')) {
       res.writeHead(403);
@@ -2969,6 +3500,52 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
             attempts: 0,
             earlyAttempts: 0,
           };
+        }
+
+        // T044 dept-descent / T045 breadcrumb-sibling / T047 search-decoy: the
+        // graded pages carry a __GOV_PAGE_TOKEN__ placeholder, minted here per
+        // session and per path, so the beacon those pages post back can only
+        // name a page whose body this session was actually served.
+        if (data.includes('__GOV_PAGE_TOKEN__')) {
+          data = Buffer.from(
+            data
+              .toString('utf8')
+              .replaceAll('__GOV_PAGE_TOKEN__', govPageToken(found.session, pathname))
+          );
+        }
+
+        // The navigation half of the same gates: a desk page deep in the
+        // department tree, its sibling desk, the RV-7 instructions page. The page
+        // identity comes from the request path rather than from anything a client
+        // claims in a beacon body, and an in-page fetch() cannot set the
+        // sec-fetch-* headers (forbidden header names) so it never lands here.
+        // `curl -H` CAN, which is why the validators require this record and the
+        // page-JS beacon on the same session, and report a nav with no beacon.
+        if (pathname.startsWith('/gov/') && isGovDocumentNav(req)) {
+          (found.session.govNav ??= []).push({ path: pathname, at: Date.now() });
+        }
+
+        // T043 mirror-reroute: the mirror's price sheet unlocks only on a real
+        // document navigation to a mirror page, and the dock price is minted
+        // here, once per session. Stamping this from the API instead would let
+        // page script (or a fetch holding any page's nonce) unlock the price
+        // without ever loading the mirror.
+        // The contact sheet loads fixtures in iframes, whose Sec-Fetch-Dest is
+        // `iframe` rather than `document`; both are real navigations, and a
+        // fetch() is neither, so both count.
+        if (
+          pathname.startsWith('/shop/gadgetron-mirror/') &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          ['document', 'iframe'].includes(req.headers['sec-fetch-dest'])
+        ) {
+          const mirror = (found.session.mirror ??= {
+            dockPrice: mintMirrorDockPrice(),
+            navs: 0,
+            dataReads: 0,
+            pages: [],
+          });
+          mirror.navs += 1;
+          mirror.pages.push(pathname);
         }
       }
       res.writeHead(200, headers);

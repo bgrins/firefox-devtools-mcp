@@ -130,6 +130,10 @@ try {
     }
     const ctx = { pages };
     pages.state.reset();
+    // The same per-task modes runOne applies, so a golden path is graded against
+    // the pages the real run serves. mirror-reroute's driver ASSERTS the outage
+    // is armed rather than arming it, which is what keeps this plumbing covered.
+    Object.assign(pages.state.modes, task.serverModes ?? {});
     let answer;
     try {
       answer = await driver.run(helpers, ctx);

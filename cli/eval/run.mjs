@@ -703,6 +703,208 @@ async function webTasks(base) {
       },
     },
     {
+      id: 'dept-descent',
+      tier: 'long',
+      ask:
+        `Open ${base}/gov/departments/ — the Bureau's department directory. Somewhere ` +
+        `under it is the Subsurface Permits desk. Navigate the directory to that desk's ` +
+        `own page and report its public counter hours: the days it is open and the ` +
+        `opening and closing times.`,
+      validate: (rawText, ctx) => {
+        // Markdown emphasis stripped and the whole typographic dash family folded
+        // to '-', so a reformatted answer ("9:15 AM – 12:45 PM") is not failed on
+        // punctuation.
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+        const g = ANSWERS.govNav;
+        const sessions = [...ctx.pages.state.sessions.values()];
+        // Two server-observed factors on ONE session: the static handler recorded
+        // a document navigation to the desk path (path taken from the request, so
+        // it cannot be claimed), and that page's own script posted the per-path
+        // token the server substituted into the body it served. sec-fetch-* is a
+        // forbidden header for fetch() but `curl -H` sets it freely, so the
+        // navigation record alone proves only "not an in-page fetch"; the pair is
+        // the repo's live-session baseline (cookie + nonce + per-page token). It
+        // is also what makes the near-miss desks ("Subsurface Utility Notices" in
+        // another division) an auto-fail: different path, different hours.
+        const navHit = (s) => (s.govNav ?? []).some((n) => n.path === g.deskPath);
+        const viewHit = (s) => (s.govViews ?? []).some((v) => v.path === g.deskPath);
+        const winners = sessions.filter((s) => navHit(s) && viewHit(s));
+        // A navigation record with no matching beacon is the signature of a
+        // forged-header request; reported so a suspicious pass is visible.
+        const navOnly = sessions.filter((s) => navHit(s) && !viewHit(s)).length;
+        // Parts checked independently and without anchors, so "Tuesday and
+        // Thursday, 09:15 a.m. to 12:45 p.m." and "Tue & Thu 9:15 AM - 12:45 PM"
+        // are the same right answer; the [:.] allows the European dot notation.
+        // No other page in the 127-page tree carries either time (the generator
+        // asserts it).
+        const open = /9[:.]15/.test(text);
+        const close = /12[:.]45/.test(text);
+        const days = /\btue/i.test(text) && /\bthu/i.test(text);
+        const walked = sessions.reduce(
+          (n, s) =>
+            n + (s.govNav ?? []).filter((x) => x.path.startsWith('/gov/departments/')).length,
+          0
+        );
+        return {
+          pass: winners.length > 0 && open && close && days,
+          detail:
+            `deskVisits=${winners.length} navWithoutPageJs=${navOnly} open9:15=${open} ` +
+            `close12:45=${close} days=${days} treePagesOpened=${walked}`,
+        };
+      },
+    },
+    {
+      id: 'breadcrumb-sibling',
+      ask:
+        `Open ${base}${ANSWERS.govNav.deskPath} — the Subsurface Permits desk in the ` +
+        `Bureau's department directory. Its sibling desk in the same section is Surface ` +
+        `Permits. Navigate to the Surface Permits desk's own page (the breadcrumbs may ` +
+        `help) and report that desk's telephone number.`,
+      validate: (rawText, ctx) => {
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+        const g = ANSWERS.govNav;
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const navHit = (s) => (s.govNav ?? []).some((n) => n.path === g.siblingPath);
+        const viewHit = (s) => (s.govViews ?? []).some((v) => v.path === g.siblingPath);
+        const winners = sessions.filter((s) => navHit(s) && viewHit(s));
+        const navOnly = sessions.filter((s) => navHit(s) && !viewHit(s)).length;
+        const wanted = /\b014[-\s.]?8862\b/.test(text);
+        // Swapped attribution is the failure mode this task exists to catch, so
+        // the decoy number is judged per clause rather than per answer: a clause
+        // that hands the TARGET desk the start desk's number fails, while a
+        // contrastive correct answer ("8862, not 014-3391") does not, because the
+        // contrast clause carries a negation marker and does not name the target.
+        // Clauses break on punctuation and on the conjunctions that separate two
+        // attributions in one sentence.
+        const clauses = text.split(/[.!?\n;:,]+|\s(?:and|but|while|whereas|whilst)\s/i);
+        const contrast =
+          /\b(not|n[o']t|never|no longer|rather|instead|versus|vs\.?|as opposed|wrong|incorrect|mistak|confus|ignore|decoy)/i;
+        // "Surface" only counts as the target when it is not part of
+        // "Subsurface"; a clause naming both is treated as naming the target.
+        const namesTarget = (c) => /(?<!sub)surface/i.test(c);
+        const namesStart = (c) => /subsurface/i.test(c);
+        const misattributed = clauses.some((c) => {
+          if (contrast.test(c)) return false;
+          const decoyNumber = /014[-\s.]?3391/.test(c);
+          const wantedNumber = /014[-\s.]?8862/.test(c);
+          return (
+            (decoyNumber && namesTarget(c)) ||
+            (wantedNumber && namesStart(c) && !namesTarget(c))
+          );
+        });
+        const decoyMentions = (text.match(/014[-\s.]?3391/g) ?? []).length;
+        // Efficiency only, never scored: a session that walked back to the
+        // directory root took the long way round instead of using breadcrumbs.
+        const viaRoot = sessions.some((s) =>
+          (s.govNav ?? []).some((n) => n.path === '/gov/departments/index.html')
+        );
+        return {
+          pass: winners.length > 0 && wanted && !misattributed,
+          detail:
+            `siblingVisits=${winners.length} navWithoutPageJs=${navOnly} has8862=${wanted} ` +
+            `misattributed=${misattributed} decoyMentions=${decoyMentions} ` +
+            `viaDirectoryRoot=${viaRoot}`,
+        };
+      },
+    },
+    {
+      id: 'search-decoy',
+      ask:
+        `Open ${base}/gov/ and use the site search to find the mailing address for ` +
+        `submitting Form RV-7 (careful: NOT Form RV-7A — they are different forms and ` +
+        `they do not share an address). Report the full mailing address.`,
+      validate: (rawText, ctx) => {
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const searched = (s) => (s.govSearches ?? []).length > 0;
+        const opened = (s) =>
+          (s.govNav ?? []).some((n) => n.path === '/gov/rv7-instructions.html') &&
+          (s.govViews ?? []).some((v) => v.path === '/gov/rv7-instructions.html');
+        // Prefer the session that did BOTH — the house rule is to grade the
+        // session that completed the flow. The cross-session fallback only exists
+        // for a cookie re-minted mid-task, and `detail` says which branch fired so
+        // a split pass is visible in the results.
+        const searches = sessions.reduce((n, s) => n + (s.govSearches ?? []).length, 0);
+        const openedTruth = sessions.filter(opened);
+        const gate = sessions.some((s) => searched(s) && opened(s))
+          ? 'one-session'
+          : searches > 0 && openedTruth.length > 0
+            ? 'cross-session'
+            : 'none';
+        const openedDecoy = sessions.filter((s) =>
+          (s.govNav ?? []).some((n) => n.path === '/gov/rv7a-instructions.html')
+        );
+        // "PO Box 4410", "P.O. Box 4410" and "Box 4410" all count; the box
+        // number is guarded against being part of a longer number.
+        const box = /(?<!\d)4410(?!\d)/.test(text) && /\bbox\b/i.test(text);
+        // Same per-clause attribution as breadcrumb-sibling: giving Form RV-7 the
+        // annex box, or the Declarations Unit box to Form RV-7A, is the swap this
+        // task measures, while "PO Box 4410 — do not use PO Box 7 A" survives.
+        const clauses = text.split(/[.!?\n;:,]+|\s(?:and|but|while|whereas|whilst)\s/i);
+        const contrast =
+          /\b(not|n[o']t|never|no longer|rather|instead|versus|vs\.?|as opposed|wrong|incorrect|mistak|confus|ignore|decoy)/i;
+        const namesTarget = (c) => /\brv[-\s]?7(?![a\d])/i.test(c);
+        const namesDecoyForm = (c) => /\brv[-\s]?7\s?a\b/i.test(c);
+        const misattributed = clauses.some((c) => {
+          if (contrast.test(c)) return false;
+          const decoyBox = /box\s*7\s*a\b|substation annex/i.test(c);
+          const wantedBox = /(?<!\d)4410(?!\d)/.test(c);
+          return (
+            (decoyBox && namesTarget(c)) ||
+            (wantedBox && namesDecoyForm(c) && !namesTarget(c))
+          );
+        });
+        const decoyMentions = (text.match(/box\s*7\s*a\b|substation annex/gi) ?? []).length;
+        return {
+          pass: gate !== 'none' && box && !misattributed,
+          detail:
+            `gate=${gate} searches=${searches} openedRV7Instructions=${openedTruth.length} ` +
+            `openedRV7A=${openedDecoy.length} hasBox4410=${box} ` +
+            `misattributed=${misattributed} decoyMentions=${decoyMentions}`,
+        };
+      },
+    },
+    {
+      id: 'redirect-escape',
+      ask:
+        `Open ${base}/gov/forms.html and retrieve the archived Form RV-3 page through ` +
+        `the legacy archive link in the forms table (that old address is unreliable). ` +
+        `Report the revision date shown on the archived page.`,
+      validate: (rawText, ctx) => {
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+        const sessions = [...ctx.pages.state.sessions.values()];
+        // rv3.hits is incremented only by the server's ?v=2 branch, and that
+        // branch serves the archive only to a session that has already been
+        // through the loop and been handed the notice, and only for a document
+        // navigation. So the loop is load-bearing: a cold `?v=2` guess (or an
+        // in-page fetch of it) gets a 409 and is counted in rv3.cold instead.
+        // Interstitials are re-checked here so the gate does not rest on the
+        // ordering inside one server branch.
+        const served = sessions.filter(
+          (s) => (s.rv3?.hits ?? 0) > 0 && (s.rv3?.interstitials ?? 0) > 0
+        );
+        const bounces = sessions.reduce((n, s) => n + (s.rv3?.bounces ?? 0), 0);
+        const notices = sessions.reduce((n, s) => n + (s.rv3?.interstitials ?? 0), 0);
+        const cold = sessions.reduce((n, s) => n + (s.rv3?.cold ?? 0), 0);
+        const rev =
+          /\b11\s*\/\s*2019\b/.test(text) || /\bnov(?:ember)?\.?\s*,?\s*2019\b/i.test(text);
+        return {
+          pass: served.length > 0 && rev,
+          detail:
+            `archiveServed=${served.length} bounces=${bounces} notices=${notices} ` +
+            `coldAttempts=${cold} rev11/2019=${rev}`,
+        };
+      },
+    },
+    {
       id: 'mfa-login',
       ask:
         `Log in at ${base}/portal/ as ops@bluefern.example with password ` +
@@ -1763,6 +1965,59 @@ async function webTasks(base) {
       },
     },
     {
+      id: 'floorplan-room',
+      ask:
+        `Open ${base}/floorplan/ — the facilities console for Ostmark House, ` +
+        `showing the Level 04 space plan. Using the plan, open the space record ` +
+        `for the corner office in the north-east of the building and report who ` +
+        `occupies it.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const want = ANSWERS.floorplan;
+        const openedBy = (s) => (s.roomClicks ?? []).map((c) => c.id);
+        // Server-observed gate: only a same-origin GET /api/floorplan/room
+        // appends to session.roomClicks, and it 403s (recording nothing)
+        // without the session cookie plus nonce, so neither a forged
+        // /api/beacon nor an off-page shell probe can fake it.
+        // Grade the session that opened the NE corner record, so a stray curl
+        // probe or a re-minted cookie cannot shadow the real run.
+        const sessions = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.roomClicks ?? []).length
+        );
+        const session = sessions.find((s) => openedBy(s).includes(want.room)) ?? sessions[0];
+        const ids = session ? openedBy(session) : [];
+        const opened = ids.includes(want.room);
+        const roomCited = want.roomPattern.test(text);
+        // The surname is unguessable, so it is always required; the first name
+        // may be dropped or initialled when the room code pins the answer down.
+        const named =
+          want.surnamePattern.test(text) && (want.firstNamePattern.test(text) || roomCited);
+        // Mentioning a decoy is fine — an agent that opens NE-3 or SE-7 on the
+        // way to NE-4 may narrate both — but asserting one as the north-east
+        // corner occupant or as the final answer fails, so an agent that falls
+        // for the north-is-left trap cannot pass on the strength of having
+        // enumerated rooms. Judged per clause; clauses that also name Enquist,
+        // that negate, or that hedge (narrating the trap before correcting it)
+        // are narration rather than a competing conclusion.
+        const exempt =
+          /\benquist\b|\b(?:not|n[o']t|never|no longer|isn'?t|wasn'?t|rather than|instead of|vacated|former(?:ly)?|previous(?:ly)?|would|might|if|assuming|although|though|whereas|seems?|seemed|appears?|appeared|looks?|looked|initially|at first|visually)\b/i;
+        const wrongConclusion = text
+          .split(/[.!?\n;]+/)
+          .some((clause) => !exempt.test(clause) && want.decoyClaim.test(clause));
+        // Reported for diagnosis only, never gated.
+        const decoys = [want.decoyNeOccupant, want.decoySeOccupant, want.vacated].filter((n) =>
+          new RegExp(`\\b${n.split(' ').pop()}\\b`, 'i').test(text)
+        );
+        return {
+          pass: opened && named && !wrongConclusion,
+          detail:
+            `sessions=${sessions.length} opened=[${ids.join(',')}] ne4=${opened} ` +
+            `ne3=${ids.includes(want.decoyNeRoom)} named=${named} roomCited=${roomCited} ` +
+            `wrongConclusion=${wrongConclusion} decoysMentioned=[${decoys.join(', ')}]`,
+        };
+      },
+    },
+    {
       id: 'draft-resume',
       ask:
         `Open ${base}/forms/draft.html — a grant application form that autosaves. ` +
@@ -2015,6 +2270,50 @@ async function webTasks(base) {
             `modals=${modals.length} methods=${methods.join(',') || 'none'} ` +
             `removed=${removed} overlayClicks=${graded?.overlayClicks ?? 0} ` +
             `titleOk=${titleOk}`,
+        };
+      },
+    },
+    {
+      id: 'consent-reject',
+      tier: 'long',
+      ask:
+        `Open ${base}/news/consent.html — a link-aggregator front page behind a ` +
+        `cookie-consent dialog. Before you read anything, refuse ALL non-essential ` +
+        `cookies: go through "Manage options" and turn off every optional purpose, ` +
+        `every "legitimate interest" entry (those are pre-enabled and sit in a ` +
+        `collapsed section) and every vendor/partner switch, then save your choices. ` +
+        `Do not use "Accept all". Then report the #2 headline in the stream.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const optional = ANSWERS.consentReject.optional;
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.consent);
+        const lastSave = (s) => s.consent.saves[s.consent.saves.length - 1] ?? null;
+        const withSaves = sessions.filter((s) => (s.consent.saves ?? []).length > 0);
+        const clean = (save) => !!save && optional.every((key) => save.toggles[key] === false);
+        // Grade the FINAL save of the session that actually rejected everything,
+        // so a stray curl probe or a re-minted cookie cannot shadow the real run
+        // and the page's own "Change cookie choices" recovery path still works.
+        const graded =
+          withSaves.find((s) => clean(lastSave(s))) ?? withSaves[withSaves.length - 1] ?? null;
+        const save = graded ? lastSave(graded) : null;
+        const stillOn = save ? optional.filter((key) => save.toggles[key] !== false) : optional;
+        // Diagnostic only: how many saves in the run consented to everything.
+        // Not graded — an agent that hits "Accept all" (or saves before changing
+        // anything) can still recover by reopening the dialog and turning all
+        // eleven off, which is exactly what the page invites it to do.
+        const acceptAlls = sessions.reduce((n, s) => n + (s.consent.acceptAlls ?? 0), 0);
+        // Row 2 of items.json is short enough to survive the snapshot's 27-char
+        // text cap, but the fallback keeps a reworded answer (including the
+        // "PostgreSQL" expansion the page's own origin label invites) from
+        // failing. Keep both in sync with items.json.
+        const headlineOk =
+          text.includes(newsItems[1].title) || /postgre(?:s|sql)\s*v?\s*19/i.test(text);
+        return {
+          pass: !!save && stillOn.length === 0 && headlineOk,
+          detail:
+            `sessions=${sessions.length} saves=${graded ? graded.consent.saves.length : 0} ` +
+            `via=${save ? save.via : 'none'} stillOn=[${stillOn.join(',')}] ` +
+            `acceptAlls=${acceptAlls} headlineOk=${headlineOk}`,
         };
       },
     },
@@ -2327,6 +2626,62 @@ async function webTasks(base) {
             `sessions=${sessions.length} cart=${JSON.stringify(asMap(cart))} ` +
             `cartOk=${cartOk} oosSeen=${oosSeen} namesApproved=${namesApproved} ` +
             `namesDecoyAsChoice=${namesDecoyAsChoice}`,
+        };
+      },
+    },
+    {
+      id: 'mirror-reroute',
+      // Read by runOne: the pages server serves the maintenance splash for
+      // /shop/gadgetron/* during THIS task only.
+      serverModes: { gadgetronDown: true },
+      ask:
+        `Find Gadgetron's current price for the VoltCharge DK-100 dock. Their main store ` +
+        `at ${base}/shop/gadgetron/ may be down for maintenance; when it is, Gadgetron ` +
+        `serves its catalog from a read-only mirror on the same host. Report the price and ` +
+        `the URL of the page you read it from.`,
+      validate: (rawText, ctx) => {
+        // Strip markdown emphasis, and fold every dash-like codepoint (a model
+        // that renders a hyphenated path with a non-breaking hyphen or an en
+        // dash still named the right page) onto an ASCII hyphen.
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212]/g, '-');
+        const route = ANSWERS.mirrorReroute;
+        // Optional $, optional space, no digit either side: "$96.75", "96.75",
+        // "USD 96.75" all pass, "196.75" and "96.755" do not.
+        const priceIn = (price) =>
+          new RegExp(`(?<![\\d.])\\$?\\s?${price.replace('.', '\\.')}(?!\\d)`).test(text);
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.mirror);
+        // Grade the session that loaded a mirror page AND read the price sheet,
+        // preferring one whose minted price the answer actually quotes: a curl
+        // probe mints its own session, and picking [0] would let it shadow the run.
+        const session =
+          sessions.find((s) => s.mirror.dataReads > 0 && priceIn(s.mirror.dockPrice)) ??
+          sessions.find((s) => s.mirror.dataReads > 0) ??
+          sessions[0] ??
+          null;
+        const mirror = session?.mirror ?? null;
+        const navigated = (mirror?.navs ?? 0) >= 1;
+        const readSheet = (mirror?.dataReads ?? 0) >= 1;
+        const priceOk = mirror ? priceIn(mirror.dockPrice) : false;
+        const decoyQuoted = Object.values(route.decoyDocks).filter(priceIn);
+        // Any of these identifies where the figure came from; no contiguous URL
+        // is required. The third branch credits the network-log solve path,
+        // which cites the mirror's JSON endpoint or the dock's SKU rather than
+        // the spec sheet's filename.
+        const sourceOk =
+          /gadgetron[-\s]?mirror/i.test(text) ||
+          (/\bmirror\b/i.test(text) &&
+            (text.toLowerCase().includes(route.dockFile) ||
+              /api\/mirror\/catalog/i.test(text) ||
+              text.toUpperCase().includes(route.dockSku)));
+        return {
+          pass: navigated && readSheet && priceOk && sourceOk,
+          detail:
+            `sessions=${sessions.length} navs=${mirror?.navs ?? 0} ` +
+            `reads=${mirror?.dataReads ?? 0} pages=${(mirror?.pages ?? []).join(' ')} ` +
+            `price=${mirror?.dockPrice ?? '-'} priceOk=${priceOk} sourceOk=${sourceOk}` +
+            (decoyQuoted.length ? ` decoyQuoted=${decoyQuoted.join(',')}` : ''),
         };
       },
     },
@@ -3004,6 +3359,10 @@ async function runCondition(backendName, condition, shared) {
     for (let attempt = 0; ; attempt++) {
       // Fresh server state per attempt, so a retry is graded on its own run.
       env.pages.state.reset();
+      // Per-task page-serving modes (mirror-reroute takes the gadgetron store
+      // offline for its own run only). reset() above restored the server's
+      // defaults, so a mode can never leak into the next task in this process.
+      Object.assign(env.pages.state.modes, task.serverModes ?? {});
       try {
         const ctx = {
           ...shared,

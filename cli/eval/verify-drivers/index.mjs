@@ -10,8 +10,23 @@ import { DRIVERS as forms } from './forms.mjs';
 import { DRIVERS as content } from './content.mjs';
 import { DRIVERS as auth } from './auth.mjs';
 import { DRIVERS as data } from './data.mjs';
+import { DRIVERS as gadgetronMirror } from './gadgetron-mirror.mjs';
+import { DRIVERS as floorplan } from './floorplan.mjs';
+import { DRIVERS as consent } from './consent.mjs';
+import { DRIVERS as govNavigation } from './gov-navigation.mjs';
 
-const modules = { probes, shop, forms, content, auth, data };
+const modules = {
+  probes,
+  shop,
+  forms,
+  content,
+  auth,
+  data,
+  gadgetronMirror,
+  floorplan,
+  consent,
+  govNavigation,
+};
 
 export const DRIVERS = {};
 const seen = new Map();
