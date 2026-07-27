@@ -2004,7 +2004,11 @@ async function webTasks(base) {
         // Snapshot text truncates at 27 chars + ellipsis, so the title is
         // checked as two nearby tokens rather than one long phrase.
         const titleOk =
-          text.includes(newsItems[0].title) || /show\s*hb[^\n]{0,25}spreadsh/i.test(text);
+          text.includes(newsItems[0].title) ||
+          // Snapshot text truncates at 27 chars, so a correct agent may echo the
+          // title clipped; match a distinctive interior phrase instead. Keep this
+          // in sync with items.json[0].title.
+          /spreadsheet that compiles/i.test(text);
         return {
           pass: dismissedOk && !removed && titleOk,
           detail:

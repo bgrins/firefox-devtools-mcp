@@ -2,72 +2,111 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Hacker Bulletin</title>
-<style>
-  body { font-family: Verdana, Geneva, sans-serif; font-size: 10pt; background: #f6f6ef; margin: 0; }
-  #wrap { width: 85%; margin: 8px auto; }
-  #topbar { background: #4a7023; padding: 4px 8px; color: #fff; }
-  #topbar a { color: #fff; text-decoration: none; margin-right: 10px; }
-  #logo { display: inline-block; width: 16px; height: 16px; border: 1px solid #fff;
-          text-align: center; font-size: 9px; line-height: 16px; font-weight: 700;
-          vertical-align: middle; margin-right: 6px; }
-  .title { font-size: 11pt; padding: 8px 0 0 4px; }
-  .title a { color: #000; text-decoration: none; }
-  .sitebit, .subtext { color: #828282; font-size: 8pt; }
-  .subtext { padding: 2px 0 10px 4px; }
-  .subtext a { color: #828282; }
-  .comment { margin: 10px 0 0 0; }
-  .ctree { margin-left: 28px; }
-  .chead { color: #828282; font-size: 8pt; }
-  .chead a { color: #828282; }
-  .ctext { padding-top: 3px; max-width: 78ch; }
-  .ctext p { margin: 6px 0; }
-  .more { color: #828282; font-size: 9pt; padding: 14px 0 4px 4px; }
-  #reply-note { color: #828282; font-size: 8pt; margin-top: 16px; }
-  #footer { text-align: center; color: #828282; font-size: 8pt; border-top: 2px solid #4a7023;
-            padding: 8px; margin-top: 16px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Millrace</title>
+<link rel="stylesheet" href="millrace.css">
 </head>
 <body>
-<div id="wrap">
-  <div id="topbar">
-    <span id="logo">HB</span><b>Hacker Bulletin</b>
-    <a href="/news/">new</a> <a href="/news/">past</a> <a href="/news/">comments</a>
-    <a href="/news/">ask</a> <a href="/news/">show</a> <a href="/news/">jobs</a>
-    <span style="float:right"><a href="/news/">login</a></span>
+<header id="masthead">
+  <div class="masthead-in">
+    <a class="wordmark" href="/news/">millrace</a>
+    <span class="tagline">a working stream for people who build things</span>
+    <span class="acct"><a href="/news/">sign in</a><a class="ghost" href="/news/">open an account</a></span>
   </div>
-  <div id="story"></div>
-  <div id="comments"></div>
-  <div id="reply-note">You must be logged in to reply.</div>
-  <div id="footer">Guidelines | FAQ | Lists | API | Security | Legal | Contact<br>
-    Comments are the responsibility of their authors. Flag anything that breaks the guidelines.</div>
+</header>
+<nav id="tabs" aria-label="Sections">
+  <div class="tabs-in">
+    <a class="tab" href="/news/">Stream</a>
+    <a class="tab" href="/news/?sort=fresh">Fresh</a>
+    <a class="tab" href="/news/?view=threads">Threads</a>
+    <a class="tab" href="/news/?tag=asks">Asks</a>
+    <a class="tab" href="/news/?tag=build">Build logs</a>
+    <a class="tab" href="/news/?tag=jobs">Hiring</a>
+    <a class="tab" href="/news/submit">Submit a link</a>
+    <form class="seek" action="/news/" method="get" role="search">
+      <input type="search" name="q" aria-label="Search the stream" placeholder="Search the stream">
+      <button type="submit">Go</button>
+    </form>
+  </div>
+</nav>
+<div id="wrap">
+  <main id="main">
+    <p class="crumbs"><a href="/news/">stream</a> &rsaquo; <span id="crumbtag">submission</span> &rsaquo; discussion</p>
+    <article id="lede"></article>
+    <div class="threadhead">
+      <h2>Discussion</h2>
+      <span class="sortby">sorted by score, replies nested under their parent</span>
+    </div>
+    <section id="thread"></section>
+    <p id="replybar">Replying needs an account. <a href="/news/">Sign in</a> or
+      <a href="/news/">open one</a> &mdash; new accounts can reply immediately and can
+      submit links after their first week.</p>
+  </main>
+  <aside id="rail">
+    <div class="card">
+      <h2>This submission</h2>
+      <ul id="facts"></ul>
+    </div>
+    <div class="card">
+      <h2>House rules</h2>
+      <ul>
+        <li>Reply to the strongest version of the argument.</li>
+        <li>Say who you work for when it is relevant.</li>
+        <li>Flag rather than argue with spam.</li>
+      </ul>
+      <p class="meta"><a href="/news/guidelines">Full guidelines</a> &middot;
+        <a href="/news/moderation">Moderation log</a></p>
+    </div>
+  </aside>
 </div>
+<footer id="footer">
+  <div class="footer-in">
+    <p class="footer-nav">
+      <a href="/news/about">About</a> &middot;
+      <a href="/news/guidelines">Guidelines</a> &middot;
+      <a href="/news/moderation">Moderation log</a> &middot;
+      <a href="/news/feeds">Feeds</a> &middot;
+      <a href="/news/status">Status</a> &middot;
+      <a href="/news/advertise">Sponsor a day</a> &middot;
+      <a href="/news/privacy">Privacy</a> &middot;
+      <a href="/news/terms">Terms</a> &middot;
+      <a href="/news/contact">Contact</a>
+    </p>
+    <p>Millrace is operated by Weirgate Collective LLC, 214 Weir Street, Suite 3,
+      Ashvale, VT 05412. Moderation questions go to
+      <a href="/news/contact">stewards@millrace.example</a>; everything else to
+      help@millrace.example.</p>
+    <p>Submissions and replies remain the work of their authors. Copyright 2026
+      Weirgate Collective LLC.</p>
+  </div>
+</footer>
 <script>
   const id = Number(new URLSearchParams(location.search).get('id'));
 
   // Replies nest structurally inside their parent (not just visual indent)
   // so the hierarchy survives DOM/accessibility snapshots.
-  function renderComment(comment) {
+  function renderRemark(remark) {
     const wrap = document.createElement('div');
-    wrap.className = 'comment';
-    const paragraphs = comment.text
+    wrap.className = 'remark';
+    const paragraphs = remark.text
       .split('\n\n')
       .map((p) => `<p>${p}</p>`)
       .join('');
     wrap.innerHTML =
-      `<div class="chead"><a href="#">${comment.author}</a> ${comment.age} | ` +
-      `<a href="#">flag</a> | <a href="#">parent</a></div>` +
-      `<div class="ctext">${paragraphs}</div>`;
-    const replies = comment.replies ?? [];
+      `<div class="remark-head"><a class="who" href="/news/">${remark.author}</a> ` +
+      `&middot; ${remark.age} &middot; <a href="#">reply</a> &middot; ` +
+      `<a href="#">parent</a> &middot; <a href="#">flag</a></div>` +
+      `<div class="remark-body">${paragraphs}</div>`;
+    const replies = remark.replies ?? [];
     if (replies.length) {
-      const tree = document.createElement('div');
-      tree.className = 'ctree';
-      tree.setAttribute('role', 'group');
-      tree.setAttribute('aria-label', 'replies');
+      const nest = document.createElement('div');
+      nest.className = 'nest';
+      nest.setAttribute('role', 'group');
+      nest.setAttribute('aria-label', 'replies');
       for (const reply of replies) {
-        tree.appendChild(renderComment(reply));
+        nest.appendChild(renderRemark(reply));
       }
-      wrap.appendChild(tree);
+      wrap.appendChild(nest);
     }
     return wrap;
   }
@@ -78,22 +117,47 @@
   ]).then(([items, thread]) => {
     const item = items.find((entry) => entry.rank === id);
     if (!item) {
-      document.getElementById('story').textContent = 'No such item.';
+      document.getElementById('lede').textContent = 'That submission is no longer on the stream.';
       return;
     }
-    document.title = item.title + ' | Hacker Bulletin';
-    const site = item.site ? ` <span class="sitebit">(${item.site})</span>` : '';
-    document.getElementById('story').innerHTML =
-      `<div class="title"><a href="#">${item.title}</a>${site}</div>` +
-      (item.type === 'job'
-        ? `<div class="subtext">${item.age}</div>`
-        : `<div class="subtext">${item.points} points by <a href="#">${item.author}</a> ` +
-          `${item.age} | <a href="#">hide</a> | <a href="#">past</a> | ` +
-          `${item.comments}&nbsp;comment${item.comments === 1 ? '' : 's'}</div>`);
+    document.title = item.title + ' | Millrace';
+    const tag = item.type === 'job' ? 'jobs' : item.tag;
+    document.getElementById('crumbtag').textContent = tag;
+    const origin = item.site ? ` <span class="origin">${item.site}</span>` : '';
+    const lead =
+      item.type === 'job'
+        ? '<span class="chip">hiring</span>'
+        : `<a class="tally" href="/news/" title="Vote this up">${item.points}` +
+          `<span class="unit">points</span></a>`;
+    const byline =
+      item.type === 'job'
+        ? `sponsored listing &middot; posted ${item.age}`
+        : `<a class="who" href="/news/">${item.author}</a> &middot; ${item.age} &middot; ` +
+          `<a class="topic" href="/news/?tag=${item.tag}">${item.tag}</a> &middot; ` +
+          `${item.comments}&nbsp;replies &middot; <a href="/news/">flag</a> ` +
+          `&middot; <a href="/news/">save</a>`;
+    document.getElementById('lede').innerHTML =
+      `${lead}` +
+      `<p class="headline"><a href="#">${item.title}</a>${origin}</p>` +
+      `<p class="byline">${byline}</p>`;
 
-    const container = document.getElementById('comments');
-    for (const comment of thread.comments) {
-      container.appendChild(renderComment(comment));
+    const facts = [
+      `<li>Position on the stream: <strong>${item.rank}</strong></li>`,
+      `<li>Tag: <a class="topic" href="/news/?tag=${tag}">${tag}</a></li>`,
+      `<li>Submitted <span class="meta">${item.age}</span></li>`,
+    ];
+    if (item.type !== 'job') {
+      facts.push(`<li>Score: <strong>${item.points}</strong> points</li>`);
+      facts.push(`<li>Replies, including nested: <strong>${item.comments}</strong></li>`);
+    }
+    if (item.site) {
+      facts.push(`<li>Source: <span class="meta">${item.site}</span></li>`);
+    }
+    document.getElementById('facts').innerHTML = facts.join('');
+
+    const container = document.getElementById('thread');
+    for (const remark of thread.comments) {
+      container.appendChild(renderRemark(remark));
     }
   });
 </script>

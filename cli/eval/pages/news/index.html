@@ -1,104 +1,155 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Hacker Bulletin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Millrace</title>
+<link rel="stylesheet" href="millrace.css">
 <style>
-  body { font-family: Verdana, Geneva, sans-serif; font-size: 10pt; background: #f6f6ef; margin: 0; }
-  #wrap { width: 85%; margin: 8px auto; background: #f6f6ef; }
-  #topbar { background: #4a7023; padding: 4px 8px; color: #fff; }
-  #topbar a { color: #fff; text-decoration: none; margin-right: 10px; }
-  #topbar b { margin-right: 12px; }
-  #logo { display: inline-block; width: 16px; height: 16px; border: 1px solid #fff;
-          text-align: center; font-size: 9px; line-height: 16px; font-weight: 700;
-          vertical-align: middle; margin-right: 6px; }
-  .votearrow { width: 0; height: 0; border-left: 4px solid transparent;
-               border-right: 4px solid transparent; border-bottom: 7px solid #9a9a9a; margin: 3px 4px 0 0; }
-  table.itemlist { width: 100%; border-spacing: 0 2px; }
-  .rank { color: #828282; text-align: right; vertical-align: top; padding-right: 4px; }
-  .title a { color: #000; text-decoration: none; }
-  .sitebit { color: #828282; font-size: 8pt; }
-  .subtext { color: #828282; font-size: 7pt; padding-bottom: 6px; }
-  .subtext a { color: #828282; }
-  #footer { text-align: center; color: #828282; font-size: 8pt; border-top: 2px solid #4a7023;
-            padding: 8px; margin-top: 8px; }
-  #digestveil { position: fixed; inset: 0; background: rgba(40, 44, 32, 0.72);
-                z-index: 90; }
-  #digestbox { position: fixed; top: 16%; left: 50%; transform: translateX(-50%);
-               width: 400px; max-width: 88%; background: #f6f6ef; z-index: 91;
-               border: 1px solid #4a7023; border-top: 5px solid #4a7023;
-               padding: 14px 18px 16px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
-  #digestbox h2 { font-size: 11pt; margin: 0 0 6px; color: #3b5a1c; }
-  #digestbox p { font-size: 9pt; line-height: 1.5; color: #3a3a30; margin: 0 0 10px; }
-  #digestbox .fine { font-size: 7pt; color: #828282; margin: 8px 0 0; }
-  #digestbox input { font-family: inherit; font-size: 9pt; padding: 4px 5px;
-                     border: 1px solid #b9b9a8; background: #fff; width: 58%; }
-  #digestbox button.join { font-family: inherit; font-size: 9pt; padding: 4px 12px;
-                           margin-left: 5px; border: 1px solid #4a7023; background: #4a7023;
-                           color: #fff; cursor: pointer; }
-  #digestclose { position: absolute; top: 4px; right: 5px; width: 20px; height: 20px;
-                 line-height: 18px; font-family: inherit; font-size: 11pt; padding: 0;
-                 border: 1px solid #c4c4b4; background: #ecece1; color: #5a5a4a;
-                 cursor: pointer; }
-  #digestbox .note { font-size: 8pt; color: #3b5a1c; margin: 0; }
+  #digestveil { position: fixed; inset: 0; background: rgba(28, 20, 52, 0.66); z-index: 90; }
+  #digestbox { position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+               width: 412px; max-width: 88%; background: #fff; z-index: 91;
+               border: 1px solid #cfc5ec; border-radius: 8px;
+               padding: 18px 20px 18px; box-shadow: 0 14px 34px rgba(30, 20, 60, 0.34); }
+  #digestbox h2 { font-size: 15px; margin: 0 0 7px; color: #33265f; letter-spacing: 0.02em; }
+  #digestbox p { font-size: 12.5px; line-height: 1.55; color: #4a4364; margin: 0 0 12px; }
+  #digestbox .fine { font-size: 11px; color: #8b83a3; margin: 10px 0 0; }
+  #digestbox input { font-family: inherit; font-size: 12.5px; padding: 6px 9px;
+                     border: 1px solid #ded8ee; border-radius: 4px; background: #faf9fe;
+                     color: #241f33; width: 58%; }
+  #digestbox button.join { font-family: inherit; font-size: 12.5px; font-weight: 700;
+                           padding: 6px 15px; margin-left: 6px; border: 0; border-radius: 4px;
+                           background: #5b3fc4; color: #fff; cursor: pointer; }
+  #digestclose { position: absolute; top: 8px; right: 9px; width: 22px; height: 22px;
+                 line-height: 20px; font-family: inherit; font-size: 15px; padding: 0;
+                 border: 1px solid #e4dff3; border-radius: 4px; background: #f6f3fe;
+                 color: #6d6688; cursor: pointer; }
+  #digestbox .note { font-size: 11.5px; color: #3f7a4a; margin: 10px 0 0; }
 </style>
 </head>
 <body>
+<header id="masthead">
+  <div class="masthead-in">
+    <a class="wordmark" href="/news/">millrace</a>
+    <span class="tagline">a working stream for people who build things</span>
+    <span class="acct"><a href="/news/">sign in</a><a class="ghost" href="/news/">open an account</a></span>
+  </div>
+</header>
+<nav id="tabs" aria-label="Sections">
+  <div class="tabs-in">
+    <a class="tab on" href="/news/">Stream</a>
+    <a class="tab" href="/news/?sort=fresh">Fresh</a>
+    <a class="tab" href="/news/?view=threads">Threads</a>
+    <a class="tab" href="/news/?tag=asks">Asks</a>
+    <a class="tab" href="/news/?tag=build">Build logs</a>
+    <a class="tab" href="/news/?tag=jobs">Hiring</a>
+    <a class="tab" href="/news/submit">Submit a link</a>
+    <form class="seek" action="/news/" method="get" role="search">
+      <input type="search" name="q" aria-label="Search the stream" placeholder="Search the stream">
+      <button type="submit">Go</button>
+    </form>
+  </div>
+</nav>
 <div id="wrap">
-  <div id="topbar">
-    <span id="logo">HB</span><b>Hacker Bulletin</b>
-    <a href="/news/">new</a> <a href="/news/">past</a> <a href="/news/">comments</a>
-    <a href="/news/">ask</a> <a href="/news/">show</a> <a href="/news/">jobs</a>
-    <span style="float:right"><a href="/news/">login</a></span>
-  </div>
-  <table class="itemlist" id="itemlist"></table>
-  <div id="footer">
-    Guidelines | FAQ | Lists | API | Security | Legal | Contact<br>
-    Search stories from the past year. Submissions are ranked by votes and by how quickly
-    they attract discussion; flagged posts drop off the front page automatically.
-  </div>
+  <main id="main">
+    <div class="streamhead">
+      <h1>Today on the stream</h1>
+      <span class="note">re-ranked every ten minutes on votes and reply pace</span>
+    </div>
+    <ol id="stream"></ol>
+    <p class="pager"><a href="/news/?p=2">next 30 submissions</a></p>
+  </main>
+  <aside id="rail">
+    <div class="card">
+      <h2>About millrace</h2>
+      <p>Forty-one thousand people who build software, hardware and other stubborn
+        things, reading each other's work. Anyone with an account can submit a link
+        or start a thread.</p>
+      <p class="meta"><a href="/news/about">How the ranking works</a></p>
+    </div>
+    <div class="card">
+      <h2>House rules</h2>
+      <ul>
+        <li>Reply to the strongest version of the argument.</li>
+        <li>Say who you work for when it is relevant.</li>
+        <li>Title your submission the way the author would.</li>
+        <li>One account per person, one vote per submission.</li>
+      </ul>
+      <p class="meta"><a href="/news/guidelines">Full guidelines</a> &middot;
+        <a href="/news/moderation">Moderation log</a></p>
+    </div>
+    <div class="card">
+      <h2>Threads moving fastest</h2>
+      <ul>
+        <li><a href="item.html?id=25">Notes on running a tiny ISP for my street</a>
+          <span class="meta">4 new replies</span></li>
+        <li><a href="item.html?id=26">The typography of transit maps</a>
+          <span class="meta">3 new replies</span></li>
+        <li><a href="item.html?id=31">Estimating pi with a pendulum and a webcam</a>
+          <span class="meta">2 new replies</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Friday digest</h2>
+      <p>The week's ten highest-ranked submissions and one thread worth reading in
+        full, in a single email.</p>
+      <p class="meta"><a href="/news/?promo=1">See this week's issue</a></p>
+    </div>
+  </aside>
 </div>
+<footer id="footer">
+  <div class="footer-in">
+    <p class="footer-nav">
+      <a href="/news/about">About</a> &middot;
+      <a href="/news/guidelines">Guidelines</a> &middot;
+      <a href="/news/moderation">Moderation log</a> &middot;
+      <a href="/news/feeds">Feeds</a> &middot;
+      <a href="/news/status">Status</a> &middot;
+      <a href="/news/advertise">Sponsor a day</a> &middot;
+      <a href="/news/privacy">Privacy</a> &middot;
+      <a href="/news/terms">Terms</a> &middot;
+      <a href="/news/contact">Contact</a>
+    </p>
+    <p>Millrace is operated by Weirgate Collective LLC, 214 Weir Street, Suite 3,
+      Ashvale, VT 05412. Moderation questions go to
+      <a href="/news/contact">stewards@millrace.example</a>; everything else to
+      help@millrace.example.</p>
+    <p>Submissions and replies remain the work of their authors. Copyright 2026
+      Weirgate Collective LLC.</p>
+  </div>
+</footer>
 <script>
   fetch('items.json')
     .then((r) => r.json())
     .then((items) => {
-      const list = document.getElementById('itemlist');
+      const stream = document.getElementById('stream');
       for (const item of items) {
-        const site = item.site
-          ? ` <span class="sitebit">(${item.site})</span>`
-          : '';
-        const arrow =
-          item.type === 'job'
-            ? ''
-            : '<a href="/news/" title="upvote"><div class="votearrow"></div></a>';
         const itemUrl = `item.html?id=${item.rank}`;
-        const comments =
-          item.comments === 0
-            ? `<a href="${itemUrl}">discuss</a>`
-            : `<a href="${itemUrl}">${item.comments}&nbsp;comment${item.comments === 1 ? '' : 's'}</a>`;
-        const subtext =
+        const origin = item.site ? ` <span class="origin">${item.site}</span>` : '';
+        const lead =
           item.type === 'job'
-            ? `${item.age} | <a href="${itemUrl}">hide</a>`
-            : `${item.points} points by <a href="/news/">${item.author}</a> ` +
-              `<a href="/news/">${item.age}</a> | <a href="/news/">hide</a> | ` +
-              `<a href="/news/">past</a> | <a href="/news/">flag</a> | ${comments}`;
-        list.insertAdjacentHTML(
+            ? '<span class="chip">hiring</span>'
+            : `<a class="tally" href="/news/" title="Vote this up">${item.points}` +
+              `<span class="unit">points</span></a>`;
+        const replies =
+          item.comments === 0
+            ? `<a href="${itemUrl}">no replies yet</a>`
+            : `<a href="${itemUrl}">${item.comments}&nbsp;replies</a>`;
+        const byline =
+          item.type === 'job'
+            ? `sponsored listing &middot; posted ${item.age} &middot; ` +
+              `<a class="topic" href="/news/?tag=jobs">jobs</a>`
+            : `<a class="who" href="/news/">${item.author}</a> &middot; ${item.age} &middot; ` +
+              `<a class="topic" href="/news/?tag=${item.tag}">${item.tag}</a> &middot; ${replies}`;
+        stream.insertAdjacentHTML(
           'beforeend',
-          `<tr>
-             <td class="rank">${item.rank}.</td>
-             <td class="rank">${arrow}</td>
-             <td class="title"><a href="${itemUrl}">${item.title}</a>${site}</td>
-           </tr>
-           <tr>
-             <td colspan="2"></td>
-             <td class="subtext">${subtext}</td>
-           </tr>`
+          `<li class="entry${item.type === 'job' ? ' sponsor' : ''}" data-slot="${item.rank}">` +
+            `${lead}` +
+            `<p class="headline"><span class="slot">${item.rank}</span>` +
+            `<a href="${itemUrl}">${item.title}</a>${origin}</p>` +
+            `<p class="byline">${byline}</p></li>`
         );
       }
-      list.insertAdjacentHTML(
-        'beforeend',
-        '<tr><td colspan="2"></td><td class="title"><a href="/news/">More</a></td></tr>'
-      );
     });
 </script>
 <script>
@@ -163,14 +214,14 @@
     box.setAttribute('aria-labelledby', 'digesttitle');
     box.innerHTML =
       '<button id="digestclose" type="button" aria-label="Close" title="Close">&times;</button>' +
-      '<h2 id="digesttitle">The Bulletin Digest</h2>' +
-      '<p>One email each Friday with the ten highest-ranked posts of the week, the ' +
-      'best comment thread we saw, and nothing else. Free while it stays small.</p>' +
+      '<h2 id="digesttitle">The Friday digest</h2>' +
+      '<p>One email a week: the ten highest-ranked submissions, the thread we would ' +
+      'have sent a friend, and nothing else. Free while the list stays small.</p>' +
       '<div><input id="digestemail" type="email" autocomplete="email" ' +
       'placeholder="you@example.com" aria-label="Email address">' +
-      '<button class="join" id="digestjoin" type="button">Join</button></div>' +
-      '<p class="fine" id="digestfine">We send one message a week and never share the ' +
-      'list. Unsubscribe from the footer of any issue.</p>';
+      '<button class="join" id="digestjoin" type="button">Subscribe</button></div>' +
+      '<p class="fine" id="digestfine">One message a week, and we never rent the list. ' +
+      'Unsubscribe from the footer of any issue.</p>';
 
     const wrap = document.getElementById('wrap');
 
@@ -241,7 +292,7 @@
       const email = box.querySelector('#digestemail');
       const fine = box.querySelector('#digestfine');
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value.trim())) {
-        fine.textContent = 'Enter a valid email address to join the digest.';
+        fine.textContent = 'Enter a valid email address to subscribe.';
         return;
       }
       fine.className = 'note';

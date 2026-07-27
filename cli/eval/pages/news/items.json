@@ -1,12 +1,13 @@
 [
  {
   "rank": 1,
-  "title": "Show HB: I built a spreadsheet that compiles to WebAssembly",
+  "title": "I built a spreadsheet that compiles to WebAssembly",
   "site": "gridlock.example",
   "points": 487,
   "author": "mlemvik",
   "comments": 14,
-  "age": "10 hours ago"
+  "age": "10 hours ago",
+  "tag": "build"
  },
  {
   "rank": 2,
@@ -15,7 +16,8 @@
   "points": 452,
   "author": "tuplewrangler",
   "comments": 14,
-  "age": "10 hours ago"
+  "age": "10 hours ago",
+  "tag": "releases"
  },
  {
   "rank": 3,
@@ -24,7 +26,8 @@
   "points": 389,
   "author": "quietcursor",
   "comments": 14,
-  "age": "10 hours ago"
+  "age": "10 hours ago",
+  "tag": "history"
  },
  {
   "rank": 4,
@@ -33,7 +36,8 @@
   "points": 356,
   "author": "rackmounted",
   "comments": 14,
-  "age": "11 hours ago"
+  "age": "11 hours ago",
+  "tag": "infra"
  },
  {
   "rank": 5,
@@ -42,7 +46,8 @@
   "points": 341,
   "author": "circadian",
   "comments": 13,
-  "age": "11 hours ago"
+  "age": "11 hours ago",
+  "tag": "science"
  },
  {
   "rank": 6,
@@ -51,16 +56,18 @@
   "points": 335,
   "author": "ringzero",
   "comments": 12,
-  "age": "11 hours ago"
+  "age": "11 hours ago",
+  "tag": "systems"
  },
  {
   "rank": 7,
-  "title": "Show HB: Terminal hex editor with structure templates",
+  "title": "Terminal hex editor with structure templates",
   "site": "hexactly.example.dev",
   "points": 298,
   "author": "nybblenibble",
   "comments": 10,
-  "age": "12 hours ago"
+  "age": "12 hours ago",
+  "tag": "build"
  },
  {
   "rank": 8,
@@ -69,7 +76,8 @@
   "points": 286,
   "author": "coinop",
   "comments": 11,
-  "age": "12 hours ago"
+  "age": "12 hours ago",
+  "tag": "business"
  },
  {
   "rank": 9,
@@ -78,16 +86,18 @@
   "points": 271,
   "author": "rinseaid",
   "comments": 10,
-  "age": "12 hours ago"
+  "age": "12 hours ago",
+  "tag": "hardware"
  },
  {
   "rank": 10,
-  "title": "Ask HB: What's your favorite underrated paper?",
+  "title": "What's your favorite underrated paper?",
   "site": "",
   "points": 264,
   "author": "bibliophage",
   "comments": 10,
-  "age": "13 hours ago"
+  "age": "13 hours ago",
+  "tag": "asks"
  },
  {
   "rank": 11,
@@ -96,7 +106,8 @@
   "points": 243,
   "author": "contourist",
   "comments": 10,
-  "age": "13 hours ago"
+  "age": "13 hours ago",
+  "tag": "graphics"
  },
  {
   "rank": 12,
@@ -105,7 +116,8 @@
   "points": 238,
   "author": "vacuumfull",
   "comments": 9,
-  "age": "13 hours ago"
+  "age": "13 hours ago",
+  "tag": "data"
  },
  {
   "rank": 13,
@@ -114,16 +126,18 @@
   "points": 226,
   "author": "sharepointsurvivor",
   "comments": 10,
-  "age": "14 hours ago"
+  "age": "14 hours ago",
+  "tag": "workplace"
  },
  {
   "rank": 14,
-  "title": "Show HB: A font that renders its own kerning table",
+  "title": "A font that renders its own kerning table",
   "site": "typograph.example.io",
   "points": 214,
   "author": "sidebearing",
   "comments": 10,
-  "age": "14 hours ago"
+  "age": "14 hours ago",
+  "tag": "build"
  },
  {
   "rank": 15,
@@ -132,7 +146,8 @@
   "points": 203,
   "author": "decibelle",
   "comments": 9,
-  "age": "14 hours ago"
+  "age": "14 hours ago",
+  "tag": "science"
  },
  {
   "rank": 16,
@@ -141,7 +156,8 @@
   "points": 197,
   "author": "allocfree",
   "comments": 8,
-  "age": "16 hours ago"
+  "age": "16 hours ago",
+  "tag": "languages"
  },
  {
   "rank": 17,
@@ -150,7 +166,8 @@
   "points": 189,
   "author": "yamlwhisperer",
   "comments": 7,
-  "age": "16 hours ago"
+  "age": "16 hours ago",
+  "tag": "infra"
  },
  {
   "rank": 18,
@@ -159,16 +176,18 @@
   "points": 184,
   "author": "hayescompatible",
   "comments": 7,
-  "age": "16 hours ago"
+  "age": "16 hours ago",
+  "tag": "history"
  },
  {
   "rank": 19,
-  "title": "Show HB: Self-hosted read-it-later with local OCR",
+  "title": "Self-hosted read-it-later with local OCR",
   "site": "shelfspace.example.app",
   "points": 176,
   "author": "tabhoarder",
   "comments": 8,
-  "age": "18 hours ago"
+  "age": "18 hours ago",
+  "tag": "build"
  },
  {
   "rank": 20,
@@ -177,7 +196,8 @@
   "points": 171,
   "author": "hoarelogic",
   "comments": 7,
-  "age": "18 hours ago"
+  "age": "18 hours ago",
+  "tag": "systems"
  },
  {
   "rank": 21,
@@ -186,7 +206,8 @@
   "points": 164,
   "author": "epicyclic",
   "comments": 1,
-  "age": "18 hours ago"
+  "age": "18 hours ago",
+  "tag": "history"
  },
  {
   "rank": 22,
@@ -195,14 +216,16 @@
   "points": 158,
   "author": "mutexkid",
   "comments": 0,
-  "age": "20 hours ago"
+  "age": "20 hours ago",
+  "tag": "debugging"
  },
  {
   "type": "job",
   "title": "Ferrostack (S24) is hiring a staff platform engineer",
   "site": "ferrostack.example.io",
   "age": "20 hours ago",
-  "rank": 23
+  "rank": 23,
+  "tag": "jobs"
  },
  {
   "rank": 24,
@@ -211,7 +234,8 @@
   "points": 147,
   "author": "mantissa",
   "comments": 6,
-  "age": "20 hours ago"
+  "age": "20 hours ago",
+  "tag": "history"
  },
  {
   "rank": 25,
@@ -220,7 +244,8 @@
   "points": 139,
   "author": "fiberneighbor",
   "comments": 6,
-  "age": "23 hours ago"
+  "age": "23 hours ago",
+  "tag": "networking"
  },
  {
   "rank": 26,
@@ -229,14 +254,16 @@
   "points": 131,
   "author": "helveticat",
   "comments": 6,
-  "age": "23 hours ago"
+  "age": "23 hours ago",
+  "tag": "design"
  },
  {
   "type": "job",
   "title": "Hexactly is hiring: senior Rust engineer, tooling team (remote)",
   "site": "hexactly.example.dev",
   "age": "23 hours ago",
-  "rank": 27
+  "rank": 27,
+  "tag": "jobs"
  },
  {
   "rank": 28,
@@ -245,7 +272,8 @@
   "points": 124,
   "author": "iferror",
   "comments": 6,
-  "age": "1 day ago"
+  "age": "1 day ago",
+  "tag": "languages"
  },
  {
   "rank": 29,
@@ -254,16 +282,18 @@
   "points": 117,
   "author": "gopherhole",
   "comments": 5,
-  "age": "1 day ago"
+  "age": "1 day ago",
+  "tag": "networking"
  },
  {
   "rank": 30,
-  "title": "Show HB: Weather station powered by a bicycle dynamo",
+  "title": "Weather station powered by a bicycle dynamo",
   "site": "hubwatts.example.io",
   "points": 109,
   "author": "spokesperson",
   "comments": 6,
-  "age": "1 day ago"
+  "age": "1 day ago",
+  "tag": "build"
  },
  {
   "rank": 31,
@@ -272,7 +302,8 @@
   "points": 102,
   "author": "smallangle",
   "comments": 6,
-  "age": "1 day ago"
+  "age": "1 day ago",
+  "tag": "science"
  },
  {
   "rank": 32,
@@ -281,7 +312,8 @@
   "points": 95,
   "author": "stormdrain",
   "comments": 5,
-  "age": "1 day ago"
+  "age": "1 day ago",
+  "tag": "science"
  },
  {
   "title": "The 500 points of failure in a typical checkout flow",
@@ -290,6 +322,7 @@
   "author": "abandonedcart",
   "comments": 6,
   "age": "1 day ago",
-  "rank": 33
+  "rank": 33,
+  "tag": "design"
  }
 ]

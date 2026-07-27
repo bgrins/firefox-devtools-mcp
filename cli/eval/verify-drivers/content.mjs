@@ -38,15 +38,14 @@ const selectorOf = async (mcp, uid) => {
 // names truncate at 27 chars, hence the prefix match on the rendered title.
 async function openStory({ evaluate, snapshot, mcp, sleep }, rank) {
   const listed = await poll(sleep, () =>
-    evaluate(() => document.querySelectorAll('#itemlist td.title a').length >= 20)
+    evaluate(() => document.querySelectorAll('#stream .entry .headline a').length >= 20)
   );
   if (!listed) throw new Error('front page never rendered its item list');
   // evaluate_script's `args` only accepts snapshot UIDs, so a plain value like
   // the rank has to be interpolated into the function source.
   const title = await evaluate(`() => {
-    const rows = [...document.querySelectorAll('#itemlist tr')];
-    const row = rows.find((r) => r.querySelector('td.rank')?.textContent.trim() === '${rank}.');
-    return row?.querySelector('td.title a')?.textContent.trim() ?? null;
+    const entry = document.querySelector('#stream .entry[data-slot="${rank}"]');
+    return entry?.querySelector('.headline a')?.textContent.trim() ?? null;
   }`);
   if (!title) throw new Error(`no row ranked ${rank} on the front page`);
   const snap = await snapshot();
@@ -223,7 +222,7 @@ export const DRIVERS = {
   'news-thread': {
     note: 'clicks through from the front page; title and top-level count read via evaluate',
     wrong:
-      'The #1 post is "Show HB: I built a spreadsheet that compiles to WebAssembly" ' +
+      'The #1 post is "I built a spreadsheet that compiles to WebAssembly" ' +
       'and its thread shows 14 top-level comments.',
     async run(helpers) {
       const { goto, evaluate, sleep } = helpers;
@@ -231,14 +230,14 @@ export const DRIVERS = {
       await openStory(helpers, 1);
       const info = await poll(sleep, () =>
         evaluate(() => {
-          const title = document.querySelector('#story .title a')?.textContent.trim();
-          const roots = document.querySelectorAll('#comments > .comment').length;
+          const title = document.querySelector('#lede .headline a')?.textContent.trim();
+          const roots = document.querySelectorAll('#thread > .remark').length;
           return title && roots ? { title, roots } : null;
         })
       );
       if (!info) throw new Error('thread never rendered');
-      // The front page's "14 comments" counts replies too; only the un-nested
-      // .comment children of #comments are top-level.
+      // The front page's "14 replies" counts nested replies too; only the
+      // un-nested .remark children of #thread are top-level.
       if (info.roots !== 5) throw new Error(`expected 5 top-level comments, saw ${info.roots}`);
       return (
         `The #1 top post is "${info.title}". Its thread shows ${info.roots} top-level ` +
@@ -254,34 +253,36 @@ export const DRIVERS = {
     wrong: [
       '| rank | title | points | comments |',
       '| --- | --- | --- | --- |',
-      '| 1 | Show HB: I built a spreadsheet that compiles to WebAssembly | 487 | 14 |',
+      '| 1 | I built a spreadsheet that compiles to WebAssembly | 487 | 14 |',
       '| 2 | Postgres 19 released | 452 | 14 |',
       '| 3 | The forgotten history of the trackball | 389 | 14 |',
       '| 4 | Why our startup moved back to bare metal | 356 | 14 |',
       '| 5 | A deep dive into how sleep pressure works | 341 | 13 |',
       '| 6 | Rust in the kernel: a status report | 335 | 12 |',
-      '| 7 | Show HB: Terminal hex editor with structure templates | 298 | 10 |',
+      '| 7 | Terminal hex editor with structure templates | 298 | 10 |',
       '| 8 | The economics of vending machines | 286 | 11 |',
       "| 9 | Reverse engineering my dishwasher's serial protocol | 271 | 10 |",
-      "| 10 | Ask HB: What's your favorite underrated paper? | 264 | 10 |",
+      "| 10 | What's your favorite underrated paper? | 264 | 10 |",
     ].join('\n'),
     async run({ goto, evaluate, snapshot, sleep }) {
       await goto('/news/');
       const rows = await poll(sleep, async () => {
         const out = await evaluate(() => {
           const found = [];
-          for (const tr of document.querySelectorAll('#itemlist tr')) {
-            const rank = tr.querySelector('td.rank')?.textContent.trim() ?? '';
-            const link = tr.querySelector('td.title a');
-            if (!/^\d+\.$/.test(rank) || !link) continue;
-            const sub = tr.nextElementSibling?.querySelector('td.subtext')?.textContent ?? '';
+          for (const entry of document.querySelectorAll('#stream .entry')) {
+            const slot = entry.querySelector('.slot')?.textContent.trim() ?? '';
+            const link = entry.querySelector('.headline a');
+            if (!/^\d+$/.test(slot) || !link) continue;
+            const byline = entry.querySelector('.byline')?.textContent ?? '';
             found.push({
-              rank: rank.replace('.', ''),
+              rank: slot,
               title: link.textContent.trim(),
-              points: (sub.match(/(\d+)\s+points/) ?? [])[1] ?? '',
-              comments: /discuss/.test(sub)
+              // The score sits in the vote pill as its own text node, ahead of
+              // the "points" label span.
+              points: entry.querySelector('.tally')?.firstChild?.textContent.trim() ?? '',
+              comments: /no replies yet/.test(byline)
                 ? '0'
-                : ((sub.match(/(\d+)\s+comments?/) ?? [])[1] ?? ''),
+                : ((byline.match(/(\d+)\s+repl/) ?? [])[1] ?? ''),
             });
           }
           return found;
@@ -318,7 +319,7 @@ export const DRIVERS = {
       await goto('/news/');
       await openStory(helpers, 6);
       const thread = await poll(sleep, async () => {
-        const text = await evaluate(() => document.getElementById('comments')?.innerText ?? '');
+        const text = await evaluate(() => document.getElementById('thread')?.innerText ?? '');
         return String(text).length > 500 ? String(text) : null;
       });
       if (!thread) throw new Error('thread #6 never rendered');
@@ -399,7 +400,7 @@ export const DRIVERS = {
         throw new Error('the server observed the modal being detached rather than dismissed');
       }
       const title = await poll(sleep, () =>
-        evaluate(() => document.querySelector('#itemlist td.title a')?.textContent.trim() ?? null)
+        evaluate(() => document.querySelector('#stream .headline a')?.textContent.trim() ?? null)
       );
       if (!title) throw new Error('front page never rendered its item list');
       return (

@@ -102,6 +102,11 @@ Confidence: high — each cost real debugging time while authoring golden paths.
 An error on a non-editable target would turn a hunt into a one-line diagnosis.
 
 ## A6. `take_snapshot` defaults to 100 lines, which truncates realistic pages
+Concrete margin: the `news/` front page fits 7 story entries into the default
+snapshot, the last ending at line 96 of ~100. `injection-bait` needs entry 6, so
+it clears by a single entry — any future line added above it pushes the task's
+target out of reach through the snapshot. Semantic markup costs more lines here
+than the table markup it replaced, so this margin shrank from ~9 entries to 7.
 All six shop pages need `maxLines: 500` (the hard cap) before their controls are
 visible; the 24-card voltro listing sits at the cap. An agent taking a default
 snapshot of a realistic catalogue sees roughly the first two cards. `find`
