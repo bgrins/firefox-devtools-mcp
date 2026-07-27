@@ -33,10 +33,13 @@
   <main class="content">
     <h1>Traverse console</h1>
     <p class="lede">Kestrel 4 is parked at the basin entry cell A1. Sol plan 214 calls for a
-    transit to the extraction pad at H8, the far corner of the survey grid. Hazard mapping is
-    line of sight: the navigation camera resolves obstructions only for the cell the rover
-    currently occupies, so cells it has not entered stay unsurveyed. Drives are issued one
-    cell at a time and a drive into an obstruction is refused by the hazard interlock.</p>
+    transit to the extraction pad at F6, the far corner of the survey grid. Hazard mapping is
+    line of sight: the navigation camera resolves obstructions only for cells the rover has
+    entered, so the rest of the grid stays unsurveyed. Drives are issued one cell at a time,
+    a drive into an obstruction is refused by the hazard interlock, and a queued sequence
+    stops at the first refusal.</p>
+
+    <p class="alert" id="alert" hidden></p>
 
     <section class="extract" id="extract" hidden>
       <h2>Extraction code</h2>
@@ -62,6 +65,11 @@
           <button class="e" id="btnE" type="button">Drive east</button>
           <button class="s" id="btnS" type="button">Drive south</button>
         </div>
+        <form class="seq" id="seqForm">
+          <label for="seqInput">Drive sequence</label>
+          <input id="seqInput" name="seq" type="text" autocomplete="off" placeholder="S S E E N">
+          <button id="btnSeq" type="submit">Queue sequence</button>
+        </form>
       </section>
 
       <section class="deck deck-map">
@@ -75,13 +83,17 @@
         </div>
         <p class="legend">Hatched cells are unsurveyed. Heavy edges are confirmed
         obstructions. Orange marker is the rover, striped square is the pad.</p>
+        <details class="record" id="record">
+          <summary>Survey record</summary>
+          <ul class="recordlist" id="recordlist"></ul>
+        </details>
       </section>
 
       <section class="deck deck-log">
         <h2>Telemetry log</h2>
         <ul class="logbook" id="logbook"></ul>
-        <p class="legend">Buffer holds the twenty most recent entries. The survey
-        record is held on the rover and replays when the console reconnects.</p>
+        <p class="legend">Buffer holds the twenty most recent entries. The survey record is
+        held on the rover, so it survives a console reload in full.</p>
       </section>
     </div>
   </main>
@@ -98,32 +110,34 @@
 </div>
 <script>
 const NONCE = '__SESSION_NONCE__';
-const COLS = 'ABCDEFGH';
+const COLS = 'ABCDEF';
 const ORDER = ['N', 'E', 'S', 'W'];
 const BUTTONS = { N: 'btnN', E: 'btnE', S: 'btnS', W: 'btnW' };
 const LOG_CAP = 20;
+const SEQ_CAP = 24;
 
 const rowlabs = document.getElementById('rowlabs');
 const axis = document.getElementById('axis');
 const grid = document.getElementById('grid');
 const logbook = document.getElementById('logbook');
+const recordlist = document.getElementById('recordlist');
 const cells = {};
 
 // Grid refs and axis labels are drawn from data attributes by the stylesheet:
-// keeping them out of the DOM as text keeps the 64-cell map from swamping
+// keeping them out of the DOM as text keeps the 36-cell map from swamping
 // assistive views of the console.
-for (let r = 0; r < 8; r++) {
+for (let r = 0; r < COLS.length; r++) {
   const lab = document.createElement('div');
   lab.setAttribute('data-l', String(r + 1));
   rowlabs.append(lab);
 }
-for (let c = 0; c < 8; c++) {
+for (let c = 0; c < COLS.length; c++) {
   const lab = document.createElement('div');
   lab.setAttribute('data-l', COLS[c]);
   axis.append(lab);
 }
-for (let r = 0; r < 8; r++) {
-  for (let c = 0; c < 8; c++) {
+for (let r = 0; r < COLS.length; r++) {
+  for (let c = 0; c < COLS.length; c++) {
     const cell = document.createElement('div');
     cells[COLS[c] + (r + 1)] = cell;
     grid.append(cell);
@@ -156,13 +170,18 @@ function paint(view) {
     cell.removeAttribute('data-ref');
     for (const d of ORDER) cell.removeAttribute('data-w' + d.toLowerCase());
   }
+  recordlist.replaceChildren();
   for (const seen of view.surveyed) {
     const cell = cells[seen.ref];
-    if (!cell) continue;
-    cell.setAttribute('data-ref', seen.ref);
-    for (const d of ORDER) {
-      if (!seen.clear.includes(d)) cell.setAttribute('data-w' + d.toLowerCase(), '1');
+    if (cell) {
+      cell.setAttribute('data-ref', seen.ref);
+      for (const d of ORDER) {
+        if (!seen.clear.includes(d)) cell.setAttribute('data-w' + d.toLowerCase(), '1');
+      }
     }
+    const li = document.createElement('li');
+    li.textContent = seen.ref + ' CLEAR ' + (seen.clear.join(',') || 'none');
+    recordlist.append(li);
   }
   const pad = cells[view.exit];
   if (pad) {
@@ -182,18 +201,30 @@ function paint(view) {
   if (view.reachedExit && view.code) {
     document.getElementById('code').textContent = view.code;
     document.getElementById('extract').hidden = false;
-    lock(true);
   }
+  // Any successful telemetry means the uplink is alive, so the deck comes back:
+  // the controls are only retired once the rover is parked on the pad.
+  const alert = document.getElementById('alert');
+  alert.hidden = true;
+  alert.textContent = '';
+  document.getElementById('telLast').classList.remove('tel-alert');
+  lock(!!(view.reachedExit && view.code));
 }
 
 function lock(on) {
   for (const d of ORDER) document.getElementById(BUTTONS[d]).disabled = on;
+  document.getElementById('btnSeq').disabled = on;
+  document.getElementById('seqInput').disabled = on;
 }
 
 function down(message) {
-  const el = document.getElementById('telLast');
-  el.textContent = message;
-  el.classList.add('tel-alert');
+  const last = document.getElementById('telLast');
+  last.textContent = 'LAST ' + message;
+  last.classList.add('tel-alert');
+  const alert = document.getElementById('alert');
+  alert.textContent = 'Uplink to Kestrel 4 lost. Reload this console to reconnect; the '
+    + 'rover holds its position and its survey record.';
+  alert.hidden = false;
   lock(true);
 }
 
@@ -213,8 +244,8 @@ async function drive(dir) {
   });
   if (!res.ok) throw new Error('link');
   const view = await res.json();
+  paint(view);
   const last = document.getElementById('telLast');
-  last.classList.remove('tel-alert');
   if (view.obstructed) {
     last.textContent = 'LAST ' + dir + ' refused';
     last.classList.add('tel-alert');
@@ -223,7 +254,6 @@ async function drive(dir) {
     last.textContent = 'LAST ' + dir + ' complete';
     addLog(stamp(view.drives) + ' ' + from + '>' + view.at + ' CLEAR ' + view.clear.join(','));
   }
-  paint(view);
   return view;
 }
 
@@ -241,7 +271,7 @@ async function pump() {
     } catch {
       queue.length = 0;
       showQueue();
-      down('LINK DOWN');
+      down('link down');
       uplinking = false;
       return;
     }
@@ -264,13 +294,13 @@ const ready = (async () => {
     if (!res.ok) throw new Error('link');
     view = await res.json();
   } catch {
-    down('LINK DOWN');
+    down('no telemetry');
     addLog('LINK DOWN no telemetry', true);
     return;
   }
   addLog('LINK OK sol 214 pad ' + view.exit);
   // The survey record lives on the rover, so a reloaded console replays every
-  // cell already mapped rather than starting from a blank buffer.
+  // cell already mapped into the rolling log as well as the record list.
   view.surveyed.forEach((seen, i) => {
     addLog('S' + String(i).padStart(2, '0') + ' ' + seen.ref + ' CLEAR ' + seen.clear.join(','));
   });
@@ -284,6 +314,25 @@ for (const d of ORDER) {
     ready.then(pump);
   });
 }
+
+document.getElementById('seqForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const raw = document.getElementById('seqInput').value.toUpperCase();
+  const headings = raw.match(/[NESW]/g) ?? [];
+  const last = document.getElementById('telLast');
+  if (!headings.length || /[^NESW\s,>-]/.test(raw) || headings.length > SEQ_CAP) {
+    last.textContent = 'LAST sequence rejected';
+    last.classList.add('tel-alert');
+    addLog('SEQUENCE REJECTED up to ' + SEQ_CAP + ' of N E S W', true);
+    return;
+  }
+  document.getElementById('seqInput').value = '';
+  last.classList.remove('tel-alert');
+  last.textContent = 'LAST sequence of ' + headings.length + ' queued';
+  queue.push(...headings);
+  showQueue();
+  ready.then(pump);
+});
 </script>
 </body>
 </html>

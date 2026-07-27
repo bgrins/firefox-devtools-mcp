@@ -113,7 +113,7 @@ a { color: var(--teal); }
   padding-bottom: 6px;
 }
 .deck-drive { width: 218px; }
-.deck-map { width: 468px; }
+.deck-map { width: 360px; }
 .deck-log { width: 236px; }
 
 .tel {
@@ -173,7 +173,7 @@ a { color: var(--teal); }
   color: var(--dim);
 }
 .rowlabs > div::before { content: attr(data-l); }
-.axis { display: grid; grid-template-columns: repeat(8, 50px); height: 18px; margin-left: 2px; }
+.axis { display: grid; grid-template-columns: repeat(6, 50px); height: 18px; margin-left: 2px; }
 .axis > div {
   text-align: center;
   font-family: var(--mono);
@@ -183,10 +183,10 @@ a { color: var(--teal); }
 .axis > div::before { content: attr(data-l); }
 .grid {
   display: grid;
-  grid-template-columns: repeat(8, 50px);
+  grid-template-columns: repeat(6, 50px);
   border: 2px solid var(--navy);
   background: #f8fafc;
-  width: 404px;
+  width: 304px;
 }
 .grid > div {
   height: 50px;
@@ -227,6 +227,52 @@ a { color: var(--teal); }
   background: repeating-linear-gradient(90deg, #bfe0ea 0 3px, #ffffff 3px 6px);
 }
 .legend { margin: 10px 0 0; font-size: 11px; color: var(--dim); }
+
+.seq { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.seq label {
+  width: 100%;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.seq input {
+  flex: 1 1 96px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 6px;
+  color: var(--navy);
+  border: 1px solid #a9bfd0;
+  background: #fbfdfe;
+}
+.seq input:disabled { background: #eef1f4; color: #93a6b4; }
+.seq button {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 6px 8px;
+  color: #143a55;
+  background: linear-gradient(#f7fafc, #e4ecf2);
+  border: 1px solid #a9bfd0;
+  cursor: pointer;
+}
+.seq button:hover { background: linear-gradient(#ffffff, #dbe7ef); }
+.seq button:disabled { color: #93a6b4; background: #eef1f4; cursor: default; }
+
+.record { margin: 10px 0 0; font-size: 11px; }
+.record summary { color: var(--teal); cursor: pointer; }
+.recordlist { list-style: none; margin: 6px 0 0; padding: 0; columns: 2; }
+.recordlist li { font-family: var(--mono); font-size: 11px; color: #33536b; }
+
+.alert {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  max-width: 700px;
+  background: #fdf1ea;
+  border: 1px solid #e0b49c;
+  border-left: 4px solid var(--signal);
+  color: #8c3a11;
+}
 
 .logbook { list-style: none; margin: 0; padding: 0; }
 .logbook li {

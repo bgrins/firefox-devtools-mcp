@@ -154,20 +154,34 @@ function taskSelected(id) {
   );
 }
 if (args.includes('--help') || args.includes('help')) {
-  console.log(`firefox-cli eval harness — compare agent backends driving Firefox via
-the firefox-cli shell command (cli) vs the MCP server (mcp).
+  console.log(`eval harness — run agents against local simulated websites through
+different browser tool surfaces and compare them. Default comparison is
+firefox-devtools-mcp ('mcp') vs the vendored @playwright/mcp ('playwright');
+the firefox-cli shell ('cli') is opt-in via --conditions.
 
 Usage: node eval/run.mjs [options]
 
+Selecting what to run:
   --suite basic|web|all   task suite (default: basic; web = simulated sites)
-  --task <ids>            comma list of task ids to run; * wildcards allowed,
-                          e.g. --task cart-math,coupon-stack or --task 'ledger-*'
-  --list-tasks            print the selected task ids and exit (pairs with
-                          --suite/--task to preview a subset)
-  --rerun-failed <dir>    re-run only the tasks that failed or errored in an
-                          earlier run directory (overrides --task)
+  --task <ids>            comma list of task ids; * wildcards allowed. Examples:
+                            --task cart-math
+                            --task cart-math,coupon-stack,oos-substitute
+                            --task 'ledger-*'
+                          An id that matches nothing errors and prints the
+                          available ids for the suite.
+  --list-tasks            print the selected ids with their wall-clock tier and
+                          cap, then exit without running anything. Combine with
+                          --suite/--task to preview a subset for free.
+  --rerun-failed <dir>    select exactly the tasks that failed or errored in an
+                          earlier run dir (reads its results.json; overrides
+                          --task) — for topping up a run that hit flaky errors
+
+Reporting:
   --report-from <dir>     rewrite report.md from a finished run's results.json
-                          (no agents run; applies reporting changes retroactively)
+                          and exit; runs no agents, so reporting changes can be
+                          applied to runs you already paid for
+
+Limits and reliability:
   --retries <n>           retry a task on transient API/infra errors
                           (default: 2; an --max-output stop is never retried)
   --max-wall <s>          override every task's wall cap with s seconds.
@@ -175,7 +189,11 @@ Usage: node eval/run.mjs [options]
                           (default), long 1800s, epic 5400s. A wall stop is
                           retried, since infra slowness is the usual cause
   --max-output <n>        kill a task after n cumulative output tokens (0 = off)
-  --repeat <n>            run each task n times; report adds per-task medians
+  --repeat <n>            run each task n times; the report gains a per-task
+                          median (min-max) table and flags tasks whose output
+                          tokens vary by more than 2x between repeats
+
+Conditions and models:
   --model <id>            model for the agent backend
   --effort <level>        reasoning effort for both backends (default: medium;
                           'default' = leave backend defaults)
@@ -196,6 +214,8 @@ Usage: node eval/run.mjs [options]
   --mcp-command "<cmd>"   custom stdio MCP server for the mcp condition, e.g.
                           "npx @playwright/mcp@latest --browser firefox";
                           replaces the built-in firefox-devtools-mcp server
+
+Execution:
   --parallel              run conditions concurrently
   --parallel-tasks <n>    run up to n tasks concurrently within each condition
                           (each worker gets its own browser + pages server;
@@ -204,7 +224,11 @@ Usage: node eval/run.mjs [options]
 
 Results land in eval/results/run-<timestamp>/ (gitignored): results.json,
 report.md (shareable), and transcripts/*.jsonl (full agent message streams).
-Render transcripts with: node eval/transcript.mjs [run-dir] [--task <id>] [--md]`);
+Render transcripts with: node eval/transcript.mjs [run-dir] [--task <id>] [--md]
+
+Compare on OUTPUT TOKENS and WALL TIME. Turns are not comparable across
+conditions (a cli shell call can chain several browser commands) and absolute
+cost is not comparable across runs (cache-creation volume swings between runs).`);
   process.exit(0);
 }
 
