@@ -33,3 +33,21 @@ footer { padding: 24px 16px; background: #131921; color: #999; font-size: 12px; 
   padding: 18px; display: flex; gap: 16px; align-items: center; justify-content: center; z-index: 10;
   box-shadow: 0 -2px 12px rgba(0,0,0,.4); }
 #cookie-banner button { padding: 8px 20px; }
+#menubtn { background: #232f3e; color: #fff; border: 1px solid #4a5568; border-radius: 3px;
+  padding: 6px 10px; font-size: 13px; cursor: pointer; }
+#mobilemenu { background: #232f3e; padding: 4px 0 8px; border-left: 0; }
+#mobilemenu a { display: block; color: #fff; text-decoration: none; font-size: 14px;
+  padding: 9px 16px; border-bottom: 1px solid #37475a; }
+@media (max-width: 600px) {
+  header { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  header input { order: 9; flex: 1 1 100%; max-width: none; }
+  header span { font-size: 13px; }
+  nav:not(#mobilemenu) { display: none; }
+  main { display: block; }
+  aside { width: auto; border-right: 0; border-bottom: 1px solid #eee; }
+  #toolbar { flex-wrap: wrap; padding: 10px 12px 0; }
+  #grid { grid-template-columns: 1fr; padding: 12px; }
+  .promo, footer, #pagination { padding-left: 12px; padding-right: 12px; }
+  #cookie-banner { display: block; padding: 12px; }
+  #cookie-banner button { margin-top: 8px; }
+}

@@ -7,6 +7,7 @@
 import { DRIVERS as probes } from './probes.mjs';
 import { DRIVERS as shop } from './shop.mjs';
 import { DRIVERS as forms } from './forms.mjs';
+import { DRIVERS as formsUpload } from './forms-upload.mjs';
 import { DRIVERS as content } from './content.mjs';
 import { DRIVERS as auth } from './auth.mjs';
 import { DRIVERS as data } from './data.mjs';
@@ -14,11 +15,14 @@ import { DRIVERS as gadgetronMirror } from './gadgetron-mirror.mjs';
 import { DRIVERS as floorplan } from './floorplan.mjs';
 import { DRIVERS as consent } from './consent.mjs';
 import { DRIVERS as govNavigation } from './gov-navigation.mjs';
+import { DRIVERS as flakySlow } from './flaky-slow.mjs';
+import { DRIVERS as viewport } from './viewport.mjs';
 
 const modules = {
   probes,
   shop,
   forms,
+  formsUpload,
   content,
   auth,
   data,
@@ -26,6 +30,8 @@ const modules = {
   floorplan,
   consent,
   govNavigation,
+  flakySlow,
+  viewport,
 };
 
 export const DRIVERS = {};

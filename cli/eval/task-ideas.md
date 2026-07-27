@@ -77,6 +77,9 @@
 >
 > **Blocked, not built:** T052 (file upload) needs the P-2 CLI `upload` command, same as T067
 > (viewport). Both remain out of scope until P-2 lands.
+> — SUPERSEDED by wave 9. The block was never real: the MCP tools existed all along and
+> `cli` became opt-in, so the missing CLI verbs are a condition asymmetry, not a wall.
+> Both shipped 2026-07-27.
 
 > **Wave 5 (2026-07-27): forms + a11y.** T054 (`office-finder`), T055 (`draft-resume`), T056
 > (`abstract-length`), T058 (`grid-edit`), T060 (`unit-quote`), T066 (`modal-escape`), T081
@@ -154,6 +157,47 @@
 > correct contrastive answers ("Surface Permits is (555) 014-8862, not 014-3391").
 > Replaced with unforgeable server-side gates — an agent reporting the wrong number
 > never opened the sibling page.
+>
+> **Wave 9 (2026-07-27): the three stragglers. P1 IS NOW COMPLETE.**
+> T039 (`timeout-vs-slow`), T052 (`file-upload`), T067 (`narrow-viewport`) — the tasks
+> that had sat "blocked on a missing CLI command" since the original plan. The block was
+> stale, not real: our MCP has `upload_file_by_uid` and `set_viewport_size`,
+> playwright-mcp has equivalents, and `cli` is opt-in now, so the missing CLI verbs are a
+> condition asymmetry rather than a wall. Each group had to VERIFY the tool worked before
+> designing around it, and two of those verifications became findings.
+> Suite is now 61 web tasks. Acceptance 18/18, zero failures, every cell stable
+> (spread <=1.4x). Output-token medians, us vs playwright-mcp: `file-upload` 926 vs 1550
+> (**-40%**), `narrow-viewport` 628 vs 769 (**-18%**), `timeout-vs-slow` 552 vs 652
+> (**-15%**); totals 6,421 vs 8,868 (-28%). All three in our favour and all three stable
+> — the cleanest wave result so far, and consistent with the standing pattern: these are
+> multi-step interaction tasks, not single-view extraction tasks.
+>
+> Two product findings came out of the verify-first step, both in `findings.md`:
+> **A11** — `set_viewport_size` calls `window().setRect()`, so it resizes the WINDOW and
+> headless Firefox clamps it to ~500px while the tool still reports the requested size.
+> Any breakpoint below 500px is unwinnable for us and winnable via playwright's
+> `browser_resize`, and it would look like agent failure. It is visible right in this
+> run's rows: our `issuedWidth=500`, playwright's `issuedWidth=480`, same requested 480.
+> The fixture's breakpoint is 600px specifically to stay clear of it.
+> **A9b** — `evaluate_script` has a hard 5000ms default timeout where playwright's
+> `browser_evaluate` has none; the aborted script does not abort the request, so it also
+> burns one of `timeout-vs-slow`'s three allowed attempts. No agent hit it this run.
+>
+> `file-upload` has a limit worth stating plainly: nothing server-side can distinguish a
+> real file selection from a typed `Blob` posted by one `evaluate_script` call, and a
+> bare `curl -F` passes too (both verified). The validator grades the constraint loop,
+> which is real; whether the agent found the upload affordance is a transcript-level
+> observation. Checked for this run — all six agents used the genuine tool
+> (`upload_file_by_uid` / `browser_file_upload`), none took the shortcut — so the probe
+> did measure what it exists for. That grep, not the pass rate, is the check.
+>
+> Also fixed a live harness bug the T067 review caught: `narrow-viewport` left the shared
+> browser at phone width and `runOne` reset only server state, so in the `cli` and
+> `mcp+http` envs every later task ran in a 500px window (`/floorplan/` overflowing at
+> 601px, `/grid-edit/` at 648px). It was condition-asymmetric — stdio `mcp` and
+> `playwright` spawn a browser per task and were immune — so it would have corrupted the
+> comparison in favour of whichever surface did the resize. `runOne` now restores
+> 1366x768 for any env owning an instance.
 >
 > **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
 > deterministically through our own MCP and asserts each validator accepts a correct
@@ -238,11 +282,15 @@ T082, T003, T063, T064, T080, T059, T049, T092, T040, T036, T022, T012, T011, T0
 
 **P1 — second wave (36):** solid value, moderate cost, or needs a
 verification spike first (upload/keyboard paths, redirect prototype).
+ALL 36 SHIPPED as of wave 9 (2026-07-27); T067 was pulled up from P2 with them.
 T010, T013, T014, T015, T018, T019, T020, T024, T026, T027, T029, T030, T033, T039, T041, T042, T043, T044, T045, T047, T052, T054, T055, T056, T058, T060, T066, T069, T078, T079, T081, T086, T088, T093, T096, T100
 
 **P2 — later or blocked (14):** viewport-blocked (P-2), flake-prone
 widgets, expensive-per-run waits, or build-heavy fixtures.
-T001, T007, T008, T050, T051, T053, T061, T062, T067, T068, T072, T087, T090, T098
+T001, T007, T008, T050, T051, T053, T061, T062, ~~T067~~ (shipped, wave 9), T068,
+T072, T087, T090, T098
+Only T061 (keyboard-only) is still blocked on a missing tool — there is no
+key-press tool at all; see `findings.md` A8.
 
 ## Dynamic / Stateful UIs (T001–T009)
 
@@ -589,7 +637,7 @@ T001, T007, T008, T050, T051, T053, T061, T062, T067, T068, T072, T087, T090, T0
 - Score: dismissal beacon (records method) + title match; eval-removal policy is declared up front — DOM surgery (`eval` remove()) scores FAIL, detected via the method beacon.
 - Risk: policy declaration makes the eval question moot; residual risk is Esc-key delivery parity between conditions.
 
-**T067 — Zoomed/Reflowed Layout** · a11y-robustness — BLOCKED: needs a CLI viewport command first (P-2)
+**T067 — Zoomed/Reflowed Layout** · a11y-robustness — SHIPPED wave 9 as `narrow-viewport`
 - Tests/Page(s): responsive `shop/` header — hamburger-only nav below 600px width; content presentation changes at narrow viewport.
 - Task: "Set the viewport to 480px wide, then use the menu to reach the Deals page and report today's deal code."
 - Score: viewport-change respected (JS beacon incl. innerWidth) + code match.
@@ -1324,7 +1372,7 @@ alongside `submissions`/`progress` (or reset the whole session map).
 - Effort: S · Depends: P-1
 
 ### T067 — Zoomed/Reflowed Layout (P2)
-- UNBLOCK FIRST: blocked on P-2 viewport command — `set_viewport_size` exists in MCP but the CLI has no equivalent; ship `firefox-cli resize <w> <h>` before building or the comparison is unfair by construction.
+- WAS: "blocked on P-2 viewport command — ship `firefox-cli resize <w> <h>` before building or the comparison is unfair by construction." Shipped without the verb, because `cli` is opt-in and outside the default mcp-vs-playwright comparison, which is fair as built. The verb is still worth having; see `findings.md` B6 for what to do before trusting cli numbers on this task.
 - Fixture: `pages/shop/voltro/` responsive header (~+70 lines CSS/JS): below 600px CSS width, nav collapses to a hamburger whose menu contains a Deals link; `deals.html` shows the code and beacons `{code, innerWidth}` via IntersectionObserver-on-display.
 - Server: uses P-1. `POST /api/shop/deal-view {innerWidth}` (nonce-validated) → `ctx.pages.state.deals[sid] = { innerWidth }`. Deal code `DEAL-NARROW-49` in `answers.mjs`, present only on deals.html.
 - Ask: "Open ${base}/shop/voltro/ and set the browser viewport to 480 pixels wide. Use the mobile menu to reach the Deals page and report today's deal code."

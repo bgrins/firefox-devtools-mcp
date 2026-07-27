@@ -927,6 +927,22 @@ function govPageToken(session, pathname) {
   return (tokens[pathname] ??= randomBytes(8).toString('hex'));
 }
 
+// T067 narrow-viewport: per-session record behind the Deals of the Day code.
+// Three places write it — the static handler stamps a real document navigation
+// to the deals page, the chain stamps the phone-only <picture> candidate the
+// layout engine fetched, and /api/shop/deal-view mints the code — so the shape
+// lives in one helper.
+function voltroDealRecord(session) {
+  return (session.voltroDeal ??= {
+    code: null,
+    issuedWidth: null,
+    widths: [],
+    navs: 0,
+    phoneAsset: 0,
+    layout: null,
+  });
+}
+
 // gov/forms.html links Form RV-3 to /gov/legacy/rv3, a retired address that
 // bounces between two paths. The cap is 6 because Firefox aborts a redirect
 // chain at 20 hops with its own error page (measured), and the interstitial has
@@ -995,6 +1011,80 @@ schedule of declared-value bands that applied before the form was withdrawn.
 Declarations on this form are no longer accepted at any office or by mail.</p>
 </font>`
 );
+
+// pages/flaky/slow.html — tier 3 cold-storage restore (T039 timeout-vs-slow).
+// The delay is enforced server-side so no client can shorten it, and the archive
+// reference is minted only AFTER it elapses: a caller that gives up early never
+// sees a reference at all. Re-asking while a job is still mounting really does
+// cost the extra ARCHIVE_REQUEUE_MS the page's notice promises.
+const ARCHIVE_RESTORE_MS = 8000;
+const ARCHIVE_REQUEUE_MS = 2000;
+const ARCHIVE_VOLUME = 'ZA-CS3';
+
+// pages/forms/upload.html — Draymere depot attestation intake. The intake
+// service refuses anything that is not a .txt of at most UPLOAD_MAX_BYTES, and
+// the receipt it issues is minted per session from randomBytes, so neither the
+// acceptance nor the code can be produced from fixture source on disk. Nothing
+// here can tell a real file selection from a scripted Blob (see the spec's
+// cheatability note); the recorded part filename and Content-Type are kept only
+// as a soft provenance hint for the transcript.
+const UPLOAD_MAX_BYTES = 1024;
+
+// The intake reads its own body instead of calling readBody: readBody calls
+// req.destroy() once a body passes BODY_CAP, so an agent that probes the size
+// rule by attaching a real multi-KB export would get a socket reset (and a
+// handler awaiting a promise that never settles) instead of the intake's size
+// refusal. This reader keeps only as much as the intake could ever need, counts
+// what it dropped, and always settles, so every rejection reaches the page as an
+// inline message and lands in the session record.
+const UPLOAD_READ_CAP = UPLOAD_MAX_BYTES + 8192;
+function readUploadBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    let bytes = 0;
+    let truncated = false;
+    const done = () => resolve({ body, bytes, truncated });
+    req.on('data', (chunk) => {
+      bytes += chunk.length;
+      const room = UPLOAD_READ_CAP - body.length;
+      if (room <= 0) truncated = true;
+      else if (chunk.length > room) {
+        body += chunk.slice(0, room);
+        truncated = true;
+      } else body += chunk;
+    });
+    req.on('end', done);
+    req.on('aborted', done);
+    req.on('error', done);
+  });
+}
+
+// Minimal multipart/form-data reader for the single small text file the
+// attestation intake accepts. Values are read as utf8 text because the only
+// accepted payload is plain text. The file part's own Content-Type is kept
+// because it differs between a browser file selection (text/plain, from the
+// OS type) and a hand-built Blob (application/octet-stream when untyped).
+function parseMultipart(body, boundary) {
+  const fields = {};
+  let file = null;
+  for (const section of body.split(`--${boundary}`)) {
+    const split = section.indexOf('\r\n\r\n');
+    if (split === -1) continue;
+    const head = section.slice(0, split);
+    const name = /name="([^"]*)"/.exec(head)?.[1];
+    if (!name) continue;
+    let value = section.slice(split + 4);
+    const tail = value.lastIndexOf('\r\n');
+    if (tail !== -1) value = value.slice(0, tail);
+    const filename = /filename="([^"]*)"/.exec(head)?.[1];
+    if (filename === undefined) fields[name] = value;
+    else {
+      const type = /^content-type:\s*([^\r\n]+)/im.exec(head)?.[1];
+      file = { field: name, filename, type: type?.trim() ?? '', content: value };
+    }
+  }
+  return { fields, file };
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -1401,6 +1491,73 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       return;
     }
 
+    // T052 file-upload: the depot attestation intake. Every graded fact is
+    // server-observed — the received filename, byte count and content are kept
+    // on the session (so state.reset() clears them between tasks) and the
+    // receipt is minted from randomBytes rather than derived from the
+    // page-exposed nonce. The multipart body must carry that nonce, so a bare
+    // curl cannot transmit without first fetching the page. What this endpoint
+    // canNOT do is tell a real file selection from a scripted Blob: an
+    // evaluate_script that builds a FormData passes every gate here, by design
+    // of the web platform. The part filename and Content-Type are recorded as a
+    // soft provenance hint only.
+    if (req.method === 'POST' && pathname0 === '/api/upload') {
+      const contentType = req.headers['content-type'] ?? '';
+      const marker = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+      if (!/^multipart\/form-data/i.test(contentType) || !marker) {
+        return json(res, 400, { ok: false, error: 'Expected a multipart upload.' });
+      }
+      const raw = await readUploadBody(req);
+      const parsed = parseMultipart(raw.body, (marker[1] ?? marker[2]).trim());
+      const found = requireSession(req, res, parsed.fields.nonce);
+      if (!found) return;
+      const filename = String(parsed.file?.filename ?? '')
+        .split(/[\\/]/)
+        .pop();
+      const content = parsed.file?.content ?? '';
+      // With a truncated body this is the byte count of the prefix that was
+      // kept, not of the whole export; `truncated` says so on the record.
+      const bytes = Buffer.byteLength(content, 'utf8');
+      const attested = parsed.fields.attested === 'yes';
+      // A fetch() from the page carries one of these two; curl carries neither
+      // unless it is told to. A second factor on top of the nonce, not proof
+      // that a browser did it — the validator reports it either way.
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/forms\/upload\.html(?:[?#]|$)/.test(req.headers.referer ?? '');
+      let error = null;
+      if (!filename) error = 'Attach an attestation file.';
+      else if (!/\.txt$/i.test(filename)) error = 'Refused: plain .txt files only.';
+      else if (raw.truncated) error = 'Refused: the export is over the 1024 byte limit.';
+      else if (bytes === 0) error = 'Refused: the export is empty.';
+      else if (bytes > UPLOAD_MAX_BYTES) {
+        error = `Refused: ${bytes} bytes is over the 1024 byte limit.`;
+      } else if (!attested) error = 'Confirm the count before transmitting.';
+      (found.session.uploads ??= []).push({
+        filename,
+        bytes,
+        truncated: raw.truncated,
+        // Provenance hint, not a gate: a browser file selection sends the OS
+        // type (text/plain for a .txt), an untyped hand-built Blob sends
+        // application/octet-stream, and a nameless Blob arrives as 'blob'.
+        mime: parsed.file?.type ?? '',
+        content: content.slice(0, UPLOAD_MAX_BYTES),
+        attested,
+        fromPage,
+        accepted: error === null,
+        error,
+        at: Date.now(),
+      });
+      if (error) return json(res, 400, { ok: false, error });
+      found.session.uploadReceipt ??= 'RCPT-' + randomBytes(3).toString('hex').toUpperCase();
+      return json(res, 200, {
+        ok: true,
+        receipt: found.session.uploadReceipt,
+        filename,
+        bytes,
+      });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/beacon') {
       let payload;
       try {
@@ -1516,6 +1673,52 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         m.code ??= 'MZ-' + randomBytes(2).toString('hex').toUpperCase();
       }
       return json(res, 200, { obstructed: false, heading: dir, ...mazeView(m) });
+    }
+
+    // T039 timeout-vs-slow: the restore genuinely occupies the connection for
+    // ARCHIVE_RESTORE_MS, so no client can shorten it. Every hit is counted on
+    // the session BEFORE the delay, so a caller that abandons a running job and
+    // asks again is recorded even though it never read a response. The reference
+    // is minted from randomBytes once the delay has actually elapsed and lives on
+    // the session, so state.reset() clears it, it exists nowhere on disk, and a
+    // forged /api/beacon can fabricate neither it nor the request count. Only a
+    // real navigation to the retrieval page opens a retrieval session (see the
+    // static handler), so an agent that never loaded the page gets nothing.
+    if (req.method === 'GET' && pathname0 === '/api/flaky/archive') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const archive = found.session.archive;
+      if (!archive) return json(res, 403, { error: 'no retrieval session' });
+      // Same idea as /api/parcels/track: a shell probe holding a live cookie
+      // still gets its reference, it is just recorded as off-page, so a pass with
+      // no browser in it is legible in the results row instead of only in a
+      // transcript.
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/flaky\/slow\.html(?:[?#]|$)/.test(req.headers.referer ?? '');
+      archive.requests += 1;
+      if (!fromPage) archive.offPage += 1;
+      // Asking again while a job is still mounting re-queues the media behind it,
+      // which is exactly what the page's notice promises: re-firing is slower,
+      // never faster. Capped so a thrashing run cannot walk out of the wall tier.
+      const requeued = Math.min(archive.requests - archive.served - 1, 3);
+      await new Promise((resolve) =>
+        setTimeout(resolve, ARCHIVE_RESTORE_MS + ARCHIVE_REQUEUE_MS * requeued)
+      );
+      // A reload or a client-side script timeout can tear the response down
+      // mid-restore; writing to a dead socket would reject inside this chain.
+      if (res.writableEnded || res.destroyed) {
+        archive.abandoned += 1;
+        return;
+      }
+      archive.archiveId ??= 'AR-' + randomBytes(2).toString('hex').toUpperCase();
+      archive.served += 1;
+      archive.servedAt = Date.now();
+      return json(res, 200, {
+        archiveId: archive.archiveId,
+        volume: ARCHIVE_VOLUME,
+        restoreMs: ARCHIVE_RESTORE_MS + ARCHIVE_REQUEUE_MS * requeued,
+      });
     }
 
     if (req.method === 'GET' && pathname0 === '/api/flaky/report') {
@@ -3222,6 +3425,91 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       });
     }
 
+    // Deals of the Day: the code is minted only for a session that really
+    // navigated to the deals page, whose layout engine fetched the phone-only
+    // banner candidate, and whose page reports a mobile-width viewport with a
+    // matching mobile CSS layout. The width that earned it is retained so a
+    // later desktop view cannot mask how it was obtained.
+    if (req.method === 'POST' && pathname0 === '/api/shop/deal-view') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const deal = voltroDealRecord(found.session);
+      const width = Number(payload?.innerWidth);
+      const layout = payload?.layout ?? {};
+      const clientWidth = Number(layout.clientWidth);
+      // Layout-derived rather than asserted: the department bar is display:none
+      // and the header wraps only under the site's own media query, and `banner`
+      // is the <picture> candidate the layout engine actually resolved to.
+      const reflowed =
+        layout.navDisplay === 'none' &&
+        layout.headerWrap === 'wrap' &&
+        layout.banner === 'banner-phone.svg' &&
+        Number.isFinite(clientWidth) &&
+        clientWidth > 0 &&
+        clientWidth <= 600;
+      const narrow =
+        Number.isFinite(width) &&
+        width > 0 &&
+        width <= 600 &&
+        payload?.mobileLayout === true;
+      // Server-observed, not claimed: a document navigation to the deals page
+      // plus a request for the narrow banner candidate, both on this session.
+      const served = deal.navs > 0 && deal.phoneAsset > 0;
+      if (deal.widths.length < 50) {
+        deal.widths.push(Number.isFinite(width) ? width : null);
+      }
+      deal.layout = { ...layout, narrow, reflowed, served };
+      if (narrow && reflowed && served && !deal.code) {
+        deal.code = 'DEAL-' + randomBytes(3).toString('hex').toUpperCase();
+        deal.issuedWidth = width;
+      }
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'voltro-deal-view',
+        data: {
+          innerWidth: Number.isFinite(width) ? width : null,
+          narrow,
+          reflowed,
+          served,
+        },
+        at: Date.now(),
+      });
+      if (!deal.code) {
+        return json(res, 200, {
+          mobile: false,
+          message: 'Deals of the Day is served to the Voltro mobile site.',
+        });
+      }
+      return json(res, 200, {
+        mobile: true,
+        code: deal.code,
+        message: 'Redeem in the promotion box on the payment step.',
+      });
+    }
+
+    // The phone banner is the narrow candidate of the deals page's <picture>, so
+    // the layout engine requests it only while `media="(max-width: 600px)"`
+    // matches — the one piece of viewport evidence the page does not merely
+    // assert. `sec-fetch-dest` is a forbidden header name for fetch()/XHR, so
+    // page script cannot claim `image` (an injected <img> still can, which is why
+    // the mint also needs the navigation and the layout report). The banner URL
+    // carries the session nonce purely to defeat the HTTP cache, so a second
+    // narrow visit in the same run is a fresh request. This block does not serve
+    // the file: it falls through to the static handler.
+    if (req.method === 'GET' && pathname0 === '/shop/voltro/banner-phone.svg') {
+      const dest = req.headers['sec-fetch-dest'];
+      const seen = getSession(req);
+      if (seen && (dest === 'image' || dest === undefined)) {
+        voltroDealRecord(seen.session).phoneAsset += 1;
+      }
+    }
+
     if (req.method === 'GET' && pathname0 === '/api/gridword/state') {
       const found = requireSession(req, res);
       if (!found) return;
@@ -3485,6 +3773,27 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
         }
 
+        // T039 timeout-vs-slow: a retrieval session is opened only by a real
+        // navigation to the archive page, so /api/flaky/archive cannot be driven
+        // by an agent that never loaded it. The contact sheet loads fixtures in
+        // iframes, which are real navigations too, so both dests count.
+        if (
+          pathname === '/flaky/slow.html' &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          ['document', 'iframe'].includes(req.headers['sec-fetch-dest'])
+        ) {
+          const archive = (found.session.archive ??= {
+            requests: 0,
+            served: 0,
+            abandoned: 0,
+            offPage: 0,
+            loads: 0,
+            archiveId: null,
+            loadedAt: Date.now(),
+          });
+          archive.loads += 1;
+        }
+
         // T088 embargo-wait: the embargo clock starts only on a real document
         // navigation to the newsroom, and nowhere else. Stamping it from
         // /api/press/load instead would let a script that holds a cookie and
@@ -3500,6 +3809,18 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
             attempts: 0,
             earlyAttempts: 0,
           };
+        }
+
+        // T067 narrow-viewport: the deals-page load is stamped here, on a real
+        // document navigation, exactly like the draft-resume pageload above, and
+        // the code is minted only for a session that has one. Without it a bare
+        // POST holding a cookie and the page nonce mints the code with no browser
+        // at all. `isGovDocumentNav` is the generic document-vs-subresource test
+        // (it is named for the gates it was written for, not for /gov/ paths):
+        // an in-page fetch() cannot set the sec-fetch-* headers, and the
+        // Accept-based fallback keeps engines that omit them winnable.
+        if (pathname === '/shop/voltro/deals.html' && isGovDocumentNav(req)) {
+          voltroDealRecord(found.session).navs += 1;
         }
 
         // T044 dept-descent / T045 breadcrumb-sibling / T047 search-decoy: the

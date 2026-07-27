@@ -84,6 +84,12 @@ dropped exactly like tables.
 Practical effect: on a legacy page that uses `<font>` or `<b>` inline — which is
 most of the `gov/` site — prose disappears wholesale rather than degrading.
 
+Third independent confirmation in wave 9, this time for `<em>`:
+`<li>Maximum size <em>1024 bytes</em></li>` snapshots as `li text="Maximum size"`,
+and a `<b>`-wrapped breadcrumb became `div text="Attestations ›  ›"`. So a
+constraint a page emphasises typographically is exactly the content most likely
+to vanish.
+
 ## A3. Controls lose their accessible names
 - `<label><input type=radio> Yes</label>` emits `input value="Yes"` with no
   accessible name; a consent checkbox is findable only as the unique
@@ -166,6 +172,19 @@ the snapshot cannot tell them apart. Reporting a URL requires `location.href` vi
 `args` accepts only `{uid}` objects, not plain values, so passing a number into
 the page means string-interpolating the function source.
 
+## A9b. `evaluate_script` has a hard 5-second default timeout
+`DEFAULT_TIMEOUT = 5000` in `src/tools/script.ts`. Awaiting the `timeout-vs-slow`
+fixture's 8-second fetch dies at 5008 ms with "Script execution timed out
+(exceeded 5000ms)"; the same call with `timeout: 15000` returns at 8012 ms.
+playwright-mcp's `browser_evaluate` has **no** such cap and returned the awaited
+payload at 9036 ms.
+
+The aborted script does not abort the request — it still lands server-side. So an
+agent that reads the timeout as "the site hung" both reports the wrong thing and
+consumes one of the task's allowed requests. A default that silently caps below
+common real-world latency, on a surface where the competitor has none, is worth
+raising even though the polling path is unaffected.
+
 ## A10. SVG is effectively unusable through the tool surface
 - A shape is emitted only if the author gave it `role` or `aria-label`; a bare
   `<rect class="room" data-room="A-1">` is dropped, as are `<text>` nodes.
@@ -175,6 +194,48 @@ the page means string-interpolating the function source.
   ordering guarantee), so spatial reasoning over a diagram is impossible from the
   snapshot even when the shapes are named.
 Combined with A0, any SVG-based interface is `evaluate`-only today.
+
+## A11. `set_viewport_size` resizes the window, not the viewport — and reports success either way
+`src/firefox/pages.ts:73` implements it as
+`driver.manage().window().setRect({width, height})`. Headless Firefox clamps the
+window to a ~500 px minimum, so `set_viewport_size(480, 900)` leaves
+`window.innerWidth === 500` while the tool still reports `480x900`. Measured
+ladder (requested -> actual `innerWidth`): 375->500, 400->500, 480->500, 520->520,
+560->560, 600->600, 640->640. Height is likewise window height, not viewport
+height (800 requested -> `innerHeight` 715).
+
+The good news, verified: the media query genuinely re-evaluates and
+`matchMedia`/`getComputedStyle`/`resize` all fire, so responsive tasks are viable.
+
+Impact: any phone-width breakpoint below 500 px is **unwinnable through our MCP
+and winnable through playwright-mcp's `browser_resize`**, which sets the viewport
+independently of the window — and it would present as agent failure, not tool
+failure, because nothing reports the clamp. Fix: use the WebDriver-BiDi viewport
+override rather than `setRect`, and return the size actually achieved.
+`narrow-viewport` is deliberately built with a 600 px breakpoint to stay clear of
+this, and its golden path asserts `matchMedia(...).matches` rather than trusting
+the requested number.
+
+## A12. An `<input>`'s `type` never reaches the snapshot
+A file input and a checkbox both render as a bare `uid=N input`. `accept` is not
+emitted either, and (per A4) a checked box shows `value="on"` exactly like an
+unchecked one. So an agent cannot tell which control is the file input except by
+position or by attempting an upload and reading the error, and cannot confirm
+that its click ticked rather than un-ticked a box. playwright-mcp's ARIA snapshot
+labels both control kinds.
+
+## A13. Attribute values are emitted with escape sequences interpreted
+A file input holding `C:\fakepath\t052-attest.csv` printed as
+`value="C:akepath<tab>052-attest.csv"` — the `\f` and `\t` became a formfeed and a
+tab. Any attribute value containing backslashes is corrupted in the agent's view
+and cannot be matched against.
+
+## A14. The snapshot tree is not stable across captures of an unchanged DOM
+Between two consecutive `take_snapshot` calls on a page that did not change, a
+short `<span>Or <a>...</a>.</span>` lost its span node and the anchor was
+re-parented directly under the preceding `<button>`. An agent or driver that
+navigates by tree structure rather than by text can therefore resolve a different
+element from one snapshot to the next.
 
 ## Suggested order for Part A
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
@@ -191,7 +252,16 @@ every change has a measured before/after.
 5. **A3** (accessible names) — likely the next largest, on forms.
 6. **A1** (27-char cap) — biggest blast radius; changes every snapshot's size.
 7. **A8 + A10** (missing tools; SVG unusable) — additive, unblocks planned tasks.
-8. **A6, A7, A9** — cheap and independent.
+8. **A11** (viewport clamp reported as success) — narrow blast radius today, but
+   it is the one finding that makes a whole task class unwinnable for us and
+   winnable for playwright, invisibly.
+9. **A6, A7, A9, A9b, A12, A13, A14** — cheap and independent.
+
+Verified working, for contrast: `upload_file_by_uid` is sound end to end,
+headless. It fires the change event, the page sees a real `File` with the right
+name/size/`type`, `await file.text()` returns the bytes, and a bad path errors
+clearly. It needs absolute paths. The "T052 is blocked" note that sat in
+`task-ideas.md` for months was never true of the MCP surface.
 
 ---
 
@@ -219,6 +289,14 @@ Exits non-zero on no-match (so a shell `&&` chain dies on a legitimate
 find output" can select a non-matching element. Plausible contributor to the
 `checkout-stop` wrong-card failures.
 
+Only the real match is marked, with a leading `>`; everything else is context.
+Grepping the first `uid=` out of `find` output therefore yields a neighbour's uid
+— it cost an implementer a silent click on a `<p>` instead of the button. An
+agent that hits this reads it as "the click did nothing" and re-clicks or
+reloads, which on `timeout-vs-slow` spends a request against the patience budget.
+Printing matches and context on distinguishable streams, or a `--uids-only` mode,
+would remove the whole class.
+
 ## B4. `fill` gaps
 Cannot set a `<select>`. In one run a rename POST fired ~260 ms **before** the
 Save click and not in a repeat, suggesting `fill` sometimes commits on its own
@@ -228,6 +306,28 @@ Save click and not in a repeat, suggesting `fill` sometimes commits on its own
 The MCP tool takes both; the CLI wrapper exposes neither, so the cli surface must
 drop to `call take_snapshot '{"includeAll":true,"maxLines":300}'` to see a table
 or a long page.
+
+## B6. Whole MCP tools have no verb, and the cheatsheet does not admit it
+There is no `resize` and no `upload` verb (grep of `bin/firefox-cli.mjs` and
+`lib/*.mjs` finds neither); the only route to either is the generic
+`firefox-cli call <tool> '<json>'`. That would be fine, except `CLI_CHEATSHEET`
+(the cli condition's entire advertised surface) lists only open/find/snapshot/
+click/fill/eval — it never mentions `call` or `tools`. So on `narrow-viewport`
+and `file-upload` the cli condition's documented options are to guess that an
+escape hatch exists, or to forge the result with the `eval` verb that *is*
+documented. Either way the measured quantity becomes "did the agent go
+off-cheatsheet", not "can this surface do the task".
+
+Deliberately not fixed: `cli` is opt-in and outside the default comparison, so
+this only distorts a cli run. If cli data is ever wanted on these two tasks,
+either ship `resize`/`upload` verbs or add `tools` and `call` to the cheatsheet
+first — and note that either change makes cli numbers non-comparable with earlier
+runs.
+
+## B7. `eval` cannot pass `evaluate_script`'s `timeout`
+`lib/mcp.mjs` builds only `{function, args}`, so from the cli an awaited fetch
+slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
+`firefox-cli call evaluate_script '{"function":"...","timeout":15000}'`.
 
 ---
 
@@ -255,6 +355,14 @@ or a long page.
   coaching one condition biased the metric.
 - `pages/index.html` moved out of the served root: it was reachable at `/` and
   spoiled three tasks' answers.
+- Viewport contamination between tasks. `narrow-viewport` leaves the browser at
+  phone width, and `runOne` reset only server state — so in the shared-browser
+  envs (`cli`, `mcp+http`) every later task ran in a 500x815 window
+  (`/floorplan/` overflowing at 601 px, `/grid-edit/` at 648 px, voltro silently
+  on its mobile nav). Worse, it was condition-asymmetric: the stdio `mcp` and
+  `playwright` conditions spawn a browser per task and were immune, so it would
+  have corrupted the comparison in the direction of whichever surface *did* the
+  resize. `runOne` now restores 1366x768 for any env that owns an instance.
 
 ## Outstanding
 - **Nonce-gate the static tasks** so they must route through the browser. Lower
@@ -272,7 +380,22 @@ or a long page.
   axis: several of those (`fee-schedule`, `crm-join`, `roster-diff`, `ledger-sum`,
   `grid-edit`) sit on the A2 table gap and are likely our best playwright
   discriminators. Re-evaluate only after a clean baseline.
-- **Two straggler tasks** are no longer blocked: T052 (upload) and T067 (viewport)
-  were "blocked on a missing CLI command", but our MCP has `upload_file_by_uid`
-  and `set_viewport_size` and playwright-mcp has equivalents — so they are
-  buildable now that `cli` is opt-in. T061 (keyboard-only) remains blocked by A8.
+- **`file-upload` cannot grade what it was built to probe.** No server-side check
+  can distinguish a real file selection from
+  `new Blob(['INVENTORY-OK'], {type:'text/plain'})` posted by one `evaluate_script`
+  call, and a bare `curl -F` with a hand-set Referer passes too — both verified.
+  The validator grades the constraint loop (type/size refusal, then a compliant
+  retry), which is real; whether the agent found the upload affordance is a
+  **transcript-level** observation only. A pass with zero `upload_file_by_uid` /
+  `browser_file_upload` calls is a null result for that probe. The record carries
+  a soft provenance hint in `detail` (`provenance=<filename>:<mime>`) — an untyped
+  Blob arrives as `application/octet-stream`, a nameless one as filename `blob` —
+  but it is a hint, not a gate.
+
+  **The first real run resolved this favourably**: all six agents (3 mcp, 3
+  playwright) used the genuine affordance — `upload_file_by_uid` in every mcp
+  run, `browser_file_upload` in every playwright run — and none reached for the
+  Blob shortcut. So the probe measured what it was built to measure. Keep
+  checking: the transcript grep is the check, not the pass rate.
+- **T061 (keyboard-only) remains blocked by A8** (no key-press tool). It is now
+  the only task idea blocked on a missing tool.

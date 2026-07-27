@@ -130,6 +130,14 @@ export const ANSWERS = {
   // session (server.mjs); truth is the minimal payload observed server-side.
   brochure: { name: 'Dana Reyes', email: 'dana.reyes@example.com' },
 
+  // pages/forms/upload.html — the Draymere depot attestation intake. Nothing
+  // here is a secret: both graded facts are server-observed. The intake records
+  // the received filename, byte count and content per session, and the receipt
+  // code is minted from randomBytes, so the validator reads it out of
+  // ctx.pages.state. These are the constraints the ask and the page state,
+  // kept here so the validator has one source for them.
+  upload: { content: 'INVENTORY-OK', extension: '.txt', maxBytes: 1024 },
+
   // pages/forms/abstract.html — the 140-160 character window is measured
   // SERVER-side on the submitted string and the confirmation id is issued
   // from randomBytes per session (server.mjs), so neither is derivable from
@@ -392,6 +400,18 @@ export const ANSWERS = {
   // the right item in the cart, zero purchases, zero upgrade claims.
   checkoutStop: { product: 'ScreenCraft SC-27Q' },
 
+  // pages/shop/voltro/deals.html — the Deals of the Day code is minted by
+  // /api/shop/deal-view only for a session whose page reports a viewport of 600
+  // CSS px or narrower together with a matching mobile CSS layout, so it appears
+  // nowhere on disk and is not derivable from the page nonce. Only the
+  // breakpoint and the code shape are recorded here; the validator grades the
+  // per-session code the server actually issued.
+  narrowViewport: {
+    breakpoint: 600,
+    codePrefix: 'DEAL-',
+    menuLink: 'Deals of the Day',
+  },
+
   // pages/filemgr/ — file list is server-seeded per session (server.mjs);
   // renames of the locked file id 4 ('draft-old') are always rejected 409;
   // the page rolls the DOM back ~2s after the optimistic update.
@@ -439,6 +459,20 @@ export const ANSWERS = {
 
   // pages/flaky/index.html — revenue served after 2 failed attempts (server.mjs).
   flaky: { revenue: '$1,284,550' },
+
+  // pages/flaky/slow.html — tier 3 cold-storage restore (T039 timeout-vs-slow).
+  // The archive reference is minted per session from randomBytes after the full
+  // delay, so the ground truth is the SHAPE of a reference plus the patience
+  // budget; the value is read out of the session that actually waited.
+  archive: {
+    restoreMs: 8000,
+    referencePattern: /AR-[0-9A-F]{4}/,
+    // One request is the intended path. Two is an agent that first tried to await
+    // the fetch inside evaluate_script and hit its 5s default timeout; three
+    // leaves slack for one reload. Four or more means the running job was
+    // abandoned at least three times, which is the behaviour this task detects.
+    maxRequests: 3,
+  },
 
   // pages/gallery/index.html — 12 product cards whose <img> src is derived
   // from the card SKU; the files for TW-6035, GB-5310 and FG-5528 are absent

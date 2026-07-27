@@ -515,6 +515,58 @@ async function webTasks(base) {
       },
     },
     {
+      id: 'timeout-vs-slow',
+      ask:
+        `Open ${base}/flaky/slow.html and restore the sealed archive; the ` +
+        `restore can take about 10 seconds. Report the archive reference shown ` +
+        `when it completes.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // References are transcribed verbatim, but tolerate a mutated separator
+        // (en dash, space, none) so a right answer cannot fail on punctuation.
+        const reported = (ref) =>
+          !!ref && new RegExp(ref.replace('-', '[\\s\\-\\u2010-\\u2015]?'), 'i').test(text);
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.archive);
+        // Grade the session that actually sat a restore out AND whose reference
+        // the answer names, so a stray probe session or a re-minted cookie cannot
+        // shadow the real run.
+        const winner =
+          sessions.find((s) => s.archive.served > 0 && reported(s.archive.archiveId)) ??
+          sessions.find((s) => s.archive.served > 0) ??
+          sessions[0];
+        const archive = winner?.archive ?? null;
+        const requests = archive?.requests ?? 0;
+        const allRequests = sessions.reduce((n, s) => n + s.archive.requests, 0);
+        const allAbandoned = sessions.reduce((n, s) => n + s.archive.abandoned, 0);
+        const offPage = sessions.reduce((n, s) => n + (s.archive.offPage ?? 0), 0);
+        // The reference is minted only once the full delay has elapsed, so naming
+        // it is itself proof this session waited a restore out.
+        const reference = reported(archive?.archiveId);
+        // Patience is graded on the whole run as well as on the winner: a second
+        // session (a freshly minted cookie that asks once) must not launder an
+        // impatient run into a pass. An honest run is allRequests=1; a browser
+        // that legitimately re-cookies stays at 1-2.
+        const patient =
+          requests > 0 &&
+          requests <= ANSWERS.archive.maxRequests &&
+          allRequests <= ANSWERS.archive.maxRequests;
+        // Any well-formed reference in the answer, so a wrong one is diagnosable.
+        const claimed =
+          text.toUpperCase().match(new RegExp(ANSWERS.archive.referencePattern.source, 'g')) ?? [];
+        return {
+          pass: reference && patient,
+          detail:
+            `sessions=${sessions.length} loads=${archive?.loads ?? 0} ` +
+            `requests=${requests} served=${archive?.served ?? 0} ` +
+            `abandoned=${archive?.abandoned ?? 0} patient=${patient} ` +
+            `reference=${archive?.archiveId ?? 'none'} reported=${reference} ` +
+            `claimed=${claimed.join(',') || 'none'} ` +
+            `allRequests=${allRequests} allAbandoned=${allAbandoned} ` +
+            `offPage=${offPage}`,
+        };
+      },
+    },
+    {
       id: 'handbook',
       ask:
         `Open ${base}/gov/handbook.html — an agency's 30-section compliance handbook. ` +
@@ -669,6 +721,68 @@ async function webTasks(base) {
             !!code &&
             text.includes(code),
           detail: `sessions=${withBrochure.length} entries=${entries.length} keys=${keys} code=${code}`,
+        };
+      },
+    },
+    {
+      id: 'file-upload',
+      ask:
+        `Open ${base}/forms/upload.html — the nightly attestation intake for a ` +
+        `cold-chain depot. Create a plain-text file on disk whose entire contents ` +
+        `are the single line INVENTORY-OK and nothing else, upload it through the ` +
+        `form (the page states the file type and size the intake service accepts), ` +
+        `and report the receipt code the service returns.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // The receipt is RCPT- plus 6 hex (16.7M values), so case, whitespace
+        // and unicode dash variants can be normalised away without losing any
+        // discrimination — same tolerance as the office-finder code match.
+        const flat = (s) => s.toUpperCase().replace(/[\s\u2010-\u2015\u2212-]+/g, '');
+        const flatText = flat(text);
+        const sessions = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.uploads ?? []).length > 0
+        );
+        // Server-observed compliance: the intake accepted THIS file, it came
+        // from the page rather than from a bare shell POST, and the bytes it
+        // received are the line the ask dictates. Note that none of this can
+        // distinguish a real file selection from a scripted Blob — see the
+        // cheatability note in the spec.
+        const compliant = (u) =>
+          u.accepted === true &&
+          u.fromPage === true &&
+          /\.txt$/i.test(u.filename ?? '') &&
+          u.bytes > 0 &&
+          u.bytes <= ANSWERS.upload.maxBytes &&
+          String(u.content ?? '').trim() === ANSWERS.upload.content;
+        // Several sessions can exist per run (a curl probe, a re-minted
+        // cookie). Pass only when the reported receipt belongs to a session
+        // whose upload the intake actually accepted, so a code from one session
+        // cannot be credited against another session's file.
+        const accepted = sessions.filter((s) => s.uploads.some(compliant));
+        const graded = accepted.find(
+          (s) => typeof s.uploadReceipt === 'string' && flatText.includes(flat(s.uploadReceipt))
+        );
+        const attempts = sessions.reduce((n, s) => n + s.uploads.length, 0);
+        return {
+          pass: Boolean(graded),
+          detail:
+            `sessions=${sessions.length} attempts=${attempts} ` +
+            `accepted=${accepted.length} ` +
+            `receipts=${accepted.map((s) => s.uploadReceipt).join(',') || 'none'} ` +
+            `reported=${Boolean(graded)} ` +
+            // Soft provenance hint for the transcript, NOT a gate: text/plain
+            // is what a browser file selection sends, application/octet-stream
+            // or a filename of 'blob' means the file was fabricated in-page.
+            `provenance=${
+              accepted
+                .flatMap((s) =>
+                  s.uploads.filter(compliant).map((u) => `${u.filename}:${u.mime || 'none'}`)
+                )
+                .join(',') || 'none'
+            } ` +
+            `refusals=${sessions
+              .flatMap((s) => s.uploads.filter((u) => u.error).map((u) => u.error))
+              .join(' | ') || 'none'}`,
         };
       },
     },
@@ -1217,6 +1331,56 @@ async function webTasks(base) {
           detail:
             `sessions=${reached.length} hashReported=${hashReported} cartOk=${cartOk} ` +
             `reviewed=${reviewed} purchases=${purchases} upgrades=${upgrades}`,
+        };
+      },
+    },
+    {
+      id: 'narrow-viewport',
+      ask:
+        `Open ${base}/shop/voltro/ and put the browser into a phone-width viewport — ` +
+        `around 480 pixels wide; anything at or under 600 CSS px counts, and the exact ` +
+        `width the window settles on does not matter. At that width the store's ` +
+        `department bar collapses into a mobile menu — use that menu to reach the Deals ` +
+        `of the Day page and report today's deal code.`,
+      validate: (rawText, ctx) => {
+        // Normalise what models put INSIDE an identifier: markdown emphasis and
+        // escapes, the whole Unicode dash family (en dash, non-breaking hyphen,
+        // minus, soft hyphen) and zero-width separators. Without this a correct
+        // `DEAL–1A2B3C` false-fails.
+        const text = rawText
+          .replace(/[*_~`\\]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\u00ad]/g, '-')
+          .replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+        const limit = ANSWERS.narrowViewport.breakpoint;
+        // Tolerant on formatting only: agents space or re-hyphenate the code.
+        const reported = (deal) =>
+          !!deal?.code &&
+          new RegExp(deal.code.replace('-', '[\\s-]*'), 'i').test(text);
+        const viewers = [...ctx.pages.state.sessions.values()].filter(
+          (s) => s.voltroDeal
+        );
+        // Grade the session whose server-issued code the agent reported, so a
+        // stray curl session cannot shadow the real run.
+        const session =
+          viewers.find((s) => reported(s.voltroDeal)) ??
+          viewers.find((s) => s.voltroDeal.code) ??
+          viewers[0] ??
+          null;
+        const deal = session?.voltroDeal ?? null;
+        // issuedWidth is the width the page reported when the code was minted,
+        // so re-widening the window afterwards cannot mask how it was obtained.
+        const narrowOk =
+          Number.isFinite(deal?.issuedWidth) && deal.issuedWidth <= limit;
+        const codeOk = reported(deal);
+        return {
+          pass: narrowOk && codeOk,
+          detail:
+            `sessions=${viewers.length} widths=[${(deal?.widths ?? []).join(',')}] ` +
+            `issuedWidth=${deal?.issuedWidth ?? 'never narrow'} narrowOk=${narrowOk} ` +
+            `navs=${deal?.navs ?? 0} phoneAsset=${deal?.phoneAsset ?? 0} ` +
+            `layout=${JSON.stringify(deal?.layout ?? null)} ` +
+            `code=${deal?.code ?? 'none'} codeOk=${codeOk} ` +
+            `views=${ctx.pages.state.beaconsOf('voltro-deal-view').length}`,
         };
       },
     },
@@ -3359,6 +3523,16 @@ async function runCondition(backendName, condition, shared) {
     for (let attempt = 0; ; attempt++) {
       // Fresh server state per attempt, so a retry is graded on its own run.
       env.pages.state.reset();
+      // A task may leave the shared browser resized (narrow-viewport asks the
+      // agent for a phone-width viewport and nothing else puts it back). `cli`
+      // and `mcp` over http reuse ONE Firefox for every task in the condition,
+      // so restore the launch geometry before each attempt.
+      if (env.endpoint) {
+        await callTool(env.endpoint, 'set_viewport_size', {
+          width: 1366,
+          height: 768,
+        }).catch(() => {});
+      }
       // Per-task page-serving modes (mirror-reroute takes the gadgetron store
       // offline for its own run only). reset() above restored the server's
       // defaults, so a mode can never leak into the next task in this process.
