@@ -6,7 +6,8 @@ risk:
 - **Part A — upstream `firefox-devtools-mcp` (`src/`).** The product findings.
   This is what the suite exists to produce. Deliberately NOT fixed yet: the suite
   measures these gaps, so fixing one without a recorded before/after destroys the
-  evidence that justifies it. See the TOOL-FIX FREEZE in `staging/BRIEFING.md`.
+  evidence that justifies it. Fixture authors are told to design *around* these
+  gaps rather than patch them, and to re-measure after any change.
 - **Part B — `firefox-cli` and the shared client lib (`cli/`).** Bugs in the shell
   surface and in `cli/lib/mcp.mjs`. Mostly plain defects rather than design
   tradeoffs. The `cli` condition is now opt-in and destined to move out of this
@@ -51,7 +52,8 @@ their row context**.
 
 **The only finding here with a measured cost.** On `oos-substitute`, whose answer
 lives in a `<table>`, we spend **3442 output tokens against playwright-mcp's
-2189 — 57% more** (medians of 3, `results/run-2026-07-27T16-34-35-337Z`).
+2189 — 57% more** (medians of 3 repeats per condition; the run directory is local and gitignored —
+`node eval/bundle.mjs <run-dir>` packages it if the numbers need to travel).
 playwright-mcp's ARIA snapshot carries the rows; ours does not — confirmed by
 driving it at the same URL (10,635 chars of ARIA YAML containing the cell values).
 

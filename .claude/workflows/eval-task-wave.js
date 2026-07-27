@@ -38,7 +38,8 @@ export const meta = {
 //      without a recorded before/after destroys the evidence for it.
 //   3. `node eval/run.mjs --suite web --task <ids> --repeat 3` for the real
 //      agent numbers, then record the wave in task-ideas.md's status block.
-const REPO = '/Users/bgrins/code/firefox-devtools-mcp'
+// No absolute paths anywhere: every path in the prompts below is repo-relative,
+// and the agent resolves the checkout root itself with `git rev-parse`.
 
 // args may arrive as a real array or as a JSON-encoded string depending on how
 // the caller passes it; accept either.
@@ -63,7 +64,8 @@ for (const t of TASKS) {
 }
 
 const SHARED_CONTEXT = `
-Repo: ${REPO} (branch firefox-cli). All paths below are relative to ${REPO}/cli/eval/.
+Repo: the firefox-devtools-mcp checkout you are in (branch firefox-cli); resolve its
+root with \`git rev-parse --show-toplevel\`. Every path below is REPO-RELATIVE.
 
 You are implementing task(s) for a browser-agent eval suite. The suite runs agents against
 simulated local web pages served by eval/server.mjs and validates success via server-observed
@@ -71,14 +73,14 @@ state (session-scoped beacons and per-session fields), never trusting page-reada
 The suite measures the value of different TOOL SURFACES, not agent capability.
 
 READ FIRST (mandatory):
-0. ${REPO}/cli/eval/staging/BRIEFING.md — the standing rules: per-site design language (5b),
+0. cli/eval/staging/BRIEFING.md — the standing rules: per-site design language (5b),
    no fake-site disclaimers, the anti-cheat lessons section, validator brittleness rules, and
    the required spec sections. It supersedes anything vaguer below.
-1. Your plan section(s): sed -n '/^### <PLANID> /,/^### /p' ${REPO}/cli/eval/task-ideas.md
+1. Your plan section(s): sed -n '/^### <PLANID> /,/^### /p' cli/eval/task-ideas.md
    for each plan id you were given. Plans specify Fixture / Server / Ask / Validator.
    Also read the status block at the top of task-ideas.md for known tool gaps — they are
    deliberate probes; design tasks AWARE of them, do not fix them.
-2. ${REPO}/cli/eval/server.mjs — session/nonce infra (P-1) and existing endpoint handlers
+2. cli/eval/server.mjs — session/nonce infra (P-1) and existing endpoint handlers
    whose style your endpoint code must match. Contract: every .html response gets an
    evalsid cookie + per-session nonce; the literal __SESSION_NONCE__ in HTML is substituted
    server-side; page JS authenticates POSTs with the nonce; requireSession(req, res, nonce)
@@ -86,8 +88,8 @@ READ FIRST (mandatory):
    object for your fields; state.beacons + state.beaconsOf(kind) for beacons.
 3. Existing fixtures for house style: pages/forms/register.html (modern form + fetch),
    pages/flaky/index.html, pages/gov/*.html (legacy HTML 4.01 style).
-4. ${REPO}/cli/eval/answers.mjs and the register-errors, checkout-stop, and
-   rename-rollback entries in ${REPO}/cli/eval/run.mjs — the session-graded validator
+4. cli/eval/answers.mjs and the register-errors, checkout-stop, and
+   rename-rollback entries in cli/eval/run.mjs — the session-graded validator
    pattern (grade the session that completed the flow so stray curl sessions cannot
    shadow the real run) and markdown-emphasis stripping before prose regexes.
 
@@ -95,7 +97,7 @@ CRASH-SAFETY — KEEP A PROGRESS LEDGER (do this first, and keep it current):
 Your run can be killed at any moment (session end, API error). Because you write straight into
 the working tree, a half-finished run is indistinguishable from a finished one unless you leave
 a record. So:
-- FIRST, before editing anything, check whether ${REPO}/cli/eval/staging/<ID>-PROGRESS.md
+- FIRST, before editing anything, check whether cli/eval/staging/<ID>-PROGRESS.md
   already exists. If it does, a previous attempt was interrupted: read it, trust only the
   milestones it marks VERIFIED, re-check anything marked IN PROGRESS, and continue from there
   instead of starting over.
@@ -113,9 +115,9 @@ a record. So:
 
 HARD RULES:
 - Write ONLY: (a) your fixture files at your assigned location under pages/, (b) integration
-  spec(s) at ${REPO}/cli/eval/staging/<SPECFILE>, (c) scratch test files and your
+  spec(s) at cli/eval/staging/<SPECFILE>, (c) scratch test files and your
   <ID>-PROGRESS.md ledger under staging/,
-  (d) one tile for your fixture in ${REPO}/cli/eval/preview.html (the contact-sheet PAGES
+  (d) one tile for your fixture in cli/eval/preview.html (the contact-sheet PAGES
   list is hardcoded and goes stale otherwise) — add only your own entry, do not reorder.
 - Grade on per-session state your OWN endpoint maintains, never on beaconsOf(kind): the
   generic /api/beacon accepts an arbitrary kind, so such a gate is forgeable with just the
@@ -191,7 +193,7 @@ replace the root join with join(..., '..', 'pages')), add your endpoints, run on
 port, exercise the flow with curl (cookie jar + nonce scraped from served HTML), verify
 happy path + 403 on forged/no-session + ground truth absent from static source. ALSO verify
 in a real headless browser where flows involve JS, using the firefox-cli tool:
-  cd ${REPO}/cli && export FIREFOX_CLI_STATE_DIR=$(mktemp -d) && node bin/firefox-cli.mjs launch --headless
+  cd cli && export FIREFOX_CLI_STATE_DIR=$(mktemp -d) && node bin/firefox-cli.mjs launch --headless
   node bin/firefox-cli.mjs open <url>; node bin/firefox-cli.mjs eval '<js fn>'; ...; node bin/firefox-cli.mjs stop
 Note: page JS fetches to gated GET endpoints need the X-Eval-Nonce header (the served page
 defines a NONCE constant). Kill scratch servers and stop your browser instance when done.
@@ -298,8 +300,7 @@ ${t.extra ?? ''}`
 }
 
 function reviewPrompt(t, impl) {
-  return `You are an adversarial reviewer for browser-agent eval task implementation(s) in
-${REPO} (branch firefox-cli): ${t.id} (suite ids ${t.taskIds.join(', ')}).
+  return `You are an adversarial reviewer for browser-agent eval task implementation(s) on branch firefox-cli: ${t.id} (suite ids ${t.taskIds.join(', ')}).
 Read the plan(s): sed -n '/^### ${t.planIds[0]} /,/^### /p' cli/eval/task-ideas.md${
     t.planIds[1] ? ` (and the same for ${t.planIds.slice(1).join(', ')})` : ''
   }.
@@ -341,7 +342,7 @@ minor severity, because they corrupt the measurement rather than merely being un
 }
 
 function fixPrompt(t, impl, rev) {
-  return `Fix review findings for eval task(s) ${t.id} in ${REPO}. Files:
+  return `Fix review findings for eval task(s) ${t.id}. Files:
 ${JSON.stringify(impl.filesWritten)}; spec(s):
 ${t.specFiles.map((f) => 'cli/eval/staging/' + f).join(', ')}.
 Findings (fix blockers and majors; judgment on minors):
