@@ -11,7 +11,9 @@ export const ANSWERS = {
   },
 
   // pages/gridword/index.html — ?day=N indexes the (encoded) answer list.
-  gridword: { day0Word: 'CRISP' },
+  // Hard mode (?mode=hard) is marked server-side; hardDay3 lives in server.mjs
+  // and here only, never in the page.
+  gridword: { day0Word: 'CRISP', hardDay3: 'DOLPHIN' },
 
   // pages/shop/*/index.html — cheapest IN-STOCK 27" 4K per store.
   priceCompare: {
@@ -141,18 +143,58 @@ export const ANSWERS = {
     decoyCode: 'OF-HE-042',
   },
 
+  // pages/parcels/ — Corvane tracking. Statuses come only from the
+  // session-gated GET /api/parcels/track (one lookup per 5 s per session);
+  // neither a status string nor a tracking number appears in fixture source.
+  parcels: {
+    statuses: {
+      'PX-1041': 'In Transit',
+      'PX-2210': 'Delivered',
+      'PX-3327': 'Held at Depot',
+      'PX-4485': 'Label Created',
+    },
+    // Tolerant per-status matchers so a correct agent cannot fail on case,
+    // spacing, an inserted article, a named depot ("held at Tyburn depot") or an
+    // inflected verb ("a label has been created"). The two words may sit up to
+    // ~40 chars apart but never across a sentence or line break, so the status
+    // still has to be stated about this parcel. Never give these the /g flag.
+    patterns: {
+      'PX-1041': /in[\s-]*transit/i,
+      'PX-2210': /delivered/i,
+      'PX-3327':
+        /\b(?:held|hold|holding)\b[^.;\n]{0,40}?\bdepot\b|\bdepot\b[^.;\n]{0,20}?\bhol(?:d|ding)\b/i,
+      'PX-4485':
+        /\blabel\b[^.;\n]{0,25}?\bcreated\b|\bcreated\b[^.;\n]{0,20}?\blabel\b/i,
+    },
+    cooldownMs: 5000,
+  },
+
   // pages/canvas/swatch.html — orange cell is C4R2; code is server-issued
   // (server.mjs).
   canvas: { orangeCell: 'C4R2', code: 'AMBER-517' },
 
   // pages/portal/ — MFA code and the dashboard welcome phrase
-  // ("Welcome back, Ops — vault {word}") are server-issued per session
-  // (server.mjs). Keep the word list in sync with VAULT_WORDS there.
+  // ("Welcome back, {greet} — vault {word}") are server-issued per session
+  // (server.mjs). Keep the word list in sync with VAULT_WORDS there. The
+  // account tier, the billing balance and the admin-only panel name live only
+  // in server.mjs (PORTAL_* constants) and reach the page through the
+  // session-gated /api/portal/dashboard, so none of them appear in fixture
+  // source on disk. ops@ is the two-step account; the other three sign in
+  // with a password only.
   portal: {
     email: 'ops@bluefern.example',
     password: 'gr8-heron-42',
     vaultWords: ['juniper', 'cobalt', 'marigold', 'saffron', 'tundra',
       'umber', 'fennel', 'verdant'],
+    dispatchEmail: 'dispatch@bluefern.example',
+    dispatchPassword: 'slate-ferry-64',
+    viewerEmail: 'viewer@bluefern.example',
+    viewerPassword: 'fern-viewer-21',
+    adminEmail: 'admin@bluefern.example',
+    adminPassword: 'fern-admin-53',
+    tier: 'Corridor Plus',
+    balance: '412.67',
+    adminPanel: 'Audit Exports',
   },
 
   // pages/portal/reports/ — figures are server-issued (server.mjs); keep in
@@ -160,6 +202,19 @@ export const ANSWERS = {
   portalReports: {
     values: ['9,412', '7,258', '12,391', '4,876', '7,936'],
     total: '41,873',
+  },
+
+  // pages/portal/forgot.html + reset.html + carrier.html and pages/inbox/ —
+  // the reset token and the dashboard code ("Dashboard code: XXXX-YYYY") are
+  // server-issued per session from randomBytes (server.mjs), and the new
+  // password is whatever the agent chooses, so there is no static answer key
+  // here: the validator reads the code back out of the graded session.
+  passwordReset: {
+    account: 'casey@fernmail.example',
+    minPasswordLength: 12,
+    liveMailSubject: 'Reset your Overlane password',
+    staleMailSubject: 'Password reset requested',
+    landingPage: 'portal/carrier.html',
   },
 
   // pages/news/article.html — the three recommendations are page content;
@@ -397,6 +452,21 @@ export const ANSWERS = {
     email: 'morgan@tealwave.example',
     phrasePattern: /UNSUB-[0-9A-F]{4}/,
     stayControls: ['keep-benefits', 'pause-60', 'modal-cancel', 'step3-keep'],
+  },
+
+  // pages/press/ — embargoed release 26-118 (T088 embargo-wait). The headline,
+  // dateline and body copy live only in server.mjs (PRESS_RELEASE) and are
+  // served by GET /api/press/unlock, which refuses with 403 until 20s after the
+  // session's first pageload; the release reference is minted per session from
+  // randomBytes. Nothing here is derivable from fixture source on disk, and the
+  // graded wait is server-observed (session.press.unlockedAt - loadedAt).
+  // The rendered headline runs past the snapshot's 30-character text cap, so
+  // the validator only requires headlineTokens, the leading company name.
+  press: {
+    embargoMs: 20000,
+    headline: 'Halcyon Robotics to join Northwind',
+    headlineTokens: ['Halcyon', 'Robotic'],
+    referencePattern: /NW-[0-9A-F]{4}/,
   },
 
   // pages/news/ ground truth lives in pages/news/items.json (the page must

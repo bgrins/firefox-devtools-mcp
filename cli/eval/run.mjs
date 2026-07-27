@@ -312,6 +312,61 @@ async function webTasks(base) {
       }),
     },
     {
+      id: 'gridword-hard',
+      ask:
+        `Open ${base}/gridword/?mode=hard&day=3 — the hard-mode word puzzle. ` +
+        `The word is 7 letters and you get 5 tries, and hard mode is binding: ` +
+        `every hint you have revealed must be reused in later guesses (a letter ` +
+        `marked right-spot must stay in that spot, a letter marked in-word must ` +
+        `appear again). A guess that drops a hint is refused and does not cost a try. ` +
+        `Solve the puzzle, then report the answer word and the counted guess number ` +
+        `the board ends on (the N in "Guess N of 5").`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // Grade the session that actually played day 3 through the gated
+        // endpoint, so a stray curl probe cannot shadow the real run. The
+        // server refuses rule-breaking guesses outright, so every counted
+        // guess in a won game obeyed hard mode.
+        const games = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.gridwordHard?.[3])
+          .filter(Boolean);
+        const game = games.find((g) => g.won) ?? games[0];
+        const won = game?.won === true;
+        const used = game?.guesses.length ?? 0;
+        const refused = game?.violations.length ?? 0;
+        // The five-try cap is the whole point, so it is enforced across ALL
+        // sessions: minting fresh cookies to farm feedback on the same word and
+        // then winning in one guess spends more than five counted guesses in
+        // total. A legitimate run reuses one cookie (a reload included), and a
+        // session that never posts a guess adds nothing. 5 = GRIDWORD_HARD_TRIES.
+        const totalUsed = games.reduce((sum, g) => sum + g.guesses.length, 0);
+        const withinBudget = totalUsed <= 5;
+        const wordOk = new RegExp(ANSWERS.gridword.hardDay3, 'i').test(text);
+        const SPELLED = [
+          ['zero'],
+          ['one', 'first'],
+          ['two', 'second'],
+          ['three', 'third'],
+          ['four', 'fourth'],
+          ['five', 'fifth'],
+        ];
+        // Deliberately lenient: digit or word, cardinal or ordinal, and either
+        // the counted guesses or counted-plus-refused ("5 attempts, 2 refused"),
+        // because won === true is the real gate.
+        const mentions = (n) =>
+          new RegExp(`(^|[^\\d])${n}([^\\d]|$)`).test(text) ||
+          (SPELLED[n] ? new RegExp(`\\b(${SPELLED[n].join('|')})\\b`, 'i').test(text) : false);
+        const countOk = used > 0 && [used, used + refused].some(mentions);
+        return {
+          pass: won && wordOk && countOk && withinBudget,
+          detail:
+            `sessions=${games.length} won=${won} used=${used} totalUsed=${totalUsed} ` +
+            `withinBudget=${withinBudget} wordOk=${wordOk} countOk=${countOk} ` +
+            `refusedGuesses=${refused}`,
+        };
+      },
+    },
+    {
       id: 'price-compare',
       ask:
         `Three online stores sell computer monitors:\n` +
@@ -678,6 +733,189 @@ async function webTasks(base) {
             `sessions=${candidates.length} ` +
             `hits=${(winner?.reportHits ?? []).join(',')} ` +
             `logins=${logins} total=${total}`,
+        };
+      },
+    },
+    {
+      id: 'portal-login',
+      ask:
+        `Open ${base}/portal/ and sign in as dispatch@bluefern.example with ` +
+        `password slate-ferry-64. Once you are on the dashboard, report the ` +
+        `account tier shown for the account.`,
+      validate: (text, ctx) => {
+        // Server-observed: a session whose sign-in this account's password
+        // satisfied AND that then loaded the gated dashboard payload. The
+        // tier string exists only in server.mjs, so an agent that never
+        // authenticated cannot produce it.
+        const email = ANSWERS.portal.dispatchEmail;
+        const winners = [...ctx.pages.state.sessions.values()].filter(
+          (s) =>
+            (s.logins ?? []).some((l) => l.ok && l.email === email) &&
+            (s.portalDashboards ?? 0) > 0
+        );
+        const clean = text.replace(/[*_~`]+/g, '');
+        const tier = new RegExp(
+          ANSWERS.portal.tier.replace(/\s+/g, '[\\s-]+'),
+          'i'
+        ).test(clean);
+        return {
+          pass: winners.length > 0 && tier,
+          detail: `dashboardSessions=${winners.length} tier=${tier}`,
+        };
+      },
+    },
+    {
+      id: 'logout-hygiene',
+      ask:
+        `Sign in at ${base}/portal/ as dispatch@bluefern.example with ` +
+        `password slate-ferry-64 and note the current balance shown on the ` +
+        `dashboard. Then log out of the portal. Report the balance only ` +
+        `after you have logged out.`,
+      validate: (text, ctx) => {
+        // Graded on the WINNER session -- the latest sign-in that actually
+        // read the dashboard payload the balance comes from -- and not on
+        // every session that ever authenticated: an earlier exploratory
+        // sign-in (a curl cookie jar, a probe tab, a reports-area login) has
+        // no reachable Log out button, so counting it would fail an
+        // otherwise clean run. Signing out and then signing back in still
+        // fails, because that later session becomes the winner.
+        const email = ANSWERS.portal.dispatchEmail;
+        const authed = [...ctx.pages.state.sessions.values()].filter((s) =>
+          (s.logins ?? []).some((l) => l.ok && l.email === email)
+        );
+        const sawDashboard = authed.filter((s) => (s.portalDashboards ?? 0) > 0);
+        const winner = sawDashboard
+          .slice()
+          .sort(
+            (a, b) =>
+              (b.portalLoginAt ?? 0) - (a.portalLoginAt ?? 0) ||
+              (b.portalDashboards ?? 0) - (a.portalDashboards ?? 0)
+          )[0];
+        const signedOut = winner?.portalSignedOut === true;
+        const stillActive = authed.filter((s) => s.portalActive !== false);
+        const clean = text.replace(/[*_~`]+/g, '');
+        const balance = new RegExp(
+          '\\$?\\b' + ANSWERS.portal.balance.replace('.', '\\.') + '(?!\\d)'
+        ).test(clean);
+        return {
+          pass: signedOut && balance,
+          detail:
+            `authed=${authed.length} dashboard=${sawDashboard.length} ` +
+            `winnerSignedOut=${signedOut} stillActive=${stillActive.length} ` +
+            `balance=${balance}`,
+        };
+      },
+    },
+    {
+      id: 'role-panels',
+      ask:
+        `Two accounts exist on ${base}/portal/: viewer@bluefern.example with ` +
+        `password fern-viewer-21, and admin@bluefern.example with password ` +
+        `fern-admin-53. Sign in as each in turn, logging out of the portal ` +
+        `before you switch accounts, and report the name of the dashboard ` +
+        `panel that the admin account sees and the viewer account does not.`,
+      validate: (text, ctx) => {
+        // Both sign-ins must be server-observed on DISTINCT sessions with a
+        // sign-out recorded on the earlier one before the later one signed in
+        // (either account order). Signing out drops the evalsid cookie, so a
+        // second sid is the fingerprint of an actual sign-out rather than a
+        // timestamp race against the answer text.
+        const dashboardSessions = (email) =>
+          [...ctx.pages.state.sessions.entries()]
+            .filter(
+              ([, s]) =>
+                (s.logins ?? []).some((l) => l.ok && l.email === email) &&
+                (s.portalDashboards ?? 0) > 0
+            )
+            .map(([sid, s]) => ({ sid, s }));
+        const viewers = dashboardSessions(ANSWERS.portal.viewerEmail);
+        const admins = dashboardSessions(ANSWERS.portal.adminEmail);
+        const before = (a, b) =>
+          a.sid !== b.sid &&
+          typeof a.s.portalSignedOutAt === 'number' &&
+          typeof b.s.portalLoginAt === 'number' &&
+          a.s.portalSignedOutAt <= b.s.portalLoginAt;
+        const switched = viewers.some((v) =>
+          admins.some((a) => before(v, a) || before(a, v))
+        );
+        const clean = text.replace(/[*_~`]+/g, '');
+        // Direction check: an inverted diff ("the viewer sees Audit Exports
+        // and the admin does not") names the right string for the wrong
+        // reason. Per sentence, look at the text BEFORE the panel mention:
+        // the nearest role word owns the claim, and a negation between that
+        // role word and the panel name means the claim is a denial rather
+        // than an attribution. Bullets and table rows split into cells with
+        // no leading role word, so they are unaffected.
+        const NEG =
+          /\b(?:no|not|n[o']t|never|cannot|can[o']t|omits?|excludes?|lacks?|lacking|without|hidden|missing|absent|denied|unavailable|unlike)\b/i;
+        let adminSees = false;
+        let viewerSees = false;
+        // Email domains are dropped first so their dots do not split one.
+        const sentences = clean
+          .replace(/@[a-z0-9.-]+/gi, '')
+          .split(/[.!?\n;:]+/);
+        for (const sentence of sentences) {
+          const hit = /audit[\s-]*exports?/i.exec(sentence);
+          if (!hit) continue;
+          const lead = sentence.slice(0, hit.index);
+          const role = [...lead.matchAll(/\b(admin\w*|viewer\w*)\b/gi)].pop();
+          if (!role) continue;
+          if (NEG.test(lead.slice(role.index + role[0].length))) continue;
+          if (/^admin/i.test(role[1])) adminSees = true;
+          else viewerSees = true;
+        }
+        const inverted = viewerSees && !adminSees;
+        const panel = /\baudit[\s-]*exports?\b/i.test(clean) && !inverted;
+        return {
+          pass: viewers.length > 0 && admins.length > 0 && switched && panel,
+          detail:
+            `viewerSessions=${viewers.length} adminSessions=${admins.length} ` +
+            `switched=${switched} panel=${panel} inverted=${inverted}`,
+        };
+      },
+    },
+    {
+      id: 'password-reset',
+      ask:
+        `The password for ${ANSWERS.passwordReset.account} on ${base}/portal/ ` +
+        `has been lost. Use the forgot-password flow on the sign-in page; the ` +
+        `reset link is delivered to that account's mailbox, which is open at ` +
+        `${base}/inbox/. Choose a new password, sign in with it, and report ` +
+        `the dashboard code you are shown after signing in.`,
+      validate: (text, ctx) => {
+        const sessions = [...ctx.pages.state.sessions.values()];
+        // Grade a session that walked the whole state machine (requested ->
+        // token used -> signed in) AND was issued a dashboard code, so a stray
+        // curl probe or a re-minted cookie cannot shadow the real run.
+        // completedAt, not stage: `stage` can move again if the agent re-checks
+        // the flow after finishing, completedAt is set once and only by a
+        // sign-in with the freshly chosen password.
+        const winners = sessions.filter(
+          (s) =>
+            !!s.portalReset?.completedAt &&
+            !!s.portalReset.usedAt &&
+            !!s.dashCode &&
+            (s.resetRequests ?? []).some(
+              (r) => r.email === ANSWERS.passwordReset.account
+            )
+        );
+        const clean = text.replace(/[*_~`]+/g, '');
+        // Between the two hex quads accept any short run of hyphen-ish or
+        // whitespace characters: ASCII hyphen, the Unicode dash block, minus
+        // sign, spaces/NBSP, a prose line wrap, or a markdown backslash escape.
+        const SEP = '[\\s\\\\\\-\\u2010-\\u2015\\u2212]{0,4}';
+        const codeSeen = winners.some((s) => {
+          const [head, tail] = s.dashCode.split('-');
+          return new RegExp(`\\b${head}${SEP}${tail}\\b`, 'i').test(clean);
+        });
+        return {
+          pass: winners.length > 0 && codeSeen,
+          detail:
+            `sessions=${sessions.length} winners=${winners.length} ` +
+            `code=${codeSeen} codes=${winners.map((s) => s.dashCode).join(',')} ` +
+            `stages=${sessions
+              .map((s) => s.portalReset?.stage ?? '-')
+              .join('|')}`,
         };
       },
     },
@@ -2057,6 +2295,174 @@ async function webTasks(base) {
             `sessions=${sessions.length} cart=${JSON.stringify(asMap(cart))} ` +
             `cartOk=${cartOk} oosSeen=${oosSeen} namesApproved=${namesApproved} ` +
             `namesDecoyAsChoice=${namesDecoyAsChoice}`,
+        };
+      },
+    },
+    {
+      id: 'embargo-wait',
+      tier: 'long',
+      ask:
+        `Open ${base}/press/ — a corporate newsroom holding an embargoed press ` +
+        `release. The newsroom will not hand over the text until the embargo lifts, ` +
+        `20 seconds after the page is first opened; the page then publishes the ` +
+        `release itself, so wait the embargo out instead of reloading or hammering ` +
+        `the page. Report the announcement headline and the release reference code ` +
+        `printed with it.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // References are normally transcribed verbatim, but tolerate a mutated
+        // separator (en dash, space, none) so a right answer cannot fail on
+        // punctuation. The 65536-wide guess space is unchanged.
+        const reported = (ref) =>
+          !!ref && new RegExp(ref.replace('-', '[\\s\\-\\u2010-\\u2015]?'), 'i').test(text);
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.press);
+        // Grade the session that actually served the release, so a stray probe
+        // session or a re-minted cookie cannot shadow the real run.
+        const winner =
+          sessions.find((s) => s.press.unlockedAt && reported(s.press.reference)) ??
+          sessions.find((s) => s.press.unlockedAt) ??
+          sessions[0];
+        const press = winner?.press ?? null;
+        const waitedMs = press?.unlockedAt ? press.unlockedAt - press.loadedAt : null;
+        // The endpoint enforces the wait itself, so this is a cross-check that
+        // the release the agent reports came from a session that waited.
+        const waited = waitedMs !== null && waitedMs >= ANSWERS.press.embargoMs;
+        // Decoupled from the rest of the headline: the snapshot truncates
+        // element text at 30 chars, so only the leading company name is graded.
+        const target = ANSWERS.press.headlineTokens.every((t) => new RegExp(t, 'i').test(text));
+        const reference = reported(press?.reference);
+        // Any well-formed code in the answer, so a wrong one is diagnosable.
+        const claimed =
+          text.toUpperCase().match(new RegExp(ANSWERS.press.referencePattern.source, 'g')) ?? [];
+        return {
+          pass: waited && target && reference,
+          detail:
+            `sessions=${sessions.length} waitedMs=${waitedMs} waited=${waited} ` +
+            `target=${target} reference=${press?.reference ?? 'none'} ` +
+            `reported=${reference} claimed=${claimed.join(',') || 'none'} ` +
+            `attempts=${press?.attempts ?? 0} early=${press?.earlyAttempts ?? 0} ` +
+            `published=${ctx.pages.state.beaconsOf('press-published').length}`,
+        };
+      },
+    },
+    {
+      id: 'rate-limited-lookups',
+      tier: 'long',
+      ask:
+        `Open ${base}/parcels/ — a parcel tracker that allows one lookup every ` +
+        `5 seconds. Using the page, look up tracking numbers PX-1041, PX-2210, ` +
+        `PX-3327 and PX-4485, and report the status of each one.`,
+      validate: (text, ctx) => {
+        const NUMS = Object.keys(ANSWERS.parcels.statuses);
+        const logOf = (s) => s.parcels?.lookups ?? [];
+        const covered = (s) => NUMS.filter((n) => logOf(s).some((l) => l.num === n)).length;
+        // Grade the session that got furthest through the lookup log: a curl
+        // probe or a re-minted cookie must not shadow the real run.
+        const sessions = [...ctx.pages.state.sessions.values()]
+          .filter((s) => logOf(s).length > 0)
+          .sort((a, b) => covered(b) - covered(a));
+        const session = sessions[0];
+        const lookups = session ? logOf(session) : [];
+        const loggedAll = NUMS.every((n) => lookups.some((l) => l.num === n));
+        const clean = text.replace(/[*_~`]+/g, '');
+        // Every tracking-number mention in the answer, in order.
+        const mentions = [...clean.matchAll(new RegExp(NUMS.join('|'), 'gi'))].map((mm) => ({
+          num: mm[0].toUpperCase(),
+          start: mm.index,
+          end: mm.index + mm[0].length,
+        }));
+        // Per mention, window = start of the line before it (so a status stated
+        // on the line above still counts) up to the next tracking-number
+        // mention, clamped at the front to just after the previous mention so
+        // one parcel's status can never satisfy another's. No length cap: the
+        // next-number boundary is what stops cross-contamination, and verbose
+        // narration must not lose the pair. Every occurrence is tried, so a
+        // preamble that lists all four numbers cannot fail the check.
+        const pairOk = (num) =>
+          mentions.some((hit, i) => {
+            if (hit.num !== num) return false;
+            const lineStart = clean.lastIndexOf('\n', hit.start - 1) + 1;
+            const prevLineStart = clean.lastIndexOf('\n', lineStart - 2) + 1;
+            const from = Math.max(prevLineStart, i > 0 ? mentions[i - 1].end : 0);
+            const to = i + 1 < mentions.length ? mentions[i + 1].start : clean.length;
+            return ANSWERS.parcels.patterns[num].test(clean.slice(from, to));
+          });
+        // Fallback for grouped layouts (a transposed table, or "numbers: ..." on
+        // one line and "statuses, same order: ..." on the next): all four
+        // numbers together, all four statuses together with no number in
+        // between, and the two sequences in the same order. That is an
+        // unambiguous mapping, and a swapped or rotated one still fails.
+        const groupedOk = () => {
+          if (mentions.length === 0) return false;
+          const firstAt = (n) => mentions.find((hit) => hit.num === n);
+          if (NUMS.some((n) => !firstAt(n))) return false;
+          const order = [...NUMS].sort((a, b) => firstAt(a).start - firstAt(b).start);
+          const hits = order.map((n) => ANSWERS.parcels.patterns[n].exec(clean));
+          if (hits.some((h) => !h)) return false;
+          const numsFrom = mentions[0].start;
+          const numsTo = mentions[mentions.length - 1].end;
+          const allBefore = hits.every((h) => h.index + h[0].length <= numsFrom);
+          const allAfter = hits.every((h) => h.index >= numsTo);
+          if (!allBefore && !allAfter) return false;
+          return hits.every((h, i) => i === 0 || hits[i - 1].index < h.index);
+        };
+        const paired = NUMS.filter((n) => pairOk(n));
+        const grouped = paired.length < NUMS.length && groupedOk();
+        const missingPairs = grouped ? [] : NUMS.filter((n) => !paired.includes(n));
+        const missingLogs = NUMS.filter((n) => !lookups.some((l) => l.num === n));
+        // Rate-limit violations, wasted lookups and off-page probes are
+        // efficiency/diagnostic metrics only.
+        const violations = session?.parcels?.violations ?? 0;
+        const offPage = [...ctx.pages.state.sessions.values()]
+          .reduce((sum, s) => sum + (s.parcels?.offPage ?? 0), 0);
+        return {
+          pass: loggedAll && missingPairs.length === 0,
+          detail:
+            `sessions=${sessions.length} logged=${lookups.length} ` +
+            `loggedAll=${loggedAll} paired=${paired.length}/${NUMS.length} ` +
+            `grouped=${grouped} ` +
+            `missingPairs=${missingPairs.join(',') || 'none'} ` +
+            `missingLogs=${missingLogs.join(',') || 'none'} ` +
+            `rateLimit429s=${violations} offPageProbes=${offPage} ` +
+            `unknownNums=${lookups.filter((l) => !l.found).length}`,
+        };
+      },
+    },
+    {
+      id: 'maze-escape',
+      tier: 'long',
+      ask:
+        `Open ${base}/maze/ — the traverse console for a surface rover parked ` +
+        `at survey grid cell A1. Drive the rover to the extraction pad at F6 ` +
+        `using the drive controls. The console maps obstructions only for the ` +
+        `cells the rover has entered, so you have to explore; a drive into an ` +
+        `obstruction is refused and moves nothing. When the rover reaches the ` +
+        `pad, report the extraction code the console shows.`,
+      validate: (text, ctx) => {
+        const runs = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.maze)
+          .filter((m) => m && typeof m.drives === 'number');
+        const flat = text.replace(/[*_~`]+/g, '');
+        // MZ, any punctuation a model might use as the separator (including en/em
+        // dashes and a colon), then the four hex digits, which may be spaced out.
+        const reports = (code) =>
+          new RegExp(
+            'MZ[\\s\\u2010-\\u2015:.-]*' + [...code.slice(3)].join('\\s*') + '(?![0-9a-f])',
+            'i'
+          ).test(flat);
+        // Grade a session that actually reached the pad, preferring one whose code
+        // the agent reported: a curl probe or a re-minted cookie must not shadow
+        // the real run.
+        const finished = runs.filter((m) => m.reachedExit && m.code);
+        const winner = finished.find((m) => reports(m.code)) ?? finished[0];
+        const reported = !!winner && reports(winner.code);
+        return {
+          pass: !!winner && reported,
+          detail:
+            `sessions=${runs.length} finished=${finished.length} ` +
+            `code=${winner?.code ?? 'none'} reported=${reported} ` +
+            `drives=${winner?.drives ?? '-'} (optimal ${winner?.optimal ?? '-'}) ` +
+            `refused=${winner?.blocked ?? '-'} surveyed=${winner?.surveyed?.length ?? '-'}`,
         };
       },
     },

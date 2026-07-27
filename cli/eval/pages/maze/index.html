@@ -39,7 +39,10 @@
     a drive into an obstruction is refused by the hazard interlock, and a queued sequence
     stops at the first refusal.</p>
 
-    <p class="alert" id="alert" hidden></p>
+    <div class="alert" id="alert" hidden>
+      <p id="alertHead"></p>
+      <p id="alertBody"></p>
+    </div>
 
     <section class="extract" id="extract" hidden>
       <h2>Extraction code</h2>
@@ -82,18 +85,15 @@
           </div>
         </div>
         <p class="legend">Hatched cells are unsurveyed. Heavy edges are confirmed
-        obstructions. Orange marker is the rover, striped square is the pad.</p>
-        <details class="record" id="record">
-          <summary>Survey record</summary>
-          <ul class="recordlist" id="recordlist"></ul>
-        </details>
+        obstructions. Orange marker is the rover, striped square is the pad.
+        <a href="survey.html">Survey record</a> lists every cell mapped so far.</p>
       </section>
 
       <section class="deck deck-log">
         <h2>Telemetry log</h2>
         <ul class="logbook" id="logbook"></ul>
-        <p class="legend">Buffer holds the twenty most recent entries. The survey record is
-        held on the rover, so it survives a console reload in full.</p>
+        <p class="legend">Buffer holds the twenty most recent entries. The full survey
+        record is held on the rover and is listed on the survey record sheet.</p>
       </section>
     </div>
   </main>
@@ -120,7 +120,6 @@ const rowlabs = document.getElementById('rowlabs');
 const axis = document.getElementById('axis');
 const grid = document.getElementById('grid');
 const logbook = document.getElementById('logbook');
-const recordlist = document.getElementById('recordlist');
 const cells = {};
 
 // Grid refs and axis labels are drawn from data attributes by the stylesheet:
@@ -170,18 +169,13 @@ function paint(view) {
     cell.removeAttribute('data-ref');
     for (const d of ORDER) cell.removeAttribute('data-w' + d.toLowerCase());
   }
-  recordlist.replaceChildren();
   for (const seen of view.surveyed) {
     const cell = cells[seen.ref];
-    if (cell) {
-      cell.setAttribute('data-ref', seen.ref);
-      for (const d of ORDER) {
-        if (!seen.clear.includes(d)) cell.setAttribute('data-w' + d.toLowerCase(), '1');
-      }
+    if (!cell) continue;
+    cell.setAttribute('data-ref', seen.ref);
+    for (const d of ORDER) {
+      if (!seen.clear.includes(d)) cell.setAttribute('data-w' + d.toLowerCase(), '1');
     }
-    const li = document.createElement('li');
-    li.textContent = seen.ref + ' CLEAR ' + (seen.clear.join(',') || 'none');
-    recordlist.append(li);
   }
   const pad = cells[view.exit];
   if (pad) {
@@ -204,9 +198,7 @@ function paint(view) {
   }
   // Any successful telemetry means the uplink is alive, so the deck comes back:
   // the controls are only retired once the rover is parked on the pad.
-  const alert = document.getElementById('alert');
-  alert.hidden = true;
-  alert.textContent = '';
+  document.getElementById('alert').hidden = true;
   document.getElementById('telLast').classList.remove('tel-alert');
   lock(!!(view.reachedExit && view.code));
 }
@@ -221,10 +213,11 @@ function down(message) {
   const last = document.getElementById('telLast');
   last.textContent = 'LAST ' + message;
   last.classList.add('tel-alert');
-  const alert = document.getElementById('alert');
-  alert.textContent = 'Uplink to Kestrel 4 lost. Reload this console to reconnect; the '
-    + 'rover holds its position and its survey record.';
-  alert.hidden = false;
+  document.getElementById('alertHead').textContent = 'Reload to reconnect';
+  document.getElementById('alertBody').textContent =
+    'The uplink to Kestrel 4 dropped, so the deck is inhibited. Reloading the console '
+    + 'reconnects it; the rover holds its position and its survey record.';
+  document.getElementById('alert').hidden = false;
   lock(true);
 }
 

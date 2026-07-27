@@ -273,6 +273,8 @@ a { color: var(--teal); }
   border-left: 4px solid var(--signal);
   color: #8c3a11;
 }
+.alert p { margin: 0; }
+.alert p:first-child { font-weight: bold; letter-spacing: 0.04em; }
 
 .logbook { list-style: none; margin: 0; padding: 0; }
 .logbook li {

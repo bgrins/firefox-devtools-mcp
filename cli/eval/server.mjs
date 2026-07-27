@@ -52,6 +52,25 @@ const GRID_EDIT_MEMO = [
 
 const BODY_CAP = 65536;
 
+// pages/parcels/ — Corvane tracking lookups. Shipment statuses exist only here,
+// never in fixture source, and the endpoint accepts one lookup per session per
+// PARCEL_COOLDOWN_MS.
+const PARCEL_COOLDOWN_MS = 5000;
+const PARCEL_SHIPMENTS = {
+  'PX-1041': { status: 'In Transit', tone: 'move', service: 'Ground Economy',
+    lastScan: 'Marbeck hub 06:12' },
+  'PX-2210': { status: 'Delivered', tone: 'final', service: 'Express 24',
+    lastScan: 'Denhollow 14:52' },
+  'PX-3327': { status: 'Held at Depot', tone: 'hold', service: 'Ground Economy',
+    lastScan: 'Tyburn depot 09:20' },
+  'PX-4485': { status: 'Label Created', tone: 'pending', service: 'Express 24',
+    lastScan: 'Not yet scanned' },
+  'PX-5063': { status: 'Out for Delivery', tone: 'move', service: 'Express 24',
+    lastScan: 'Sallow Cross 07:41' },
+  'PX-6118': { status: 'Returned to Sender', tone: 'final', service: 'Ground Economy',
+    lastScan: 'Marbeck hub 18:05' },
+};
+
 // pages/forms/office-finder.html — the branch tree is served only through the
 // session-gated /api/offices endpoint, so no branch code ever appears in
 // fixture source on disk or in client JS.
@@ -146,6 +165,547 @@ const OFFICE_TREE = {
     },
   },
 };
+
+// pages/portal/ — Overlane Carrier Access accounts. Passwords, the account
+// tier, the billing balance and the per-role panel list exist only here: the
+// dashboard is rendered from /api/portal/dashboard, so none of it appears in
+// fixture source on disk. ops@ is the two-step account used by mfa-login and
+// session-expiry; the other three sign in with a password only.
+const PORTAL_TIER = 'Corridor Plus';
+const PORTAL_BALANCE = '$412.67';
+const PORTAL_BASE_PANELS = [
+  { title: 'Usage', note: 'Lane volume booked against your contract this cycle.' },
+  { title: 'Invoices', note: 'Issued invoices, credit notes and payment status.' },
+];
+// Only the admin role is served this panel; role-panels grades on its name, so
+// it must never reach the viewer account's dashboard.
+const PORTAL_ADMIN_PANELS = [
+  { title: 'Audit Exports', note: 'Signed access and configuration change logs.' },
+];
+const PORTAL_ACCOUNTS = {
+  'ops@bluefern.example': {
+    password: 'gr8-heron-42', twoStep: true, role: 'operator',
+    roleLabel: 'Operator', greet: 'Ops', desk: 'Operations desk', initials: 'OD',
+  },
+  'dispatch@bluefern.example': {
+    password: 'slate-ferry-64', twoStep: false, role: 'dispatcher',
+    roleLabel: 'Dispatcher', greet: 'Dispatch', desk: 'Dispatch desk', initials: 'DD',
+  },
+  'viewer@bluefern.example': {
+    password: 'fern-viewer-21', twoStep: false, role: 'viewer',
+    roleLabel: 'Viewer', greet: 'Viewer', desk: 'Read-only access', initials: 'RO',
+  },
+  'admin@bluefern.example': {
+    password: 'fern-admin-53', twoStep: false, role: 'admin',
+    roleLabel: 'Administrator', greet: 'Admin', desk: 'Carrier administrator', initials: 'CA',
+  },
+};
+
+// pages/inbox/ (Fernmail) + pages/portal/forgot.html + reset.html — the
+// password-reset state machine (password-reset). Mailbox contents, the reset
+// token and the dashboard code live only here: no file under pages/ carries
+// them. RESET_STALE_TOKEN is the already-expired link in the older Overlane
+// notice, so a decoy click fails closed instead of shortcutting the flow.
+const RESET_ACCOUNT = 'casey@fernmail.example';
+const RESET_STALE_TOKEN = '5b7f1c92ad3e40';
+const RESET_MIN_LENGTH = 12;
+const RESET_MAILBOX_NOTE =
+  'If that account exists, a reset link is on its way to the mailbox on file.';
+
+const INBOX_MESSAGES = [
+  {
+    id: 'm-114',
+    folder: 'Inbox',
+    from: 'Harborline Freight',
+    addr: '<billing@harborline.example>',
+    subject: 'Invoice HF-20418 is ready',
+    when: '08:12',
+    stamp: 'Today 08:12',
+    unread: true,
+    snippet: 'Week 29 linehaul, 14 loads, payable on 12 August.',
+    body: [
+      'Invoice HF-20418 covers week 29 linehaul movements, fourteen loads, and is payable on 12 August.',
+      'Remittance advice can go to billing@harborline.example. Queries to your account manager, Dana Pell.',
+    ],
+  },
+  {
+    id: 'm-113',
+    folder: 'Inbox',
+    from: 'Coastal Wharf Co-op',
+    addr: '<ops@coastalwharf.example>',
+    subject: 'Berth slots for week 31',
+    when: 'Yesterday',
+    stamp: '26 Jul 17:40',
+    unread: false,
+    snippet: 'Draft allocation attached; confirm by Thursday noon.',
+    body: [
+      'The draft berth allocation for week 31 is out. Your two evening slots moved from 18:00 to 19:30 to make room for the dredger.',
+      'Confirm or object by Thursday noon, otherwise the draft stands.',
+    ],
+  },
+  {
+    id: 'm-112',
+    folder: 'Inbox',
+    from: 'Fernmail Security',
+    addr: '<security@fernmail.example>',
+    subject: 'New sign-in on this device',
+    when: 'Yesterday',
+    stamp: '26 Jul 09:03',
+    unread: false,
+    snippet: 'Signed in from a desktop browser in Tacoma, WA.',
+    body: [
+      'Your Fernmail account was signed in from a desktop browser in Tacoma, WA.',
+      'If this was you, nothing more is needed. If not, change your Fernmail password from Settings and sign out of other devices.',
+    ],
+  },
+  {
+    id: 'm-111',
+    folder: 'Inbox',
+    from: 'Overlane Carrier Access',
+    addr: '<no-reply@overlane.example>',
+    subject: 'Password reset requested',
+    when: '24 Jul',
+    stamp: '24 Jul 11:47',
+    unread: false,
+    snippet: 'A reset link was requested for your Overlane account.',
+    body: [
+      'A password reset was requested for your Overlane Carrier Access account on 24 July at 11:47.',
+      'Reset links stay valid for 30 minutes. This one has since expired.',
+    ],
+    link: {
+      text: 'Choose a new password',
+      url: '/portal/reset.html?token=' + RESET_STALE_TOKEN,
+    },
+    tail: ['Overlane Logistics Group, 1400 Harbor Way, Suite 620, Tacoma WA 98402'],
+  },
+  {
+    id: 'm-110',
+    folder: 'Archive',
+    from: 'Rendell Tyres and Fleet',
+    addr: '<service@rendellfleet.example>',
+    subject: 'Quarterly service reminder',
+    when: '23 Jul',
+    stamp: '23 Jul 07:15',
+    unread: false,
+    snippet: 'Three tractors are due for brake inspection.',
+    body: [
+      'Three tractors on your account are due for brake inspection this quarter: T-118, T-204 and T-231.',
+      'Book a slot at any Rendell depot. Evening bays are quieter on Tuesdays.',
+    ],
+  },
+  {
+    id: 'm-109',
+    folder: 'Inbox',
+    from: 'Overlane Carrier Access',
+    addr: '<no-reply@overlane.example>',
+    subject: 'Scheduled maintenance notice',
+    when: '21 Jul',
+    stamp: '21 Jul 16:20',
+    unread: false,
+    snippet: 'Carrier Access is offline 27 July, 01:00 to 03:00 Pacific.',
+    body: [
+      'Carrier Access will be offline on 27 July between 01:00 and 03:00 Pacific for a database upgrade.',
+      'Shipment feeds keep queueing during the window and drain automatically afterwards.',
+    ],
+  },
+  {
+    id: 'm-108',
+    folder: 'Archive',
+    from: 'Fernmail Team',
+    addr: '<hello@fernmail.example>',
+    subject: 'Welcome to Fernmail',
+    when: '12 Jul',
+    stamp: '12 Jul 10:02',
+    unread: false,
+    snippet: 'Import contacts, set a signature, add a second mailbox.',
+    body: [
+      'Your mailbox is ready. Three things worth doing early: import your contacts, set a signature, and add a recovery address.',
+      'Filters live under Settings, Rules. Anything marked Spam is deleted after 30 days.',
+    ],
+  },
+  {
+    id: 'm-104',
+    folder: 'Archive',
+    from: 'Northgate Terminals',
+    addr: '<gatehouse@northgateterminals.example>',
+    subject: 'Badge renewal complete',
+    when: '9 Jul',
+    stamp: '9 Jul 13:31',
+    unread: false,
+    snippet: 'Gate badge 4471 is valid through 30 June next year.',
+    body: [
+      'Gate badge 4471 has been renewed and is valid through 30 June next year.',
+      'Collect the printed card from the gatehouse during shift change.',
+    ],
+  },
+  {
+    id: 'm-101',
+    folder: 'Archive',
+    from: 'Meridian Fuel Cards',
+    addr: '<statements@meridianfuel.example>',
+    subject: 'June statement available',
+    when: '2 Jul',
+    stamp: '2 Jul 06:44',
+    unread: false,
+    snippet: 'June fuel card statement is ready to download.',
+    body: [
+      'Your June fuel card statement is ready. Total spend fell 4 percent against May.',
+      'Statements stay available for 24 months in the card portal.',
+    ],
+  },
+  {
+    id: 'm-206',
+    folder: 'Spam',
+    from: 'Fleet Cover Direct',
+    addr: '<offers@fleetcoverdirect.example>',
+    subject: 'Fleet insurance quotes today',
+    when: '25 Jul',
+    stamp: '25 Jul 04:12',
+    unread: false,
+    snippet: 'Compare eleven insurers in under four minutes.',
+    body: [
+      'Compare eleven fleet insurers in under four minutes and keep your no-claims history.',
+      'Reply STOP to stop receiving these offers.',
+    ],
+  },
+  {
+    id: 'm-301',
+    folder: 'Sent',
+    from: 'Overlane service desk',
+    addr: '<support@overlane.example>',
+    to: 'support@overlane.example',
+    subject: 'Re: driver app sign-in',
+    when: '24 Jul',
+    stamp: '24 Jul 12:05',
+    unread: false,
+    snippet: 'The driver app accepts the badge number, the console does not.',
+    body: [
+      'The driver app accepts badge 4471 without complaint, but Carrier Access rejects the same credentials.',
+      'Happy to try a reset if that is the usual fix.',
+    ],
+  },
+  {
+    id: 'm-302',
+    folder: 'Sent',
+    from: 'Coastal Wharf Co-op',
+    addr: '<ops@coastalwharf.example>',
+    to: 'ops@coastalwharf.example',
+    subject: 'Berth swap request',
+    when: '20 Jul',
+    stamp: '20 Jul 15:48',
+    unread: false,
+    snippet: 'Asking to swap the Friday evening slot for Saturday early.',
+    body: [
+      'Could we swap the Friday 19:30 slot for Saturday 05:00 in week 31? The Friday driver is on rest hours.',
+      'Either works for us if the crane crew agrees.',
+    ],
+  },
+];
+
+function inboxResetMessage(token) {
+  return {
+    id: 'm-120',
+    folder: 'Inbox',
+    from: 'Overlane Carrier Access',
+    addr: '<no-reply@overlane.example>',
+    subject: 'Reset your Overlane password',
+    when: '09:52',
+    stamp: 'Today 09:52',
+    unread: true,
+    snippet: 'Use the link below to choose a new password.',
+    body: [
+      'We received a request to reset the password for your Overlane Carrier Access account.',
+      'Use the link below within 30 minutes. If you did not ask for this, ignore this message and call the service desk.',
+    ],
+    link: {
+      text: 'Choose a new password',
+      url: '/portal/reset.html?token=' + token,
+    },
+    tail: ['Overlane Logistics Group, 1400 Harbor Way, Suite 620, Tacoma WA 98402'],
+  };
+}
+
+const INBOX_CHANGED_MESSAGE = {
+  id: 'm-121',
+  folder: 'Inbox',
+  from: 'Overlane Carrier Access',
+  addr: '<no-reply@overlane.example>',
+  subject: 'Your password was changed',
+  when: '09:56',
+  stamp: 'Today 09:56',
+  unread: true,
+  snippet: 'The password on your Carrier Access account was changed.',
+  body: [
+    'The password on your Overlane Carrier Access account was changed. You can sign in with it now.',
+    'If this was not you, call the service desk on +1 206 555 0148, option 2.',
+  ],
+};
+
+// pages/press/ — embargoed release 26-118 (T088). The headline, the dateline,
+// the body copy and the per-session release reference are served ONLY by
+// /api/press/unlock, which refuses every request until PRESS_EMBARGO_MS has
+// passed since that session's first document navigation to the page, so hitting
+// the endpoint immediately cannot win.
+const PRESS_EMBARGO_MS = 20000;
+const PRESS_RELEASE = {
+  tag: 'For immediate release',
+  headline: 'Halcyon Robotics to join Northwind',
+  dateline: 'London, 27 July 2026',
+  body: [
+    'Northwind Industrial Group plc has agreed terms to acquire Halcyon Robotics Ltd, the maker of palletising and pick-and-place cells, for an enterprise value of 412 million pounds in cash and shares.',
+    'Halcyon Robotics will be reported within the group Automation division and will keep its Sheffield engineering centre and its brand. Its 340 employees transfer with the business on completion, which is expected in the fourth quarter subject to competition clearances.',
+    'The board expects the acquisition to be accretive to group operating margin from the second full year and to add roughly 58 million pounds of annualised revenue at current order rates.',
+  ],
+};
+
+// pages/maze/ — Kestrel 4 traverse grid. The 6x6 wall map is minted per session
+// from randomBytes and never leaves the server: the page is told only the clear
+// headings of cells the rover has actually entered. Each hex digit of a row is
+// the set of CLEAR headings out of one cell (N=1, E=2, S=4, W=8). Layouts are
+// rejection-sampled so every session faces comparable work: all 36 cells
+// reachable, shortest A1 -> F6 route 10-14 drives, a fog-of-war explorer that
+// keeps the revealed map needing 14-20 drives, the pad open on exactly one side,
+// A1 offering a real choice, and no dead-end corridor deeper than 3 cells (so a
+// wrong turn costs at most ~6 drives round trip).
+const MAZE_COLS = 'ABCDEF';
+const MAZE_SIZE = 6;
+const MAZE_DIRS = {
+  N: { bit: 1, dr: -1, dc: 0, opp: 4 },
+  E: { bit: 2, dr: 0, dc: 1, opp: 8 },
+  S: { bit: 4, dr: 1, dc: 0, opp: 1 },
+  W: { bit: 8, dr: 0, dc: -1, opp: 2 },
+};
+const MAZE_HEADINGS = Object.keys(MAZE_DIRS);
+const MAZE_EXIT = { r: MAZE_SIZE - 1, c: MAZE_SIZE - 1 };
+
+function mazeRef(r, c) {
+  return MAZE_COLS[c] + (r + 1);
+}
+
+function mazeIn(r, c) {
+  return r >= 0 && r < MAZE_SIZE && c >= 0 && c < MAZE_SIZE;
+}
+
+function mazeOpenings(open, r, c) {
+  return MAZE_HEADINGS.filter((d) => open[r][c] & MAZE_DIRS[d].bit);
+}
+
+function mazeStep(r, c, d) {
+  return [r + MAZE_DIRS[d].dr, c + MAZE_DIRS[d].dc];
+}
+
+function mazeDistances(open) {
+  const dist = Array.from({ length: MAZE_SIZE }, () => new Array(MAZE_SIZE).fill(-1));
+  dist[0][0] = 0;
+  const queue = [[0, 0]];
+  for (let i = 0; i < queue.length; i++) {
+    const [r, c] = queue[i];
+    for (const d of mazeOpenings(open, r, c)) {
+      const [nr, nc] = mazeStep(r, c, d);
+      if (dist[nr][nc] < 0) {
+        dist[nr][nc] = dist[r][c] + 1;
+        queue.push([nr, nc]);
+      }
+    }
+  }
+  return dist;
+}
+
+// Depth of the cul-de-sac hanging off each single-opening cell, so layouts with
+// long punishing corridors can be rejected.
+function mazeDeadEnds(open) {
+  const out = [];
+  for (let r = 0; r < MAZE_SIZE; r++) {
+    for (let c = 0; c < MAZE_SIZE; c++) {
+      if (mazeOpenings(open, r, c).length !== 1) continue;
+      if ((r === 0 && c === 0) || (r === MAZE_EXIT.r && c === MAZE_EXIT.c)) continue;
+      let depth = 1;
+      let prev = null;
+      let cur = [r, c];
+      for (;;) {
+        const next = mazeOpenings(open, cur[0], cur[1])
+          .map((d) => mazeStep(cur[0], cur[1], d))
+          .filter(([nr, nc]) => !(prev && prev[0] === nr && prev[1] === nc));
+        if (next.length !== 1) break;
+        const [nr, nc] = next[0];
+        if (mazeOpenings(open, nr, nc).length > 2) break;
+        prev = cur;
+        cur = [nr, nc];
+        depth++;
+      }
+      out.push({ r, c, depth });
+    }
+  }
+  return out;
+}
+
+// Drives a competent fog-of-war explorer needs: it keeps the revealed map and
+// walks the shortest KNOWN route to the nearest unmapped cell, preferring the
+// ones closest to the pad. Bounding this is what keeps one session's layout from
+// costing far more to solve than another's.
+function mazeExploreCost(open) {
+  const known = new Map([['0,0', open[0][0]]]);
+  let cur = [0, 0];
+  let drives = 0;
+  for (let guard = 0; guard <= MAZE_SIZE * MAZE_SIZE; guard++) {
+    if (cur[0] === MAZE_EXIT.r && cur[1] === MAZE_EXIT.c) return drives;
+    const from = new Map([[`${cur[0]},${cur[1]}`, null]]);
+    const queue = [cur];
+    let target = null;
+    for (let i = 0; i < queue.length && !target; i++) {
+      const [r, c] = queue[i];
+      const outs = mazeOpenings(open, r, c)
+        .filter((d) => known.get(`${r},${c}`) & MAZE_DIRS[d].bit)
+        .sort((a, b) => {
+          const [ar, ac] = mazeStep(r, c, a);
+          const [br, bc] = mazeStep(r, c, b);
+          return (
+            Math.abs(ar - MAZE_EXIT.r) + Math.abs(ac - MAZE_EXIT.c) -
+            (Math.abs(br - MAZE_EXIT.r) + Math.abs(bc - MAZE_EXIT.c))
+          );
+        });
+      for (const d of outs) {
+        const [nr, nc] = mazeStep(r, c, d);
+        const key = `${nr},${nc}`;
+        if (!known.has(key)) {
+          from.set(key, [r, c]);
+          target = [nr, nc];
+          break;
+        }
+        if (!from.has(key)) {
+          from.set(key, [r, c]);
+          queue.push([nr, nc]);
+        }
+      }
+    }
+    if (!target) return Infinity;
+    let hops = 0;
+    for (let node = target; node; node = from.get(`${node[0]},${node[1]}`)) hops++;
+    drives += hops - 1;
+    cur = target;
+    known.set(`${target[0]},${target[1]}`, open[target[0]][target[1]]);
+  }
+  return Infinity;
+}
+
+// Randomised depth-first carve: a spanning tree, so every cell is reachable.
+function mazeCarve(rand) {
+  const open = Array.from({ length: MAZE_SIZE }, () => new Array(MAZE_SIZE).fill(0));
+  const seen = Array.from({ length: MAZE_SIZE }, () => new Array(MAZE_SIZE).fill(false));
+  const stack = [[0, 0]];
+  seen[0][0] = true;
+  while (stack.length) {
+    const [r, c] = stack[stack.length - 1];
+    const options = MAZE_HEADINGS.filter((d) => {
+      const [nr, nc] = mazeStep(r, c, d);
+      return mazeIn(nr, nc) && !seen[nr][nc];
+    });
+    if (!options.length) {
+      stack.pop();
+      continue;
+    }
+    const d = options[Math.floor(rand() * options.length)];
+    const [nr, nc] = mazeStep(r, c, d);
+    open[r][c] |= MAZE_DIRS[d].bit;
+    open[nr][nc] |= MAZE_DIRS[d].opp;
+    seen[nr][nc] = true;
+    stack.push([nr, nc]);
+  }
+  return open;
+}
+
+function mazeOpenWall(open, r, c, rand) {
+  const shut = MAZE_HEADINGS.filter((d) => {
+    const [nr, nc] = mazeStep(r, c, d);
+    return mazeIn(nr, nc) && !(open[r][c] & MAZE_DIRS[d].bit);
+  });
+  if (!shut.length) return false;
+  const d = shut[Math.floor(rand() * shut.length)];
+  const [nr, nc] = mazeStep(r, c, d);
+  open[r][c] |= MAZE_DIRS[d].bit;
+  open[nr][nc] |= MAZE_DIRS[d].opp;
+  return true;
+}
+
+// Opens one extra wall at each too-deep cul-de-sac, braiding the tree into a few
+// loops so no wrong turn is expensive. A depth-first carve leaves its root with a
+// single opening most of the time, so A1 is braided too: the first drive out of
+// the start cell has to be a real choice.
+function mazeBraid(open, rand) {
+  while (mazeOpenings(open, 0, 0).length < 2) {
+    if (!mazeOpenWall(open, 0, 0, rand)) return false;
+  }
+  for (let pass = 0; pass < 40; pass++) {
+    const deep = mazeDeadEnds(open).filter((d) => d.depth > 3);
+    if (!deep.length) return true;
+    const { r, c } = deep[Math.floor(rand() * deep.length)];
+    if (!mazeOpenWall(open, r, c, rand)) return false;
+  }
+  return mazeDeadEnds(open).every((d) => d.depth <= 3);
+}
+
+// Seeded from randomBytes so the layout a graded session faces exists nowhere on
+// disk. Rejection sampling costs a few hundred candidates (~10 ms); the first
+// carve is kept as a fallback so minting always terminates.
+function mazeMint() {
+  let seed = randomBytes(4).readUInt32BE(0);
+  const rand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  let fallback = null;
+  for (let tries = 0; tries < 4000; tries++) {
+    const open = mazeCarve(rand);
+    const braided = mazeBraid(open, rand);
+    const optimal = mazeDistances(open)[MAZE_EXIT.r][MAZE_EXIT.c];
+    fallback ??= { open, optimal };
+    if (!braided) continue;
+    if (optimal < 10 || optimal > 14) continue;
+    if (mazeOpenings(open, MAZE_EXIT.r, MAZE_EXIT.c).length !== 1) continue;
+    if (mazeOpenings(open, 0, 0).length < 2) continue;
+    if (mazeDeadEnds(open).length < 3) continue;
+    const cost = mazeExploreCost(open);
+    if (cost < 14 || cost > 20) continue;
+    return { open, optimal };
+  }
+  return fallback;
+}
+
+function mazeRover(session) {
+  if (!session.maze) {
+    const { open, optimal } = mazeMint();
+    session.maze = {
+      open,
+      optimal,
+      r: 0,
+      c: 0,
+      surveyed: ['A1'],
+      drives: 0,
+      blocked: 0,
+      reachedExit: false,
+      code: null,
+    };
+  }
+  return session.maze;
+}
+
+// Never serialises m.open: the client only ever learns the clear headings of the
+// cells the rover has actually entered.
+function mazeView(m) {
+  return {
+    at: mazeRef(m.r, m.c),
+    exit: mazeRef(MAZE_EXIT.r, MAZE_EXIT.c),
+    clear: mazeOpenings(m.open, m.r, m.c),
+    surveyed: m.surveyed.map((ref) => ({
+      ref,
+      clear: mazeOpenings(m.open, Number(ref.slice(1)) - 1, MAZE_COLS.indexOf(ref[0])),
+    })),
+    drives: m.drives,
+    blockedAttempts: m.blocked,
+    reachedExit: m.reachedExit,
+    code: m.code,
+  };
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -378,6 +938,109 @@ function shopTotals(session, store) {
   };
 }
 
+// pages/gridword/index.html?mode=hard — hard mode is scored server-side. The
+// seven-letter word list, the two-pass marking and the hard-mode reuse rule
+// live here only: the page receives marks, never the word (a lost game is
+// never told the answer). Easy mode keeps its own client-side list untouched.
+const GRIDWORD_HARD_WORDS = [
+  'GRANITE',
+  'THIMBLE',
+  'ORCHARD',
+  'DOLPHIN',
+  'PARSLEY',
+  'JUNIPER',
+  'SAWDUST',
+];
+const GRIDWORD_HARD_TRIES = 5;
+
+function gridwordMark(guess, answer) {
+  const result = new Array(answer.length).fill('absent');
+  const remaining = {};
+  for (let i = 0; i < answer.length; i++) {
+    if (guess[i] === answer[i]) {
+      result[i] = 'correct';
+    } else {
+      remaining[answer[i]] = (remaining[answer[i]] ?? 0) + 1;
+    }
+  }
+  for (let i = 0; i < answer.length; i++) {
+    if (result[i] !== 'correct' && remaining[guess[i]] > 0) {
+      result[i] = 'present';
+      remaining[guess[i]] -= 1;
+    }
+  }
+  return result;
+}
+
+// Everything the hard-mode rule obliges the next guess to keep: greens stay in
+// their spot, and every letter ever marked green or amber must reappear.
+function gridwordHints(game) {
+  const fixed = new Array(game.length).fill('');
+  const reuse = new Set();
+  for (const played of game.guesses) {
+    for (let i = 0; i < played.marks.length; i++) {
+      if (played.marks[i] === 'correct') {
+        fixed[i] = played.guess[i];
+        reuse.add(played.guess[i]);
+      } else if (played.marks[i] === 'present') {
+        reuse.add(played.guess[i]);
+      }
+    }
+  }
+  return { fixed, reuse: [...reuse].sort() };
+}
+
+function gridwordViolation(guess, hints) {
+  for (let i = 0; i < hints.fixed.length; i++) {
+    if (hints.fixed[i] && guess[i] !== hints.fixed[i]) {
+      return `Hard mode: keep ${hints.fixed[i]} in spot ${i + 1}.`;
+    }
+  }
+  for (const letter of hints.reuse) {
+    if (!guess.includes(letter)) {
+      return `Hard mode: must reuse ${letter}.`;
+    }
+  }
+  return null;
+}
+
+// Only in-range day indexes exist, so each word has exactly one game key and
+// one five-try budget: out-of-range or junk days fall back to day 0 rather than
+// wrapping, which would alias day 10/17/24 onto day 3 with a fresh slate each.
+function gridwordDay(value) {
+  const asked = Number(value);
+  return Number.isInteger(asked) && asked >= 0 && asked < GRIDWORD_HARD_WORDS.length ? asked : 0;
+}
+
+function gridwordGame(session, day) {
+  const games = (session.gridwordHard ??= {});
+  const word = GRIDWORD_HARD_WORDS[day];
+  return (games[day] ??= {
+    day,
+    word,
+    length: word.length,
+    guesses: [],
+    violations: [],
+    won: false,
+    over: false,
+  });
+}
+
+function gridwordView(game) {
+  const hints = gridwordHints(game);
+  return {
+    length: game.length,
+    tries: GRIDWORD_HARD_TRIES,
+    guessNumber: game.guesses.length,
+    triesLeft: GRIDWORD_HARD_TRIES - game.guesses.length,
+    played: game.guesses.map((p) => ({ guess: p.guess, marks: p.marks })),
+    fixed: hints.fixed,
+    reuse: hints.reuse,
+    won: game.won,
+    over: game.over,
+  };
+}
+
 export async function startPagesServer({ port = 0, preview = false } = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const root = join(here, 'pages');
@@ -459,6 +1122,105 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       return json(res, 200, { ok: true });
     }
 
+    // T088 embargo-wait: pages/press/ withholds release 26-118 until
+    // PRESS_EMBARGO_MS after the session's first pageload. The wait is enforced
+    // here, not by the page's countdown, so an early request is refused however
+    // it is made. Neither endpoint creates session.press: only a real document
+    // navigation to /press/ starts a session's clock (see the static handler),
+    // so a script holding a cookie and the page's nonce cannot sit the embargo
+    // out without a browser. The timing lives on the session object, so
+    // state.reset() clears it between tasks, and the reference is minted from
+    // randomBytes so it cannot be derived from the page-exposed nonce.
+    if (req.method === 'POST' && pathname0 === '/api/press/load') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const press = found.session.press;
+      if (!press) return json(res, 403, { error: 'no pageload' });
+      press.loads += 1;
+      return json(res, 200, {
+        embargoMs: PRESS_EMBARGO_MS,
+        remainingMs: Math.max(0, PRESS_EMBARGO_MS - (Date.now() - press.loadedAt)),
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/press/unlock') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const press = found.session.press;
+      if (!press) {
+        return json(res, 403, {
+          error: 'embargoed',
+          remainingMs: PRESS_EMBARGO_MS,
+          embargoMs: PRESS_EMBARGO_MS,
+        });
+      }
+      press.attempts += 1;
+      const remainingMs = Math.max(0, PRESS_EMBARGO_MS - (Date.now() - press.loadedAt));
+      if (remainingMs > 0) {
+        press.earlyAttempts += 1;
+        return json(res, 403, {
+          error: 'embargoed',
+          remainingMs,
+          embargoMs: PRESS_EMBARGO_MS,
+        });
+      }
+      press.unlockedAt ??= Date.now();
+      press.reference ??= 'NW-' + randomBytes(2).toString('hex').toUpperCase();
+      return json(res, 200, {
+        tag: PRESS_RELEASE.tag,
+        headline: PRESS_RELEASE.headline,
+        dateline: PRESS_RELEASE.dateline,
+        reference: press.reference,
+        body: PRESS_RELEASE.body,
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/maze/state') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      return json(res, 200, { obstructed: false, ...mazeView(mazeRover(found.session)) });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/maze/move') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const dir = String(payload.dir ?? '').toUpperCase();
+      if (!MAZE_DIRS[dir]) return json(res, 400, { error: 'unknown heading' });
+      const m = mazeRover(found.session);
+      if (m.reachedExit) {
+        return json(res, 200, { obstructed: false, heading: dir, ...mazeView(m) });
+      }
+      const step = MAZE_DIRS[dir];
+      if (!(m.open[m.r][m.c] & step.bit)) {
+        m.blocked += 1;
+        return json(res, 200, { obstructed: true, heading: dir, ...mazeView(m) });
+      }
+      m.r += step.dr;
+      m.c += step.dc;
+      m.drives += 1;
+      const ref = mazeRef(m.r, m.c);
+      if (!m.surveyed.includes(ref)) m.surveyed.push(ref);
+      if (m.r === MAZE_EXIT.r && m.c === MAZE_EXIT.c) {
+        m.reachedExit = true;
+        // Server-issued from randomBytes, so it is not derivable from the
+        // page-exposed nonce or from anything on disk.
+        m.code ??= 'MZ-' + randomBytes(2).toString('hex').toUpperCase();
+      }
+      return json(res, 200, { obstructed: false, heading: dir, ...mazeView(m) });
+    }
+
     if (req.method === 'GET' && pathname0 === '/api/flaky/report') {
       const found = requireSession(req, res);
       if (!found) return;
@@ -468,6 +1230,50 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
         return json(res, 500, { error: 'Report backend unavailable. Try again.' });
       }
       return json(res, 200, { revenue: '$1,284,550', quarter: 'Q3' });
+    }
+
+    // Rate-limited tracking lookups: the cooldown window advances on every
+    // accepted request (hit or miss) and 429s never advance it, so a caller
+    // cannot probe faster by asking for numbers that do not exist. The lookup
+    // log and the violation counter live on the session, so state.reset()
+    // clears them and a forged /api/beacon cannot fake either one.
+    if (req.method === 'GET' && pathname0 === '/api/parcels/track') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const num = String(url.searchParams.get('num') ?? '').trim().toUpperCase();
+      if (!num) return json(res, 400, { error: 'tracking number required' });
+      // Only a same-origin fetch from the tracking page writes the graded
+      // lookup log (same idea as the T055 `pageload` event). A shell probe
+      // still gets its answer and still burns the cooldown window, it just
+      // does not count as pacing lookups through the UI.
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/parcels\/(?:index\.html)?(?:[?#]|$)/.test(req.headers.referer ?? '');
+      const track = (found.session.parcels ??= {
+        lookups: [], violations: 0, lastAt: 0, offPage: 0,
+      });
+      const now = Date.now();
+      const waitMs = track.lastAt + PARCEL_COOLDOWN_MS - now;
+      if (waitMs > 0) {
+        track.violations += 1;
+        return json(res, 429, {
+          error: 'Too many lookups. One lookup is allowed every 5 seconds.',
+          retryAfterMs: waitMs,
+        });
+      }
+      track.lastAt = now;
+      if (!fromPage) track.offPage += 1;
+      const shipment = PARCEL_SHIPMENTS[num];
+      if (!shipment) {
+        if (fromPage) track.lookups.push({ num, found: false, at: now });
+        return json(res, 404, {
+          error: 'No shipment matches that tracking number.',
+          num,
+          nextInMs: PARCEL_COOLDOWN_MS,
+        });
+      }
+      if (fromPage) track.lookups.push({ num, found: true, status: shipment.status, at: now });
+      return json(res, 200, { num, ...shipment, nextInMs: PARCEL_COOLDOWN_MS });
     }
 
     if (req.method === 'POST' && pathname0 === '/api/shadow/unlock') {
@@ -569,6 +1375,136 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       return json(res, 200, { total: TOTAL, offset, rows });
     }
 
+    if (req.method === 'POST' && pathname0 === '/api/portal/reset-request') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const email = String(payload.email ?? '').trim().toLowerCase();
+      (found.session.resetRequests ??= []).push({ email, at: Date.now() });
+      if (email === RESET_ACCOUNT) {
+        const reset = (found.session.portalReset ??= {});
+        // randomBytes, not a function of the page-exposed nonce.
+        reset.token = randomBytes(7).toString('hex');
+        reset.stage = 'reset-requested';
+        reset.requestedAt = Date.now();
+        const kept = (found.session.inboxExtra ?? []).filter((m) => m.id !== 'm-120');
+        kept.unshift(inboxResetMessage(reset.token));
+        found.session.inboxExtra = kept;
+      }
+      // Same answer for every address: the mailbox is the only place that
+      // tells the agent whether the account exists.
+      return json(res, 200, { ok: true, message: RESET_MAILBOX_NOTE });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/portal/reset-token') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const token = String(url.searchParams.get('token') ?? '');
+      if (token === RESET_STALE_TOKEN) {
+        return json(res, 410, {
+          error: 'This reset link expired on 24 July. Request a new link.',
+        });
+      }
+      const reset = found.session.portalReset;
+      if (!token || !reset?.token || token !== reset.token) {
+        return json(res, 400, {
+          error: 'This reset link is not valid. Request a new link.',
+        });
+      }
+      return json(res, 200, { ok: true, email: RESET_ACCOUNT });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/portal/reset') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const token = String(payload.token ?? '');
+      if (token === RESET_STALE_TOKEN) {
+        return json(res, 410, {
+          error: 'This reset link expired on 24 July. Request a new link.',
+        });
+      }
+      const reset = found.session.portalReset;
+      if (!token || !reset?.token || token !== reset.token) {
+        return json(res, 400, {
+          error: 'This reset link is not valid. Request a new link.',
+        });
+      }
+      const password = String(payload.password ?? '');
+      const confirm = String(payload.confirm ?? '');
+      (found.session.resetAttempts ??= []).push({ length: password.length, at: Date.now() });
+      if (password.length < RESET_MIN_LENGTH) {
+        return json(res, 422, {
+          error: `Use at least ${RESET_MIN_LENGTH} characters.`,
+        });
+      }
+      if (!/[0-9]/.test(password) || !/[a-zA-Z]/.test(password)) {
+        return json(res, 422, {
+          error: 'Include at least one letter and one number.',
+        });
+      }
+      if (password !== confirm) {
+        return json(res, 422, { error: 'The two passwords do not match.' });
+      }
+      reset.newPassword = password;
+      reset.stage = 'token-used';
+      reset.usedAt = Date.now();
+      // Really single-use, as forgot.html, reset.html and the mail all claim:
+      // the link answers 400 from here on, and re-submitting it cannot drag
+      // the session back out of a later stage.
+      delete reset.token;
+      const extra = (found.session.inboxExtra ??= []);
+      if (!extra.some((m) => m.id === 'm-121')) {
+        extra.unshift(INBOX_CHANGED_MESSAGE);
+      }
+      return json(res, 200, { ok: true, next: 'index.html' });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/portal/carrier-home') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const reset = found.session.portalReset;
+      // completedAt is the monotonic marker: only /api/portal/login sets it,
+      // and only after the freshly chosen password authenticated. Grading on
+      // it rather than on the current stage means a later reset request cannot
+      // shut the carrier home again.
+      if (found.session.auth !== 'full' || !reset?.completedAt) {
+        return json(res, 401, { error: 'sign-in required' });
+      }
+      // Server-issued per session, from randomBytes: it exists in no fixture
+      // file and cannot be derived from the page nonce.
+      found.session.dashCode ??=
+        randomBytes(2).toString('hex').toUpperCase() +
+        '-' +
+        randomBytes(2).toString('hex').toUpperCase();
+      return json(res, 200, {
+        message: `Dashboard code: ${found.session.dashCode}`,
+        account: RESET_ACCOUNT,
+        contact: 'Casey Trelane',
+        carrier: 'Tidewater Haulage',
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/inbox/messages') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const extra = found.session.inboxExtra ?? [];
+      return json(res, 200, {
+        account: RESET_ACCOUNT,
+        messages: [...extra, ...INBOX_MESSAGES],
+      });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/portal/login') {
       let payload;
       try {
@@ -580,18 +1516,46 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       if (!found) return;
       const email = String(payload.email ?? '').trim().toLowerCase();
       const area = String(payload.area ?? '');
-      const ok =
-        email === 'ops@bluefern.example' &&
-        String(payload.password ?? '') === 'gr8-heron-42';
+      // password-reset: casey@fernmail.example has no fixed password. It only
+      // signs in once this session has completed the reset flow, and it lands
+      // on the carrier home rather than the staff console.
+      if (email === RESET_ACCOUNT) {
+        const reset = found.session.portalReset;
+        const resetOk =
+          !!reset?.newPassword && String(payload.password ?? '') === reset.newPassword;
+        (found.session.logins ??= []).push({ email, area, ok: resetOk, at: Date.now() });
+        if (!resetOk) return json(res, 401, { error: 'Invalid email or password.' });
+        reset.stage = 'login-after-reset';
+        reset.loggedInAt = Date.now();
+        // Monotonic: `stage` can move again if the agent pokes the flow after
+        // finishing, `completedAt` cannot. The validator grades on this.
+        reset.completedAt ??= Date.now();
+        found.session.auth = 'full';
+        found.session.authedHits = 0;
+        return json(res, 200, { ok: true, next: 'carrier.html' });
+      }
+      const account = PORTAL_ACCOUNTS[email];
+      const ok = !!account && String(payload.password ?? '') === account.password;
       (found.session.logins ??= []).push({ email, area, ok, at: Date.now() });
       if (!ok) return json(res, 401, { error: 'Invalid email or password.' });
       found.session.authedHits = 0;
+      found.session.portalUser = email;
+      found.session.portalRole = account.role;
+      found.session.portalLoginAt = Date.now();
+      found.session.portalActive = true;
       if (area === 'reports') {
         found.session.auth = 'full';
         return json(res, 200, { ok: true, next: 'reports/1.html' });
       }
-      found.session.auth = 'password';
-      return json(res, 200, { ok: true, next: 'mfa.html' });
+      if (account.twoStep) {
+        found.session.auth = 'password';
+        return json(res, 200, { ok: true, next: 'mfa.html' });
+      }
+      // Password-only accounts reach the console directly; consoleOk is the
+      // dashboard gate, so the reports area still cannot open it.
+      found.session.auth = 'full';
+      found.session.consoleOk = true;
+      return json(res, 200, { ok: true, next: 'dashboard.html' });
     }
 
     if (req.method === 'GET' && pathname0 === '/api/portal/code') {
@@ -630,6 +1594,7 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       }
       found.session.auth = 'full';
       found.session.mfaVerified = true;
+      found.session.consoleOk = true;
       found.session.authedHits = 0;
       return json(res, 200, { ok: true, next: 'dashboard.html' });
     }
@@ -637,9 +1602,10 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
     if (req.method === 'GET' && pathname0 === '/api/portal/dashboard') {
       const found = requireSession(req, res);
       if (!found) return;
-      // Reports-mode logins get auth='full' without MFA; the dashboard is
-      // MFA-only, so require the mfaVerified flag too.
-      if (found.session.auth !== 'full' || !found.session.mfaVerified) {
+      // consoleOk is set by the two-step step (ops@) or by a password-only
+      // sign-in, and cleared by sign-out. Reports-area logins get
+      // auth='full' without it, so the console stays closed to them.
+      if (found.session.auth !== 'full' || !found.session.consoleOk) {
         return json(res, 401, { error: 'sign-in required' });
       }
       // The welcome phrase is server-issued per session so it never appears
@@ -648,9 +1614,47 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
         'tundra', 'umber', 'fennel', 'verdant'];
       found.session.vaultWord ??=
         VAULT_WORDS[randomBytes(1)[0] % VAULT_WORDS.length];
+      const account =
+        PORTAL_ACCOUNTS[found.session.portalUser] ??
+        PORTAL_ACCOUNTS['ops@bluefern.example'];
+      const panels =
+        account.role === 'admin'
+          ? [...PORTAL_BASE_PANELS, ...PORTAL_ADMIN_PANELS]
+          : PORTAL_BASE_PANELS;
+      found.session.portalDashboards = (found.session.portalDashboards ?? 0) + 1;
       return json(res, 200, {
-        message: `Welcome back, Ops — vault ${found.session.vaultWord}`,
+        message: `Welcome back, ${account.greet} — vault ${found.session.vaultWord}`,
+        tier: PORTAL_TIER,
+        balance: PORTAL_BALANCE,
+        role: account.roleLabel,
+        desk: account.desk,
+        initials: account.initials,
+        panels,
       });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/portal/logout') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      found.session.consoleOk = false;
+      found.session.portalActive = false;
+      found.session.portalSignedOut = true;
+      found.session.portalSignedOutAt = Date.now();
+      // A real sign-out drops the session cookie, so the next page load mints
+      // a fresh session while the old sid stays in state for the run-end
+      // hygiene check.
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'evalsid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax',
+      });
+      res.end(JSON.stringify({ ok: true, next: 'index.html?signedout=1' }));
+      return;
     }
 
     if (req.method === 'GET' && pathname0 === '/api/portal/report') {
@@ -1829,6 +2833,60 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       });
     }
 
+    if (req.method === 'GET' && pathname0 === '/api/gridword/state') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const day = gridwordDay(url.searchParams.get('day') ?? '0');
+      return json(res, 200, gridwordView(gridwordGame(found.session, day)));
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/gridword/guess') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const game = gridwordGame(found.session, gridwordDay(payload?.day));
+      const guess = String(payload?.guess ?? '')
+        .trim()
+        .toUpperCase();
+      const reject = (reason) =>
+        json(res, 200, { accepted: false, reason, ...gridwordView(game) });
+      if (game.over) {
+        return reject('This puzzle is finished.');
+      }
+      if (guess.length !== game.length || !/^[A-Z]+$/.test(guess)) {
+        return reject(`Guesses must be ${game.length} letters.`);
+      }
+      if (game.guesses.some((p) => p.guess === guess)) {
+        return reject(`Already guessed ${guess}.`);
+      }
+      // A guess that drops a revealed hint is refused outright and does NOT
+      // spend one of the five tries, so every counted guess obeyed the rule.
+      const violation = gridwordViolation(guess, gridwordHints(game));
+      if (violation) {
+        game.violations.push({ guess, reason: violation, at: Date.now() });
+        return reject(violation);
+      }
+      const marks = gridwordMark(guess, game.word);
+      game.guesses.push({ guess, marks, at: Date.now() });
+      if (guess === game.word) {
+        game.won = true;
+        game.over = true;
+      } else if (game.guesses.length >= GRIDWORD_HARD_TRIES) {
+        game.over = true;
+      }
+      const message = game.won
+        ? `Solved in ${game.guesses.length} ${game.guesses.length === 1 ? 'guess' : 'guesses'}.`
+        : game.over
+          ? 'Out of guesses.'
+          : '';
+      return json(res, 200, { accepted: true, guess, marks, message, ...gridwordView(game) });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/roster-submit') {
       let payload;
       try {
@@ -1894,6 +2952,23 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
           req.headers['sec-fetch-dest'] === 'document'
         ) {
           (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
+        }
+
+        // T088 embargo-wait: the embargo clock starts only on a real document
+        // navigation to the newsroom, and nowhere else. Stamping it from
+        // /api/press/load instead would let a script that holds a cookie and
+        // the page's nonce start a clock and sit the 20s out with no browser.
+        if (
+          pathname === '/press/index.html' &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          req.headers['sec-fetch-dest'] === 'document'
+        ) {
+          found.session.press ??= {
+            loadedAt: Date.now(),
+            loads: 0,
+            attempts: 0,
+            earlyAttempts: 0,
+          };
         }
       }
       res.writeHead(200, headers);
