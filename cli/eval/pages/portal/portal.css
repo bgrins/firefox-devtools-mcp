@@ -161,6 +161,20 @@ input:focus {
 
 .btn-secondary:hover { background: var(--brand-tint); }
 
+.btn-quiet {
+  display: inline-block;
+  width: auto;
+  margin-left: 6px;
+  padding: 7px 15px;
+  font-size: 13.5px;
+  color: var(--brand);
+  background: #fff;
+  border-color: #c3cee9;
+}
+
+.btn-quiet:hover { background: var(--brand-tint); }
+.btn-quiet[hidden] { display: none; }
+
 .or {
   display: flex;
   align-items: center;
@@ -209,6 +223,13 @@ input:focus {
 }
 
 .notice a { color: #8f2018; }
+
+.notice.notice-ok {
+  border-color: #c9e7e1;
+  border-left-color: var(--teal);
+  background: var(--teal-tint);
+  color: #0a5f57;
+}
 
 .help {
   width: 100%;
@@ -371,6 +392,9 @@ input:focus {
 }
 
 .panel + .panel { margin-top: 16px; }
+
+#rolePanels .panel,
+#rolePanels + .panel { margin-top: 16px; }
 
 .welcome {
   background: var(--teal-tint);

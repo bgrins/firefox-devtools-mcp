@@ -18,8 +18,9 @@
     <span class="logo-sub">Carrier Access</span>
   </a>
   <div class="account">
-    <span>Operations desk</span>
-    <span class="avatar">OD</span>
+    <span id="desk">Operations desk</span>
+    <span class="avatar" id="avatar">OD</span>
+    <button type="button" id="logoutBtn" class="btn btn-quiet" hidden>Log out</button>
   </div>
 </header>
 <div class="shell">
@@ -39,6 +40,15 @@
       You are not signed in. <a href="index.html">Go to sign-in</a>.
     </div>
     <div id="body" hidden>
+      <div class="panel" id="accountPanel">
+        <h2>Account</h2>
+        <div class="stats">
+          <div class="stat"><span class="k">Account tier</span><span class="v" id="tier"></span></div>
+          <div class="stat"><span class="k">Current balance</span><span class="v" id="balance"></span></div>
+          <div class="stat"><span class="k">Access role</span><span class="v" id="role"></span></div>
+        </div>
+      </div>
+      <div id="rolePanels"></div>
       <div class="panel">
         <h2>Feed health</h2>
         <p>All district feeds are reporting normally. Shipment totals live in
@@ -87,12 +97,59 @@
         return;
       }
       document.getElementById('welcome').textContent = body.message;
+      // Fields the payload omits keep the markup default rather than
+      // rendering "undefined".
+      if (body.tier) {
+        document.getElementById('tier').textContent = body.tier;
+        document.getElementById('balance').textContent = body.balance ?? '';
+        document.getElementById('role').textContent = body.role ?? '';
+      } else {
+        document.getElementById('accountPanel').hidden = true;
+      }
+      if (body.desk) document.getElementById('desk').textContent = body.desk;
+      if (body.initials) {
+        document.getElementById('avatar').textContent = body.initials;
+      }
+      const holder = document.getElementById('rolePanels');
+      for (const panel of body.panels ?? []) {
+        const box = document.createElement('div');
+        box.className = 'panel';
+        const title = document.createElement('h2');
+        title.textContent = panel.title;
+        const note = document.createElement('p');
+        note.textContent = panel.note;
+        box.append(title, note);
+        holder.append(box);
+      }
+      document.getElementById('logoutBtn').hidden = false;
       document.getElementById('body').hidden = false;
     } catch {
       document.getElementById('welcome').textContent =
         'Network error — reload the page.';
     }
   })();
+
+  document.getElementById('logoutBtn').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const res = await fetch('/api/portal/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        button.disabled = false;
+        document.getElementById('welcome').textContent =
+          body.error ?? 'Sign-out failed — reload the page.';
+        return;
+      }
+      location.href = body.next ?? 'index.html?signedout=1';
+    } catch {
+      button.disabled = false;
+    }
+  });
 </script>
 </body>
 </html>

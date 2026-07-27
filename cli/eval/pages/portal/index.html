@@ -39,6 +39,7 @@
     <div id="ssoNote" hidden></div>
   </form>
   <div class="card-foot">
+    <a href="forgot.html">Forgot your password?</a> &middot;
     <a href="#account-help">Trouble signing in?</a>
   </div>
 </div>
@@ -68,10 +69,14 @@
   const NONCE = '__SESSION_NONCE__';
   const params = new URLSearchParams(location.search);
   const area = params.get('area') ?? '';
+  const banner = document.getElementById('banner');
   if (params.get('expired') === '1') {
-    const banner = document.getElementById('banner');
     banner.hidden = false;
     banner.textContent = 'Session expired — log in again.';
+  } else if (params.get('signedout') === '1') {
+    banner.hidden = false;
+    banner.className = 'notice notice-ok';
+    banner.textContent = 'You are signed out.';
   }
   const status = document.getElementById('status');
 

@@ -94,6 +94,7 @@
   #howto div { margin-bottom: 5px; }
 
   #board { margin: 18px auto 6px; width: max-content; }
+  #board.wide .row > div { width: 44px; height: 50px; font-size: 23px; border-radius: 7px; }
   .row { display: flex; gap: 7px; margin-bottom: 7px; }
   /* cells stay class-free until played so the empty board adds no accessibility nodes */
   .row > div {
@@ -230,7 +231,7 @@
     </div>
 
     <div class="rules-row">
-      <p class="lede">Six tries. Five letters.</p>
+      <p class="lede" id="lede">Six tries. Five letters.</p>
       <button type="button" class="ghost" id="howtoBtn" aria-expanded="false">How to play</button>
     </div>
     <div id="howto">
@@ -295,14 +296,19 @@
 </footer>
 
 <script>
+  const NONCE = '__SESSION_NONCE__';
   // Encoded so casual view-source doesn't spoil the puzzle.
   const ANSWERS = atob('Q1JJU1AsUExVTUIsR0xJTlQsRlJPTkQsTUlSVEgsUVVBS0UsU1dPT1A=').split(',');
   const params = new URLSearchParams(location.search);
   const DAY = Number(params.get('day') || 0);
-  const ANSWER = (params.get('answer') || ANSWERS[DAY % ANSWERS.length]).toUpperCase();
-  const MAX_GUESSES = 6;
+  const HARD = params.get('mode') === 'hard';
+  // Hard mode holds no word in the page: the games desk marks every guess.
+  const ANSWER = HARD ? null : (params.get('answer') || ANSWERS[DAY % ANSWERS.length]).toUpperCase();
+  const WORD_LEN = HARD ? 7 : 5;
+  const MAX_GUESSES = HARD ? 5 : 6;
   let guesses = 0;
   let done = false;
+  let pending = false;
   const seen = new Set();
   const marksHistory = [];
   const letterState = { correct: new Set(), present: new Set(), absent: new Set() };
@@ -331,13 +337,54 @@
     howtoBtn.setAttribute('aria-expanded', String(!open));
   });
 
+  const submitButton = guessForm.querySelector('button[type="submit"]');
+  let hintFixed = null;
+  let hintReuse = null;
+
+  if (HARD) {
+    document.title = 'Gridword hard mode — Marrowfield Press';
+    document.getElementById('lede').textContent = 'Five tries. Seven letters.';
+    counter.textContent = 'Guess 0 of ' + MAX_GUESSES;
+    const chip = document.createElement('span');
+    chip.className = 'chip hot';
+    chip.textContent = 'Hard mode';
+    document.querySelector('.stats').appendChild(chip);
+    // Replace the easy-mode rules outright: leaving them above would contradict
+    // hard mode ("any five-letter word", "six tries"), and each line truncates
+    // in an accessibility snapshot, so the leading words must be the true ones.
+    howto.textContent = '';
+    for (const line of [
+      'Seven letters. Five tries.',
+      'Type a seven-letter guess into the box, or tap the keyboard below.',
+      'Every letter comes back marked: right spot, in word, or not in the word.',
+      'Every hint you uncover is binding.',
+      'A letter marked right-spot must stay in that spot in every later guess.',
+      'A letter marked in-word must appear again in every later guess.',
+      'A guess that drops a hint is refused, and a refused guess costs you no try.',
+      'The games desk does the marking here, so an unsolved grid keeps its word.',
+    ]) {
+      const div = document.createElement('div');
+      div.textContent = line;
+      howto.appendChild(div);
+    }
+    hintFixed = document.createElement('div');
+    hintReuse = document.createElement('div');
+    document.getElementById('letters').prepend(hintReuse);
+    document.getElementById('letters').prepend(hintFixed);
+    guessInput.maxLength = WORD_LEN;
+    guessInput.style.width = '12em';
+  }
+
   for (let r = 0; r < MAX_GUESSES; r++) {
     const row = document.createElement('div');
     row.className = 'row';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WORD_LEN; i++) {
       row.appendChild(document.createElement('div'));
     }
     board.appendChild(row);
+  }
+  if (HARD) {
+    board.classList.add('wide');
   }
 
   const KEY_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
@@ -369,7 +416,7 @@
     key.textContent = value === 'DELETE' ? 'Del' : value === 'ENTER' ? 'Enter' : value;
     key.setAttribute('aria-label', label);
     key.addEventListener('click', () => {
-      if (done) return;
+      if (done || pending) return;
       if (value === 'ENTER') {
         guessForm.requestSubmit();
         return;
@@ -377,7 +424,7 @@
       if (value === 'DELETE') {
         guessInput.value = guessInput.value.slice(0, -1);
       } else {
-        guessInput.value = (guessInput.value + value).slice(0, 5).toUpperCase();
+        guessInput.value = (guessInput.value + value).slice(0, WORD_LEN).toUpperCase();
       }
       guessInput.focus();
     });
@@ -386,16 +433,16 @@
 
   function mark(guess) {
     // Two-pass wordle marking so duplicate letters behave correctly.
-    const result = new Array(5).fill('absent');
+    const result = new Array(WORD_LEN).fill('absent');
     const remaining = {};
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WORD_LEN; i++) {
       if (guess[i] === ANSWER[i]) {
         result[i] = 'correct';
       } else {
         remaining[ANSWER[i]] = (remaining[ANSWER[i]] || 0) + 1;
       }
     }
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WORD_LEN; i++) {
       if (result[i] !== 'correct' && remaining[guess[i]] > 0) {
         result[i] = 'present';
         remaining[guess[i]]--;
@@ -405,7 +452,7 @@
   }
 
   function updateLetterState(guess, marks) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < marks.length; i++) {
       const letter = guess[i];
       if (marks[i] === 'correct') {
         letterState.correct.add(letter);
@@ -435,41 +482,24 @@
     return marks.map((x) => (x === 'correct' ? 'G' : x === 'present' ? 'Y' : '.')).join('');
   }
 
-  function finish(message) {
+  function finish(message, reveal) {
     done = true;
     status.textContent = message;
-    answerLine.textContent = 'Answer: ' + ANSWER;
-    const submit = guessForm.querySelector('button[type="submit"]');
+    answerLine.textContent = reveal ? 'Answer: ' + reveal : "Answer in tomorrow's edition.";
     guessInput.disabled = true;
-    submit.disabled = true;
+    submitButton.disabled = true;
     guessInput.setAttribute('aria-disabled', 'true');
-    submit.setAttribute('aria-disabled', 'true');
+    submitButton.setAttribute('aria-disabled', 'true');
     const share = document.getElementById('share');
-    share.textContent = 'Gridword ' + (guesses <= MAX_GUESSES ? guesses : 'X') + '/6\n' +
+    share.textContent = 'Gridword ' + (guesses <= MAX_GUESSES ? guesses : 'X') + '/' + MAX_GUESSES + '\n' +
       marksHistory.map(glyphs).join('\n');
     share.style.display = 'block';
   }
 
-  guessForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (done) return;
-    const guess = guessInput.value.trim().toUpperCase();
-    if (!/^[A-Z]{5}$/.test(guess)) {
-      status.textContent = 'Guesses must be 5 letters.';
-      return;
-    }
-    if (seen.has(guess)) {
-      status.textContent = 'Already guessed ' + guess + '.';
-      return;
-    }
-    seen.add(guess);
-    status.textContent = '';
-    guessInput.value = '';
-
-    const marks = mark(guess);
+  function play(guess, marks) {
     marksHistory.push(marks);
     const tiles = board.children[guesses].children;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WORD_LEN; i++) {
       tiles[i].classList.add(marks[i]);
       tiles[i].textContent = guess[i];
       tiles[i].setAttribute('aria-label', guess[i] + ' ' + marks[i]);
@@ -481,13 +511,112 @@
     line.textContent = 'Guess ' + guesses + ': ' + guess + ' = ' + glyphs(marks);
     feedback.appendChild(line);
     updateLetterState(guess, marks);
+  }
+
+  function showHints(view) {
+    if (!HARD) return;
+    // A refusal or a transport error carries no hints; keep the lines already on
+    // screen rather than blanking the constraints the next guess must obey.
+    if (!Array.isArray(view.fixed) && !Array.isArray(view.reuse)) return;
+    const fixed = Array.isArray(view.fixed) ? view.fixed : [];
+    const reuse = Array.isArray(view.reuse) ? view.reuse : [];
+    hintFixed.textContent = 'Fixed spots: ' +
+      (fixed.length ? fixed.map((letter) => letter || '.').join(' ') : 'none yet');
+    hintReuse.textContent = 'Must reuse: ' + (reuse.length ? reuse.join(' ') : 'nothing yet');
+  }
+
+  async function sendGuess(guess) {
+    pending = true;
+    submitButton.disabled = true;
+    status.textContent = 'Checking with the games desk.';
+    let view;
+    try {
+      const response = await fetch('/api/gridword/guess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, day: DAY, guess }),
+      });
+      view = await response.json();
+    } catch {
+      view = { accepted: false, reason: 'Games desk unreachable.' };
+    }
+    pending = false;
+    submitButton.disabled = done;
+    if (!view || view.accepted !== true) {
+      status.textContent = String(view?.reason || view?.error || 'Guess refused.');
+      showHints(view ?? {});
+      guessInput.focus();
+      return;
+    }
+    seen.add(guess);
+    status.textContent = '';
+    guessInput.value = '';
+    play(guess, view.marks);
+    showHints(view);
+    if (view.over) {
+      finish(view.message || 'Out of guesses.', view.won ? guess : null);
+    }
+  }
+
+  guessForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (done || pending) return;
+    const guess = guessInput.value.trim().toUpperCase();
+    if (guess.length !== WORD_LEN || !/^[A-Z]+$/.test(guess)) {
+      status.textContent = 'Guesses must be ' + WORD_LEN + ' letters.';
+      return;
+    }
+    if (seen.has(guess)) {
+      status.textContent = 'Already guessed ' + guess + '.';
+      return;
+    }
+    if (HARD) {
+      sendGuess(guess);
+      return;
+    }
+    seen.add(guess);
+    status.textContent = '';
+    guessInput.value = '';
+    play(guess, mark(guess));
 
     if (guess === ANSWER) {
-      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!'));
+      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!'), ANSWER);
     } else if (guesses >= MAX_GUESSES) {
-      finish('Out of guesses.');
+      finish('Out of guesses.', ANSWER);
     }
   });
+
+  if (HARD) {
+    showHints({ fixed: new Array(WORD_LEN).fill(''), reuse: [] });
+    (async () => {
+      let view;
+      try {
+        const response = await fetch('/api/gridword/state?day=' + encodeURIComponent(DAY), {
+          headers: { 'X-Eval-Nonce': NONCE },
+        });
+        view = await response.json();
+      } catch {
+        return;
+      }
+      if (!view || !Array.isArray(view.played) || !view.played.length) return;
+      // Only rehydrate a board that is still empty: if a guess already landed
+      // while this fetch was in flight, replaying would double-render rows and
+      // run off the end of the grid.
+      if (guesses > 0 || done) return;
+      for (const played of view.played) {
+        play(played.guess, played.marks);
+      }
+      showHints(view);
+      if (view.over) {
+        finish(
+          view.won
+            ? 'Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!')
+            : 'Out of guesses.',
+          view.won ? view.played[view.played.length - 1].guess : null
+        );
+      }
+    })();
+  }
 </script>
 </body>
 </html>

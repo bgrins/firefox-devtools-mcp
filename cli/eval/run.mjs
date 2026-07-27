@@ -32,9 +32,10 @@
 //   node eval/transcript.mjs [run-dir] [--task <id>]
 //     inspect what the agents actually did
 //
-// Runaway protection is --max-wall (default 600s, retried as infra slowness)
-// and --max-output; there is deliberately no turn limit, and turns should not
-// be compared across conditions or backends (see markdownReport's note).
+// Runaway protection is a per-task wall-clock tier (quick/standard/long/epic,
+// see WALL_TIERS; --max-wall overrides all of them) plus --max-output. There is
+// deliberately no turn limit, and turns should not be compared across
+// conditions or backends (see markdownReport's note).
 
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -119,7 +120,15 @@ const REPORT_FROM = flag('report-from', null);
 // API/infrastructure hiccups (dropped connections, overload, 5xx) otherwise land
 // as ERROR rows that look like task failures and poison a whole run's numbers.
 // Retries re-run the task from scratch against freshly reset server state.
-const MAX_WALL_S = Number(flag('max-wall', '600')) || 0;
+// Wall-clock budget tiers. Real work is not uniformly sized: a smoke page is
+// seconds, a rate-limited or embargoed flow has an unavoidable floor, and a
+// fog-of-war maze is long-horizon by design. A task declares `tier` and gets
+// that cap; --max-wall overrides every tier when you want one number.
+const WALL_TIERS = { quick: 180, standard: 600, long: 1800, epic: 5400 };
+const DEFAULT_TIER = 'standard';
+const MAX_WALL_OVERRIDE = Number(flag('max-wall', '0')) || 0;
+const wallCapFor = (task) =>
+  MAX_WALL_OVERRIDE || WALL_TIERS[task?.tier ?? DEFAULT_TIER];
 const MAX_OUTPUT = Number(flag('max-output', '0')) || 0;
 const RETRIES = Number(flag('retries', '2'));
 if (!Number.isInteger(RETRIES) || RETRIES < 0) {
@@ -161,8 +170,10 @@ Usage: node eval/run.mjs [options]
                           (no agents run; applies reporting changes retroactively)
   --retries <n>           retry a task on transient API/infra errors
                           (default: 2; an --max-output stop is never retried)
-  --max-wall <s>          kill a task after s seconds of wall time
-                          (default: 600; 0 = off). Retried as infra slowness
+  --max-wall <s>          override every task's wall cap with s seconds.
+                          Omit to use per-task tiers: quick 180s, standard 600s
+                          (default), long 1800s, epic 5400s. A wall stop is
+                          retried, since infra slowness is the usual cause
   --max-output <n>        kill a task after n cumulative output tokens (0 = off)
   --repeat <n>            run each task n times; report adds per-task medians
   --model <id>            model for the agent backend
@@ -2154,8 +2165,9 @@ async function runTask(backendName, condition, label, task, ctx, rep = 1) {
     limitHit = reason;
     abortController.abort(reason);
   };
-  const wallTimer = MAX_WALL_S
-    ? setTimeout(() => stopFor(`wall limit ${MAX_WALL_S}s`), MAX_WALL_S * 1000)
+  const capS = wallCapFor(task);
+  const wallTimer = capS
+    ? setTimeout(() => stopFor(`wall limit ${capS}s (tier ${task.tier ?? DEFAULT_TIER})`), capS * 1000)
     : null;
   const userOnMessage = spec.onMessage;
   spec.onMessage = (message) => {
@@ -2363,6 +2375,13 @@ async function buildTasks(base) {
   }
   if (SUITE === 'web' || SUITE === 'all') {
     tasks.push(...(await webTasks(base)));
+  }
+  for (const t of tasks) {
+    if (t.tier && !(t.tier in WALL_TIERS)) {
+      throw new Error(
+        `task "${t.id}" has unknown tier "${t.tier}" (known: ${Object.keys(WALL_TIERS).join(', ')})`
+      );
+    }
   }
   if (TASK_PATTERNS) {
     const unmatched = TASK_PATTERNS.filter(
@@ -2609,7 +2628,11 @@ async function main() {
     throw new Error(`no tasks selected (suite=${SUITE}, task=${ONLY_TASK})`);
   }
   if (LIST_TASKS) {
-    console.log(selected.map((t) => t.id).join('\n'));
+    console.log(
+      selected
+        .map((t) => `${t.id}  [${t.tier ?? DEFAULT_TIER}, cap ${wallCapFor(t)}s]`)
+        .join('\n')
+    );
     console.log(`\n${selected.length} task(s) selected from suite '${SUITE}'`);
     return;
   }
