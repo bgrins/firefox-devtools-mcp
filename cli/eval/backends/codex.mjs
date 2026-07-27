@@ -26,8 +26,7 @@ import { tmpdir } from 'node:os';
 import { calcPrice } from '@pydantic/genai-prices';
 
 // Pinned explicitly (rather than deferring to ~/.codex/config.toml) so runs
-// are reproducible and the model is recorded in results. terra is the
-// sonnet-4-6-equivalent tier.
+// are reproducible and the model is recorded in results.
 export const DEFAULT_MODEL = 'gpt-5.6-terra';
 
 // run.mjs prepends a temp dir holding the firefox-cli wrapper to PATH. Drop that
