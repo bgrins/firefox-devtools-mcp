@@ -217,12 +217,14 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const pathname0 = url.pathname;
 
-    // Dev-only contact sheet of every fixture in an iframe grid. Off during
-    // eval runs so its page loads can never seed sessions or fire beacons.
-    if (preview && req.method === 'GET' && pathname0 === '/_preview') {
-      const html = await readFile(join(here, 'preview.html'));
+    // Dev-only pages, served from OUTSIDE pages/ and only in preview mode: the
+    // index describes each fixture (including the trick some tasks turn on) and
+    // the contact sheet loads every fixture at once, so neither may be
+    // reachable by an agent mid-run.
+    if (preview && req.method === 'GET' && (pathname0 === '/' || pathname0 === '/_preview')) {
+      const file = pathname0 === '/' ? 'index.html' : 'preview.html';
       res.writeHead(200, { 'Content-Type': TYPES['.html'] });
-      res.end(html);
+      res.end(await readFile(join(here, file)));
       return;
     }
 
@@ -707,6 +709,12 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
         { id: 4, name: 'draft-old', size: '112 KB', modified: '2026-06-30' },
         { id: 5, name: 'vendor-contract.pdf', size: '310 KB', modified: '2026-07-09' },
         { id: 6, name: 'archive-2025.zip', size: '4.8 MB', modified: '2026-01-05' },
+        { id: 7, name: 'campaign-brief.pdf', size: '820 KB', modified: '2026-07-18' },
+        { id: 8, name: 'launch-plan.xlsx', size: '96 KB', modified: '2026-07-22' },
+        { id: 9, name: 'logo-marks.zip', size: '12.4 MB', modified: '2026-05-11' },
+        { id: 10, name: 'press-shot.png', size: '3.1 MB', modified: '2026-07-05' },
+        { id: 11, name: 'style-guide.pdf', size: '1.9 MB', modified: '2026-06-12' },
+        { id: 12, name: 'retro-notes.txt', size: '9 KB', modified: '2026-07-24' },
       ];
       return json(res, 200, { files: found.session.files });
     }

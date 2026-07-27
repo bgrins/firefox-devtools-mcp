@@ -3,60 +3,76 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Overview — Bluefern Operations Portal</title>
+<title>Overview — Overlane Carrier Access</title>
 <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-<div class="sysbar">
-  <span><span class="brand">Bluefern Ops</span> / overview</span>
-  <span>node 4 &middot; <span class="link-ok">link ok</span></span>
-</div>
-<div class="app">
-  <nav class="rail">
-    <div class="rail-head">Console</div>
+<header class="topbar">
+  <a class="logo" href="dashboard.html">
+    <svg class="logo-mark" width="28" height="28" viewBox="0 0 30 30" aria-hidden="true">
+      <rect width="30" height="30" rx="8" fill="#2f4bb5"></rect>
+      <path d="M7 20h11M7 15h15M7 10h8" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"></path>
+      <circle cx="22.5" cy="20" r="2.6" fill="#5fd8c8"></circle>
+    </svg>
+    <span class="logo-word">Overlane</span>
+    <span class="logo-sub">Carrier Access</span>
+  </a>
+  <div class="account">
+    <span>Operations desk</span>
+    <span class="avatar">OD</span>
+  </div>
+</header>
+<div class="shell">
+  <nav class="side">
+    <div class="side-title">Console</div>
     <a href="dashboard.html" aria-current="page">Overview</a>
     <a href="dashboard.html#feeds">District feeds</a>
     <a href="dashboard.html#alerts">Alert queue</a>
-    <div class="rail-note">Reports area requires a separate reports sign-in.</div>
+    <div class="side-note">The reports area needs a separate reports sign-in.</div>
   </nav>
-  <main class="work">
+  <main class="main">
     <div class="crumb">Console / Overview</div>
     <h1>Operations overview</h1>
+    <p class="sub">Live view of the districts assigned to your account.</p>
     <div id="welcome" class="welcome" role="status"></div>
-    <div id="gate" class="banner" hidden>
+    <div id="gate" class="notice" hidden>
       You are not signed in. <a href="index.html">Go to sign-in</a>.
     </div>
     <div id="body" hidden>
       <div class="panel">
         <h2>Feed health</h2>
-        <p>All district feeds are reporting normally. Use the reports area for
-        shipment totals.</p>
-        <div class="kv">
-          <div><span class="k">Feeds up</span><span class="v ok">14 / 14</span></div>
-          <div><span class="k">Queue depth</span><span class="v">0</span></div>
-          <div><span class="k">Last sync</span><span class="v">00:04 ago</span></div>
+        <p>All district feeds are reporting normally. Shipment totals live in
+        the reports area.</p>
+        <div class="stats">
+          <div class="stat"><span class="k">Feeds up</span><span class="v ok">14 / 14</span></div>
+          <div class="stat"><span class="k">Queue depth</span><span class="v">0</span></div>
+          <div class="stat"><span class="k">Last sync</span><span class="v">00:04 ago</span></div>
         </div>
       </div>
       <div class="panel" id="feeds">
         <h2>District feeds</h2>
-        <table class="logtable">
+        <table class="feeds">
           <tr><th>District</th><th>Poller</th><th>State</th></tr>
-          <tr><td>North depot</td><td>p-411</td><td class="ok">nominal</td></tr>
-          <tr><td>South depot</td><td>p-412</td><td class="ok">nominal</td></tr>
-          <tr><td>Harbor terminal</td><td>p-418</td><td class="ok">nominal</td></tr>
-          <tr><td>Rail interchange</td><td>p-421</td><td class="ok">nominal</td></tr>
-          <tr><td>Airfreight hub</td><td>p-430</td><td class="ok">nominal</td></tr>
+          <tr><td>North depot</td><td>p-411</td><td><span class="pill">Nominal</span></td></tr>
+          <tr><td>South depot</td><td>p-412</td><td><span class="pill">Nominal</span></td></tr>
+          <tr><td>Harbor terminal</td><td>p-418</td><td><span class="pill">Nominal</span></td></tr>
+          <tr><td>Rail interchange</td><td>p-421</td><td><span class="pill">Nominal</span></td></tr>
+          <tr><td>Airfreight hub</td><td>p-430</td><td><span class="pill">Nominal</span></td></tr>
         </table>
       </div>
       <div class="panel" id="alerts">
         <h2>Alert queue</h2>
-        <p>No open alerts assigned to this operator.</p>
+        <p>No open alerts are assigned to this operator.</p>
       </div>
     </div>
-    <p class="fine">Bluefern Logistics Group &middot; internal systems &middot;
-    console build 7.4.2. Service desk: ext 2200 or opsdesk@bluefern.example.</p>
   </main>
 </div>
+<footer class="appfoot">
+  Overlane Logistics Group &middot; console build 7.4.2 &middot;
+  <a href="#support">Support centre</a> &middot;
+  <a href="#network-status">Network status</a> &middot;
+  service desk ext 2200 or support@overlane.example
+</footer>
 <script>
   const NONCE = '__SESSION_NONCE__';
 

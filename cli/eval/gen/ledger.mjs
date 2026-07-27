@@ -1,4 +1,4 @@
-// Generates the Kestrel Hollow Land Trust ledger fixture:
+// Generates the Trelowen Land Trust ledger fixture:
 //   pages/ledger/index.html + page-2.html .. page-7.html  (paginated postings;
 //   the last page carries one extra entry, so pages x rows-per-page is the
 //   WRONG total)
@@ -24,7 +24,7 @@ const PER_PAGE = 20;
 const TOTAL_ROWS = PAGE_COUNT * PER_PAGE + 1;
 // Index of the one capital purchase, deliberately deep in the ledger.
 const BIG_ROW = 96;
-const ORG = 'Kestrel Hollow Land Trust';
+const ORG = 'Trelowen Land Trust';
 
 const DESCRIPTIONS = {
   hardware: [
@@ -365,9 +365,9 @@ ${body}
       <tr><td colspan="3">Folio subtotal</td><td class="amount">$${money(subtotal)}</td></tr>
     </tfoot>
   </table>
-${pager}  <footer>${ORG} &middot; Old Creamery Road, Kestrel Hollow &middot; registered
+${pager}  <footer>${ORG} &middot; Old Creamery Road, Trelowen &middot; registered
   charity no. 08-2247. Postings are reviewed annually by Harrow &amp; Pike, chartered
-  accountants. Queries about an entry: bookkeeping@kestrelhollowtrust.example</footer>
+  accountants. Queries about an entry: bookkeeping@trelowentrust.example</footer>
 </main>
 <script>
   const NONCE = '__SESSION_NONCE__';

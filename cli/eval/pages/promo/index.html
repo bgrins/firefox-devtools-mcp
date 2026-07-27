@@ -27,6 +27,9 @@
     text-transform: uppercase;
   }
   .topbar b { color: var(--cyan); }
+  .topbar a { color: #fff; text-decoration: none; margin-left: 18px; }
+  .topbar a:hover { color: var(--cyan); }
+  .topbar .links { display: flex; }
   .hero {
     background: linear-gradient(115deg, var(--grape), var(--pink) 60%, #ff8a3d);
     color: #fff; padding: 30px 24px 34px; text-align: center;
@@ -44,6 +47,25 @@
     padding: 9px 20px; font-size: 13px; font-weight: bold; letter-spacing: 0.16em;
     text-transform: uppercase; text-align: center;
   }
+  .catnav {
+    background: #fff; border-bottom: 4px solid var(--ink);
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 2px;
+    padding: 0 12px;
+  }
+  .catnav a {
+    display: block; padding: 11px 15px; color: var(--ink); text-decoration: none;
+    font-size: 13px; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase;
+    border-bottom: 5px solid transparent;
+  }
+  .catnav a:hover { color: var(--pink); border-bottom-color: var(--pink); }
+  .catnav a[aria-current="page"] { color: var(--grape); border-bottom-color: var(--grape); }
+  .storebar {
+    display: flex; flex-wrap: wrap; gap: 8px 34px; justify-content: center;
+    background: #fff3d6; border-bottom: 4px solid var(--ink);
+    padding: 10px 20px; font-size: 13px;
+  }
+  .storebar b { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+  .storebar a { color: var(--grape); }
   main { max-width: 720px; margin: 0 auto; padding: 26px 20px 10px; }
   .lede { font-size: 17px; font-weight: bold; margin: 0 0 6px; }
   .lede-sub { margin: 0 0 18px; font-size: 14px; color: #55407a; }
@@ -86,6 +108,7 @@
     margin-top: 26px; padding: 12px 16px; min-height: 26px; font-size: 17px;
     font-weight: bold; border: 4px dashed transparent;
   }
+  #result:empty { display: none; }
   #result.ok { color: #0b6b34; border-color: #0b6b34; background: #e6ffef; }
   #result.err { color: #a3103d; border-color: #a3103d; background: #ffe9ef; }
 
@@ -98,21 +121,78 @@
   .mini .price { font-family: Impact, "Arial Black", sans-serif; font-size: 26px; color: var(--pink); }
   .mini span { display: block; font-size: 12px; color: #6d5b8c; }
   .fine { color: #6d5b8c; font-size: 12px; margin: 34px 0 0; }
-  footer {
-    margin-top: 24px; background: var(--ink); color: #cbb9ec; padding: 18px 20px;
-    font-size: 12px; text-align: center; letter-spacing: 0.06em;
+  .board-note {
+    margin-top: 18px; border-left: 6px solid var(--grape); background: #f3ecff;
+    padding: 12px 16px; font-size: 14px;
   }
+  .section-head {
+    margin: 34px 0 12px; font-size: 24px; border-bottom: 4px solid var(--ink);
+    padding-bottom: 6px;
+  }
+  .clubband {
+    margin-top: 30px; background: var(--grape); color: #fff;
+    border: 5px solid var(--ink); box-shadow: 10px 10px 0 var(--ink);
+    padding: 20px 24px; display: flex; flex-wrap: wrap; gap: 14px 26px;
+    align-items: center; justify-content: space-between;
+  }
+  .clubband h3 { margin: 0 0 4px; font-size: 26px; }
+  .clubband p { margin: 0; font-size: 14px; max-width: 420px; }
+  .clubband a {
+    color: var(--ink); background: var(--cyan); text-decoration: none;
+    font-family: Impact, "Arial Black", sans-serif; font-size: 18px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 11px 24px; border: 4px solid var(--ink);
+  }
+  footer {
+    margin-top: 30px; background: var(--ink); color: #cbb9ec; padding: 26px 20px 18px;
+    font-size: 13px;
+  }
+  .footcols {
+    max-width: 900px; margin: 0 auto; display: grid; gap: 20px 26px;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .footcols h4 {
+    margin: 0 0 8px; color: var(--cyan); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; font-family: "Trebuchet MS", Verdana, sans-serif;
+  }
+  .footcols ul { list-style: none; margin: 0; padding: 0; }
+  .footcols li { margin-bottom: 5px; }
+  .footcols a { color: #e8dcff; text-decoration: none; }
+  .footcols a:hover { color: #fff; text-decoration: underline; }
+  .legal {
+    max-width: 900px; margin: 22px auto 0; border-top: 1px solid #3c2a5e;
+    padding-top: 14px; font-size: 11.5px; color: #a794cc; line-height: 1.7;
+  }
+  .legal a { color: #a794cc; }
 </style>
 </head>
 <body>
 <div class="topbar">
   <span>Larkfield Market &middot; members club</span>
-  <span><b>Free pickup</b> on orders over 40</span>
+  <span class="links"><span><b>Free pickup</b> on orders over 40</span>
+    <a href="/promo/">Store finder</a><a href="/promo/">Weekly ad</a><a href="/promo/">Sign in</a></span>
 </div>
 <div class="hero">
   <span class="mark shout">Larkfield Market</span>
   <h1>Deal Days<br>Are Here</h1>
   <p>Members only &middot; this week only</p>
+</div>
+<nav class="catnav" aria-label="Departments">
+  <a href="/promo/" aria-current="page">Deal days</a>
+  <a href="/promo/">Fresh produce</a>
+  <a href="/promo/">Bakery</a>
+  <a href="/promo/">Butcher &amp; deli</a>
+  <a href="/promo/">Pantry</a>
+  <a href="/promo/">Chilled &amp; frozen</a>
+  <a href="/promo/">Household</a>
+  <a href="/promo/">Members club</a>
+</nav>
+<div class="storebar">
+  <span><b>Your store</b> Mill Street, Larkfield</span>
+  <span><b>Open today</b> 7 am to 9 pm</span>
+  <span><b>Collection desk</b> until 8 pm</span>
+  <span><b>Store line</b> 01792 55 4120</span>
+  <span><a href="/promo/">Change store</a> &middot; <a href="/promo/">All 34 stores</a></span>
 </div>
 <div class="ribbon">One offer per visit &middot; vouchers issue instantly at the register</div>
 <main>
@@ -140,15 +220,78 @@
     </section>
   </div>
   <div id="result" role="status"></div>
+  <p class="board-note">Board offers rotate at 6 am every Monday. A claimed voucher lands in
+  your members account straight away and can be scanned from the app at any till.</p>
+
+  <h2 class="section-head">Price drops this week</h2>
   <div class="strip">
     <div class="mini"><h3>Crate melons</h3><div class="price">2.40</div><span>each, field grade</span></div>
     <div class="mini"><h3>Larkfield oats</h3><div class="price">1.85</div><span>900 g bag</span></div>
     <div class="mini"><h3>Cold press cider</h3><div class="price">4.10</div><span>1 L bottle</span></div>
+    <div class="mini"><h3>Harbour cheddar</h3><div class="price">3.75</div><span>250 g block</span></div>
+    <div class="mini"><h3>Seeded tin loaf</h3><div class="price">1.20</div><span>800 g, baked daily</span></div>
+    <div class="mini"><h3>Laundry powder</h3><div class="price">6.95</div><span>2 kg box</span></div>
   </div>
+
+  <div class="clubband">
+    <div>
+      <h3>Members club</h3>
+      <p>Points on every shop, member pricing on over 400 lines, and first look at the
+      promotion board each Monday morning. Joining takes a minute at any till.</p>
+    </div>
+    <a href="/promo/">Join the club</a>
+  </div>
+
   <p class="fine">One voucher per member per promotion. Voucher codes have no cash value
-  and cannot be combined with other offers. Larkfield Market Ltd, Mill Street.</p>
+  and cannot be combined with other offers. Prices shown are member prices and apply at the
+  Mill Street store while stocks last.</p>
 </main>
-<footer>Larkfield Market &middot; members club &middot; promotions refresh every Monday at 6 am</footer>
+<footer>
+  <div class="footcols">
+    <div>
+      <h4>Shop</h4>
+      <ul>
+        <li><a href="/promo/">Deal days</a></li>
+        <li><a href="/promo/">Weekly ad</a></li>
+        <li><a href="/promo/">Order and collect</a></li>
+        <li><a href="/promo/">Gift cards</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Members club</h4>
+      <ul>
+        <li><a href="/promo/">Join the club</a></li>
+        <li><a href="/promo/">Points and vouchers</a></li>
+        <li><a href="/promo/">Replace a card</a></li>
+        <li><a href="/promo/">Club rules</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul>
+        <li><a href="/promo/">About Larkfield</a></li>
+        <li><a href="/promo/">Store list</a></li>
+        <li><a href="/promo/">Careers</a></li>
+        <li><a href="/promo/">Supplier terms</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Support</h4>
+      <ul>
+        <li><a href="/promo/">Contact the help desk</a></li>
+        <li>support@larkfieldmarket.example</li>
+        <li>0800 55 4120, 8 am to 8 pm</li>
+        <li><a href="/promo/">Returns and refunds</a></li>
+      </ul>
+    </div>
+  </div>
+  <p class="legal">Larkfield Market Ltd, registered office 4 Mill Street, Larkfield LK2 7QF.
+  Registered in England and Wales, company number 08812445. VAT 411 8827 03.<br>
+  Copyright 2026 Larkfield Market Ltd. All rights reserved.
+  <a href="/promo/">Privacy notice</a> &middot; <a href="/promo/">Terms of sale</a> &middot;
+  <a href="/promo/">Cookie choices</a> &middot; <a href="/promo/">Accessibility</a> &middot;
+  <a href="/promo/">Modern slavery statement</a></p>
+</footer>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const result = document.getElementById('result');

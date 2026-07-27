@@ -17,34 +17,113 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 26px 22px;
-    background: #d9dbe6;
+    background: #f4f5f9;
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Roboto", system-ui, sans-serif;
     font-size: 13.5px;
     line-height: 1.45;
   }
-  .window {
-    max-width: 940px;
-    margin: 0 auto;
+  .appbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #fff;
+    border-bottom: 1px solid var(--chrome-line);
+    padding: 9px 18px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand .mark {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: var(--indigo);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    letter-spacing: -0.02em;
+  }
+  .brand .name { font-size: 14px; font-weight: 600; }
+  .workspace {
+    font: inherit;
+    font-size: 12.5px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    background: #f6f7fa;
+    border: 1px solid var(--chrome-line);
+    border-radius: 7px;
+    color: #3c3f52;
+    cursor: pointer;
+  }
+  .workspace:hover { background: #f0f1f7; }
+  .workspace .caret { color: var(--muted); font-size: 10px; }
+  .searchwrap { flex: 1; max-width: 380px; margin-left: 6px; }
+  #search {
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    padding: 6px 11px;
+    background: #f6f7fa;
+    border: 1px solid var(--chrome-line);
+    border-radius: 7px;
+    color: var(--ink);
+  }
+  #search:focus { outline: 2px solid rgba(79, 70, 197, 0.25); border-color: var(--indigo); background: #fff; }
+  .appbar .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .appbar .plan { font-size: 11.5px; color: var(--muted); }
+  .invite {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 13px;
+    background: var(--indigo);
+    color: #fff;
+    border: 1px solid var(--indigo);
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .avatar {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: #d9d7f4;
+    color: #3a339c;
+    font-size: 11.5px;
+    font-weight: 600;
+    display: grid;
+    place-items: center;
+  }
+  .menubar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: #fbfbfd;
+    border-bottom: 1px solid var(--chrome-line);
+    padding: 0 12px;
+  }
+  .menubar button {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 6px 11px;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    color: #3c3f52;
+    cursor: pointer;
+  }
+  .menubar button:hover { background: var(--indigo-soft); color: var(--indigo); }
+  .menubar .synced { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .shell {
+    max-width: 1080px;
+    margin: 18px auto 0;
     background: #fff;
     border: 1px solid var(--chrome-line);
     border-radius: 10px;
-    box-shadow: 0 14px 40px rgba(24, 26, 48, 0.22);
+    box-shadow: 0 6px 18px rgba(24, 26, 48, 0.08);
     overflow: hidden;
   }
-  .titlebar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: linear-gradient(#f2f3f7, var(--chrome));
-    border-bottom: 1px solid var(--chrome-line);
-    padding: 9px 14px;
-  }
-  .dots { display: flex; gap: 6px; }
-  .dots i { width: 11px; height: 11px; border-radius: 50%; background: #c3c6d4; display: block; }
-  .titlebar .app { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
-  .titlebar .doc { font-size: 12px; color: var(--muted); }
   .toolbar {
     display: flex;
     align-items: center;
@@ -88,13 +167,15 @@
     color: var(--muted);
   }
   .crumbbar b { color: var(--ink); font-weight: 600; }
-  .frame { display: flex; min-height: 340px; }
+  .frame { display: flex; min-height: 420px; }
   .sidebar {
-    width: 176px;
-    flex: 0 0 176px;
+    width: 196px;
+    flex: 0 0 196px;
+    display: flex;
+    flex-direction: column;
     border-right: 1px solid var(--row-line);
     background: #fbfbfd;
-    padding: 12px 8px;
+    padding: 12px 8px 10px;
   }
   .sidebar .group { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #9296a8; padding: 8px 8px 4px; }
   .sidebar .place {
@@ -104,7 +185,25 @@
     color: #3c3f52;
     cursor: default;
   }
+  .sidebar .place.sub { padding-left: 22px; font-size: 12.5px; color: #55596e; }
   .sidebar .place[aria-current="true"] { background: var(--indigo-soft); color: var(--indigo); font-weight: 600; }
+  .storage {
+    margin-top: auto;
+    border-top: 1px solid var(--row-line);
+    padding: 12px 9px 4px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .storage .label { color: #3c3f52; font-weight: 600; font-size: 12px; margin-bottom: 6px; }
+  .meter {
+    height: 6px;
+    border-radius: 3px;
+    background: #e4e5ee;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .meter span { display: block; height: 100%; width: 62%; background: var(--indigo); }
+  .storage a { color: var(--indigo); text-decoration: none; }
   .pane { flex: 1; padding: 0; min-width: 0; }
   table { border-collapse: collapse; width: 100%; }
   th {
@@ -148,6 +247,7 @@
     outline: 2px solid rgba(79, 70, 197, 0.18);
   }
   #loading { color: var(--muted); padding: 14px; }
+  #empty { display: none; color: var(--muted); padding: 16px 14px; }
   .statusbar {
     display: flex;
     justify-content: space-between;
@@ -175,6 +275,7 @@
     padding: 12px 16px;
     box-shadow: 0 10px 28px rgba(20, 10, 20, 0.35);
     font-size: 13px;
+    z-index: 40;
   }
   #toast.show { display: flex; }
   #toast .msg { flex: 1; }
@@ -188,16 +289,42 @@
     border-radius: 5px;
     cursor: pointer;
   }
-  .fine { max-width: 940px; margin: 14px auto 0; font-size: 11.5px; color: #6b6e80; }
+  .sitefoot {
+    max-width: 1080px;
+    margin: 16px auto 0;
+    padding: 0 2px 26px;
+    font-size: 11.5px;
+    color: #6b6e80;
+  }
+  .sitefoot ul { list-style: none; display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 6px; padding: 0; }
+  .sitefoot a { color: #55596e; text-decoration: none; }
+  .sitefoot a:hover { text-decoration: underline; }
+  .sitefoot p { margin: 0; }
 </style>
 </head>
 <body>
-<div class="window">
-  <div class="titlebar">
-    <span class="dots"><i></i><i></i><i></i></span>
-    <span class="app">Boxelder Workspace</span>
-    <span class="doc">Working files &mdash; Shared drive</span>
-  </div>
+<header class="appbar">
+  <span class="brand"><span class="mark">bx</span><span class="name">Boxelder</span></span>
+  <button class="workspace" type="button">Marketing team <span class="caret">&#9662;</span></button>
+  <span class="searchwrap">
+    <input id="search" type="search" autocomplete="off" placeholder="Search Working files" aria-label="Search Working files">
+  </span>
+  <span class="right">
+    <span class="plan">Team plan &middot; 12 seats</span>
+    <button class="invite" type="button">Invite people</button>
+    <span class="avatar" title="Signed in as Ada Reinholt">AR</span>
+  </span>
+</header>
+<nav class="menubar" aria-label="Application menu">
+  <button type="button">File</button>
+  <button type="button">Edit</button>
+  <button type="button">View</button>
+  <button type="button">Go</button>
+  <button type="button">Share</button>
+  <button type="button">Help</button>
+  <span class="synced">All changes synced</span>
+</nav>
+<div class="shell">
   <div class="toolbar">
     <button class="tbtn" type="button" disabled title="Your workspace role cannot create folders here">New folder</button>
     <button class="tbtn" type="button" disabled title="Your workspace role cannot upload here">Upload</button>
@@ -215,11 +342,21 @@
       <div class="group">Places</div>
       <span class="place">My files</span>
       <span class="place" aria-current="true">Shared drive</span>
+      <span class="place sub">Working files</span>
+      <span class="place sub">Brand assets</span>
+      <span class="place sub">Campaign 26</span>
+      <span class="place sub">Archive</span>
       <span class="place">Recent</span>
       <span class="place">Trash</span>
       <div class="group">Tags</div>
       <span class="place">Campaign 26</span>
       <span class="place">Needs review</span>
+      <div class="storage">
+        <div class="label">Shared drive storage</div>
+        <div class="meter"><span></span></div>
+        <div>62.4 GB of 100 GB used</div>
+        <a href="/filemgr/">Manage storage</a>
+      </div>
     </div>
     <div class="pane">
       <div id="loading">Loading file list…</div>
@@ -229,6 +366,7 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
+      <div id="empty">No files in this folder match your search.</div>
     </div>
   </div>
   <div class="statusbar">
@@ -240,11 +378,25 @@
   <span class="msg" id="toastMsg"></span>
   <button id="refreshBtn" type="button">Refresh</button>
 </div>
-<p class="fine">Boxelder Workspace &middot; changes sync to every collaborator on this
-link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard shortcuts</p>
+<div class="sitefoot">
+  <ul>
+    <li><a href="/filemgr/">Help centre</a></li>
+    <li><a href="/filemgr/">Keyboard shortcuts</a></li>
+    <li><a href="/filemgr/">Status</a></li>
+    <li><a href="/filemgr/">Privacy</a></li>
+    <li><a href="/filemgr/">Terms</a></li>
+    <li><a href="/filemgr/">Contact support</a></li>
+  </ul>
+  <p>Changes sync to every collaborator on this link. Deleted items stay recoverable for 30 days.</p>
+  <p>Boxelder Software Ltd, 7 Calder Wharf, Leeds LS10 1QP &middot; support@boxelder.example</p>
+</div>
 <script>
   const NONCE = '__SESSION_NONCE__';
   let files = [];
+  let query = '';
+  // Rows with a rename in flight stay listed even when the search text no
+  // longer matches, so a filtered view cannot hide a pending change.
+  let pinnedId = null;
 
   const KINDS = {
     xlsx: 'Spreadsheet', png: 'Image', txt: 'Plain text',
@@ -266,10 +418,18 @@ link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard 
     render();
   }
 
+  function visibleFiles() {
+    if (!query) return files;
+    return files.filter(
+      (file) => file.id === pinnedId || file.name.toLowerCase().includes(query)
+    );
+  }
+
   function render() {
     const tbody = document.getElementById('rows');
     tbody.textContent = '';
-    for (const file of files) {
+    const shown = visibleFiles();
+    for (const file of shown) {
       const tr = document.createElement('tr');
       tr.dataset.id = file.id;
 
@@ -305,8 +465,11 @@ link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard 
 
       tbody.appendChild(tr);
     }
-    document.getElementById('count').textContent =
-      files.length + ' items in Working files';
+    document.getElementById('files').style.display = shown.length ? 'table' : 'none';
+    document.getElementById('empty').style.display = shown.length ? 'none' : 'block';
+    document.getElementById('count').textContent = query
+      ? shown.length + ' of ' + files.length + ' items match'
+      : files.length + ' items in Working files';
   }
 
   function startEdit(file, tr, nameCell, actionCell) {
@@ -346,6 +509,7 @@ link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard 
     }
     const oldName = file.name;
     file.name = newName;
+    pinnedId = file.id;
     render();
     try {
       const res = await fetch('/api/files/rename', {
@@ -357,12 +521,16 @@ link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard 
       if (!res.ok) {
         setTimeout(() => {
           file.name = oldName;
+          pinnedId = null;
           render();
           showToast(body.error ?? 'Rename failed.');
         }, 2000);
+      } else {
+        pinnedId = null;
       }
     } catch {
       file.name = oldName;
+      pinnedId = null;
       render();
       showToast('Network error — rename not saved.');
     }
@@ -372,6 +540,11 @@ link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard 
     document.getElementById('toastMsg').textContent = message;
     document.getElementById('toast').classList.add('show');
   }
+
+  document.getElementById('search').addEventListener('input', (event) => {
+    query = event.target.value.trim().toLowerCase();
+    render();
+  });
 
   document.getElementById('refreshBtn').addEventListener('click', async () => {
     document.getElementById('toast').classList.remove('show');

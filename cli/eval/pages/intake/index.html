@@ -3,21 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cobalt Ridge Consulting — Onboarding Intake</title>
+<title>Orsino Consulting — Onboarding Intake</title>
 <link rel="stylesheet" href="intake.css">
 </head>
 <body>
 <div class="masthead">
-  <span class="org">Cobalt Ridge Consulting &mdash; People Operations</span>
+  <div class="mast-top">
+    <span class="org">Orsino Consulting &mdash; People Operations</span>
+    <span class="mast-links"><a href="index.html">Staff intranet</a><a href="index.html">Contact HR</a></span>
+  </div>
   <h1>Day-one onboarding intake</h1>
 </div>
+<nav class="sitenav" aria-label="People Operations">
+  <a href="index.html" aria-current="page">Onboarding intake</a>
+  <a href="index.html">New starters</a>
+  <a href="index.html">Pay and benefits</a>
+  <a href="index.html">Policies</a>
+  <a href="index.html">Forms library</a>
+</nav>
 <div class="wrap">
-  <ol class="steps">
-    <li aria-current="step"><span class="num">1</span> Choose your path</li>
-    <li><span class="num">2</span> Document requirements</li>
-    <li><span class="num">3</span> First-day check-in</li>
-  </ol>
-  <div class="progress"><span style="width:33%"></span></div>
+  <p class="crumbs"><a href="index.html">People Operations</a> / <a href="index.html">New starters</a> / Onboarding intake</p>
 
   <h2>Which path matches your paperwork?</h2>
   <p class="lead">Pick the engagement path named on your offer letter or
@@ -31,7 +36,7 @@
       <span class="tag">Path A</span>
       <h3>Employee</h3>
       <p>Salaried or hourly staff joining under a standard employment offer from
-      Cobalt Ridge Consulting, with payroll run through our internal system.</p>
+      Orsino Consulting, with payroll run through our internal system.</p>
       <button id="pick-employee" type="button">Choose Employee path</button>
     </section>
     <section class="choice">
@@ -44,14 +49,49 @@
   </div>
 
   <div id="status" role="status"></div>
-  <p id="next" hidden><a class="continue" href="requirements.html">Continue to step 2: document requirements</a></p>
+  <p id="next" hidden><a class="continue" href="requirements.html">Continue to document requirements</a></p>
 
   <div class="helpline">Need help with intake? Call People Operations on
   extension 4120, weekdays 8am to 4pm. Intake sessions stay open for 30 days
   from your start date.</div>
 </div>
-<footer>Cobalt Ridge Consulting &middot; People Operations, 15 Weatherby Court &middot;
-information you enter here is held under the firm's candidate privacy notice.</footer>
+<footer>
+  <div class="footgrid">
+    <div>
+      <h2>People Operations</h2>
+      <ul>
+        <li><a href="index.html">Onboarding intake</a></li>
+        <li><a href="index.html">First-day checklist</a></li>
+        <li><a href="index.html">Right to work checks</a></li>
+        <li><a href="index.html">Forms library</a></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Working here</h2>
+      <ul>
+        <li><a href="index.html">Pay and benefits</a></li>
+        <li><a href="index.html">Leave and absence</a></li>
+        <li><a href="index.html">Expenses policy</a></li>
+        <li><a href="index.html">Contractor engagement</a></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Get in touch</h2>
+      <ul>
+        <li>People Operations, extension 4120</li>
+        <li>peopleops@orsino-consulting.example</li>
+        <li>Weekdays 8am to 4pm</li>
+        <li><a href="index.html">Raise a support ticket</a></li>
+      </ul>
+    </div>
+  </div>
+  <p class="footlegal">Orsino Consulting LLP, registered office 15 Weatherby Court,
+  Harrogate HG1 5DN. Registered in England and Wales, partnership number OC418823.
+  Information you enter here is held under the firm's candidate privacy notice.<br>
+  Copyright 2026 Orsino Consulting LLP. <a href="index.html">Privacy notice</a> &middot;
+  <a href="index.html">Terms of use</a> &middot; <a href="index.html">Accessibility</a> &middot;
+  <a href="index.html">Cookies</a></p>
+</footer>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const status = document.getElementById('status');

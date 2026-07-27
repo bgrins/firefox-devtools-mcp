@@ -2,58 +2,304 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Gridword — daily word puzzle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridword — the daily five from Marrowfield Press</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; text-align: center; }
-  header { border-bottom: 1px solid #ddd; padding: 10px 0; margin-bottom: 12px; }
-  header nav { font-size: 13px; color: #555; }
-  header nav a { color: #555; text-decoration: none; margin: 0 8px; }
-  header b { font-size: 20px; letter-spacing: 2px; }
-  #board { display: inline-block; margin: 12px 0; }
-  .row { display: flex; gap: 4px; margin-bottom: 4px; }
-  .tile { width: 48px; height: 48px; border: 2px solid #d3d6da; font-size: 24px; font-weight: 700;
-          display: flex; align-items: center; justify-content: center; text-transform: uppercase; }
-  .tile.correct { background: #6aaa64; border-color: #6aaa64; color: #fff; }
-  .tile.present { background: #c9b458; border-color: #c9b458; color: #fff; }
-  .tile.absent  { background: #787c7e; border-color: #787c7e; color: #fff; }
-  #counter { font-size: 13px; color: #555; }
-  #letters { font-family: monospace; font-size: 12px; margin: 8px 0; }
-  #feedback { text-align: left; font-family: monospace; font-size: 13px; }
-  #status { font-weight: 700; margin-top: 12px; }
-  #share { text-align: left; display: inline-block; background: #f4f4f4; padding: 8px; }
-  input { text-transform: uppercase; font-size: 18px; width: 10em; }
-  footer { margin-top: 32px; border-top: 1px solid #ddd; padding: 12px; font-size: 12px; color: #888; }
+  :root {
+    --pine: #14442f;
+    --pine-deep: #0b2b1d;
+    --lime: #cde36f;
+    --ochre: #c98f2b;
+    --stone: #8b8478;
+    --bone: #f2ece0;
+    --paper: #fffdf7;
+    --rule: #ddd4c2;
+    --ink: #22201b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", Tahoma, sans-serif;
+    color: var(--ink);
+    background-color: var(--bone);
+    background-image: radial-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 18px 18px;
+    line-height: 1.5;
+  }
+  a { color: var(--pine); }
+
+  .mast { background: var(--pine); color: var(--paper); border-bottom: 5px solid var(--lime); }
+  .mast-inner {
+    max-width: 660px; margin: 0 auto; padding: 18px 20px 14px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+  }
+  .kicker {
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    font-style: italic; font-size: 13px; color: var(--lime); letter-spacing: .02em;
+  }
+  .wordmark {
+    font-size: 34px; font-weight: bold; letter-spacing: .22em;
+    text-transform: uppercase; line-height: 1.05;
+  }
+  .tagline { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #a9c4b1; }
+  .mast-side { text-align: right; font-size: 12px; color: #a9c4b1; }
+  .mast-side .sub {
+    display: inline-block; margin-top: 6px; padding: 5px 11px;
+    background: var(--lime); color: var(--pine-deep); font-weight: bold;
+    border-radius: 999px; text-decoration: none; letter-spacing: .04em;
+  }
+  .mast-nav { background: var(--pine-deep); }
+  .mast-nav-inner { max-width: 660px; margin: 0 auto; padding: 0 20px; display: flex; flex-wrap: wrap; }
+  .mast-nav a {
+    color: #cfe0d3; text-decoration: none; font-size: 12px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 9px 14px 9px 0;
+  }
+  .mast-nav a.here { color: var(--lime); font-weight: bold; }
+
+  main { max-width: 660px; margin: 0 auto; padding: 22px 20px 8px; }
+  .card {
+    background: var(--paper); border: 3px solid var(--pine); border-radius: 12px;
+    box-shadow: 7px 7px 0 rgba(20, 68, 47, .14);
+    padding: 20px; margin-bottom: 20px;
+  }
+
+  h1 { font-size: 23px; margin: 0; letter-spacing: .01em; }
+  .pdate {
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    font-size: 14px; color: #5d6b60; margin-top: 2px;
+  }
+  .stats { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .chip {
+    font-size: 12px; letter-spacing: .05em; padding: 4px 11px; border-radius: 999px;
+    background: #e9f0dd; border: 2px solid var(--pine); color: var(--pine);
+  }
+  .chip.hot { background: var(--lime); font-weight: bold; }
+
+  .rules-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin: 16px 0 4px; padding-top: 14px; border-top: 2px dotted var(--rule);
+  }
+  .rules-row .lede { margin: 0; font-size: 15px; font-weight: bold; }
+  .ghost {
+    font: inherit; font-size: 13px; padding: 6px 13px; cursor: pointer;
+    background: var(--paper); color: var(--pine); border: 2px solid var(--pine);
+    border-radius: 999px; letter-spacing: .03em;
+  }
+  .ghost:hover { background: #e9f0dd; }
+  #howto {
+    display: none; margin-top: 12px; padding: 14px 16px;
+    background: #f6f3e8; border-left: 6px solid var(--lime); border-radius: 0 8px 8px 0;
+    font-size: 14px;
+  }
+  #howto div { margin-bottom: 5px; }
+
+  #board { margin: 18px auto 6px; width: max-content; }
+  .row { display: flex; gap: 7px; margin-bottom: 7px; }
+  /* cells stay class-free until played so the empty board adds no accessibility nodes */
+  .row > div {
+    width: 56px; height: 56px; border: 3px solid var(--rule); border-radius: 9px;
+    background: var(--paper);
+    font-size: 27px; font-weight: bold; text-transform: uppercase;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .row > div.correct { background: var(--pine); border-color: var(--pine); color: var(--paper); }
+  .row > div.present { background: var(--ochre); border-color: var(--ochre); color: #fffdf7; }
+  .row > div.absent  { background: var(--stone); border-color: var(--stone); color: #fffdf7; }
+  /* second, non-colour channel for the three states */
+  .row > div.correct::after, .row > div.present::after {
+    content: ""; position: absolute; left: 11px; right: 11px; bottom: 6px; height: 4px;
+    border-radius: 2px;
+  }
+  .row > div.correct::after { background: var(--lime); }
+  .row > div.present::after { border-top: 4px dotted #fffdf7; height: 0; }
+
+  #counter {
+    text-align: center; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: #5d6b60; margin-bottom: 16px;
+  }
+
+  #guessForm { display: flex; gap: 10px; justify-content: center; align-items: stretch; }
+  #guessInput {
+    font: inherit; font-size: 22px; font-weight: bold; letter-spacing: .35em;
+    text-transform: uppercase; text-align: center; width: 9em; padding: 10px 8px 10px 14px;
+    border: 3px solid var(--pine); border-radius: 9px; background: var(--paper); color: var(--ink);
+  }
+  #guessInput:focus { outline: 3px solid var(--lime); outline-offset: 1px; }
+  #guessInput:disabled { background: #eee9dd; color: #8b8478; border-color: var(--stone); }
+  .submit {
+    font: inherit; font-size: 15px; font-weight: bold; letter-spacing: .06em; cursor: pointer;
+    padding: 0 22px; background: var(--lime); color: var(--pine-deep);
+    border: 3px solid var(--pine); border-radius: 9px; box-shadow: 3px 3px 0 var(--pine);
+  }
+  .submit:hover { background: #d8ec86; }
+  .submit:active { transform: translate(3px, 3px); box-shadow: none; }
+  .submit:disabled { background: #e4e0d4; color: #8b8478; border-color: var(--stone); box-shadow: none; cursor: default; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 16px 0 6px; }
+  .legend span {
+    font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 2px solid var(--rule);
+    background: #f6f3e8; color: #4a5a4e;
+  }
+  #letters { margin: 10px 0 0; }
+  #letters div {
+    font-size: 13px; letter-spacing: .12em; padding: 3px 0; color: #3f4c43;
+    border-bottom: 1px dotted var(--rule);
+  }
+  #feedback { margin: 12px 0 0; }
+  #feedback div {
+    font-family: "Courier New", monospace; font-size: 13px; letter-spacing: .06em;
+    padding: 4px 9px; background: #f6f3e8; border-left: 4px solid var(--pine);
+    margin-bottom: 4px; border-radius: 0 5px 5px 0;
+  }
+  #status { margin-top: 14px; font-size: 18px; font-weight: bold; color: var(--pine); }
+  #answerLine {
+    font-size: 16px; letter-spacing: .1em; color: var(--pine-deep);
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  }
+  #share {
+    display: none; white-space: pre; font-family: "Courier New", monospace; font-size: 14px;
+    margin-top: 12px; padding: 10px 14px; background: var(--pine); color: var(--lime);
+    border-radius: 9px; width: max-content;
+  }
+
+  .kb-head {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #5d6b60;
+    margin-bottom: 10px;
+  }
+  .krow { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
+  .key {
+    font: inherit; font-size: 15px; font-weight: bold; cursor: pointer;
+    min-width: 38px; height: 48px; padding: 0 6px;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--pine); border-radius: 7px;
+  }
+  .key:hover { background: #e9f0dd; }
+  .key.wide { min-width: 62px; font-size: 12px; letter-spacing: .06em; background: #e9f0dd; }
+  .key.correct { background: var(--pine); border-color: var(--pine); color: var(--paper); }
+  .key.present { background: var(--ochre); border-color: var(--ochre); color: #fffdf7; }
+  .key.absent  { background: #d9d3c6; border-color: #c4bdae; color: #6f6a60; }
+
+  .more h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 10px; color: #5d6b60; }
+  .more ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .more a { font-size: 14px; font-weight: bold; text-decoration: none; }
+  .more a:hover { text-decoration: underline; }
+
+  footer { background: var(--pine-deep); color: #b8cbbd; margin-top: 10px; }
+  .foot-inner { max-width: 660px; margin: 0 auto; padding: 24px 20px 30px; font-size: 12.5px; }
+  .foot-inner p { margin: 0 0 8px; }
+  .foot-links a { color: var(--lime); text-decoration: none; margin-right: 14px; }
+  .foot-links a:hover { text-decoration: underline; }
+  .foot-rule { border-top: 1px solid #24503a; margin: 14px 0 12px; }
 </style>
 </head>
 <body>
-<header>
-  <nav><a href="#">Puzzles</a> · <a href="#">Archive</a> · <a href="#">Stats</a> · <a href="#">Help</a></nav>
-  <b>GRIDWORD</b>
+<header class="mast">
+  <div class="mast-inner">
+    <div>
+      <div class="kicker">Marrowfield Press</div>
+      <div class="wordmark">Gridword</div>
+      <div class="tagline">The daily five</div>
+    </div>
+    <div class="mast-side">
+      Games desk
+      <br>
+      <a class="sub" href="#">Subscribe</a>
+    </div>
+  </div>
+  <div class="mast-nav">
+    <nav class="mast-nav-inner">
+      <a class="here" href="#">Today</a>
+      <a href="#">Archive</a>
+      <a href="#">Leaderboard</a>
+      <a href="#">Mini crossword</a>
+      <a href="#">Help</a>
+    </nav>
+  </div>
 </header>
-<p>Guess the 5-letter word. You have 6 tries. After each guess, every letter is
-marked <b>correct</b> (right letter, right spot), <b>present</b> (in the word,
-wrong spot), or <b>absent</b>.</p>
 
-<div id="board"></div>
-<div id="counter">Guess 0 of 6</div>
+<main>
+  <section class="card">
+    <h1 id="puzzleNo">Gridword No. 1481</h1>
+    <div class="pdate" id="puzzleDate">Sunday, 3 May 2026</div>
+    <div class="stats">
+      <span class="chip hot">Streak 12</span>
+      <span class="chip">Played 217</span>
+      <span class="chip">Win rate 91%</span>
+      <span class="chip">Best run 46</span>
+    </div>
 
-<form id="guessForm">
-  <input id="guessInput" maxlength="5" placeholder="5-letter guess" autocomplete="off" aria-label="Enter your guess">
-  <button type="submit">Guess</button>
-</form>
+    <div class="rules-row">
+      <p class="lede">Six tries. Five letters.</p>
+      <button type="button" class="ghost" id="howtoBtn" aria-expanded="false">How to play</button>
+    </div>
+    <div id="howto">
+      <div>Type any five-letter word and submit it.</div>
+      <div>Every letter comes back marked: right letter in the right spot, right letter in the wrong spot, or not in the word at all.</div>
+      <div>Use the marks to narrow the answer. You get six tries, and a new puzzle is posted every morning.</div>
+      <div>Tap the keyboard below or type into the box — either way the guess lands in the same field.</div>
+    </div>
 
-<div id="letters" aria-live="polite"></div>
-<div id="feedback" aria-live="polite"></div>
-<div id="status" role="status"></div>
+    <div id="board"></div>
+    <div id="counter">Guess 0 of 6</div>
 
-<footer>A new puzzle is posted at midnight. Archive &middot; How to play &middot;
-Send feedback &middot; &copy; Gridword</footer>
+    <form id="guessForm">
+      <input id="guessInput" maxlength="5" placeholder="GUESS" autocomplete="off" aria-label="Enter your guess">
+      <button type="submit" class="submit">Submit guess</button>
+    </form>
+
+    <div class="legend">
+      <span>G = right letter, right spot</span>
+      <span>Y = in word, wrong spot</span>
+      <span>. = not in the word</span>
+    </div>
+
+    <div id="letters" aria-live="polite">
+      <div id="lettersCorrect">Correct: none yet</div>
+      <div id="lettersPresent">Present: none yet</div>
+      <div id="lettersAbsent">Absent: none yet</div>
+    </div>
+    <div id="feedback" aria-live="polite"></div>
+    <div id="status" role="status"></div>
+    <div id="answerLine"></div>
+    <div id="share"></div>
+  </section>
+
+  <section class="card">
+    <div class="kb-head">Letter board</div>
+    <div id="keyboard"></div>
+  </section>
+
+  <section class="card more">
+    <h2>More from the games desk</h2>
+    <ul>
+      <li><a href="#">Mini crossword</a></li>
+      <li><a href="#">Numberline</a></li>
+      <li><a href="#">Anagram ladder</a></li>
+      <li><a href="#">Saturday cryptic</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <p>Gridword is written and edited by the Marrowfield Press games desk. A new puzzle is posted at 00:01 each day.</p>
+    <p class="foot-links">
+      <a href="#">Puzzle archive</a><a href="#">How to play</a><a href="#">Subscriber help</a><a href="#">Privacy notice</a><a href="#">Terms of use</a><a href="#">Contact the games desk</a>
+    </p>
+    <div class="foot-rule"></div>
+    <p>Marrowfield Press Ltd, 8 Calder Wharf, Bramlington BR4 2QN. Registered in England and Wales, no. 04188267.</p>
+    <p>Subscriber enquiries: help@marrowfieldpress.co.uk &middot; 0330 118 4402</p>
+    <p>&copy; 2026 Marrowfield Press Ltd. All rights reserved.</p>
+  </div>
+</footer>
 
 <script>
   // Encoded so casual view-source doesn't spoil the puzzle.
   const ANSWERS = atob('Q1JJU1AsUExVTUIsR0xJTlQsRlJPTkQsTUlSVEgsUVVBS0UsU1dPT1A=').split(',');
   const params = new URLSearchParams(location.search);
-  const ANSWER = (params.get('answer') || ANSWERS[Number(params.get('day') || 0) % ANSWERS.length]).toUpperCase();
+  const DAY = Number(params.get('day') || 0);
+  const ANSWER = (params.get('answer') || ANSWERS[DAY % ANSWERS.length]).toUpperCase();
   const MAX_GUESSES = 6;
   let guesses = 0;
   let done = false;
@@ -63,19 +309,79 @@ Send feedback &middot; &copy; Gridword</footer>
 
   const board = document.getElementById('board');
   const counter = document.getElementById('counter');
-  const letters = document.getElementById('letters');
   const feedback = document.getElementById('feedback');
   const status = document.getElementById('status');
+  const answerLine = document.getElementById('answerLine');
+  const guessForm = document.getElementById('guessForm');
+  const guessInput = document.getElementById('guessInput');
+
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const issue = new Date(Date.UTC(2026, 4, 3) + (Number.isFinite(DAY) ? DAY : 0) * 86400000);
+  document.getElementById('puzzleNo').textContent = 'Gridword No. ' + (1481 + (Number.isFinite(DAY) ? DAY : 0));
+  document.getElementById('puzzleDate').textContent = DAY_NAMES[issue.getUTCDay()] + ', ' +
+    issue.getUTCDate() + ' ' + MONTH_NAMES[issue.getUTCMonth()] + ' ' + issue.getUTCFullYear();
+
+  const howtoBtn = document.getElementById('howtoBtn');
+  const howto = document.getElementById('howto');
+  howtoBtn.addEventListener('click', () => {
+    const open = howto.style.display === 'block';
+    howto.style.display = open ? 'none' : 'block';
+    howtoBtn.setAttribute('aria-expanded', String(!open));
+  });
 
   for (let r = 0; r < MAX_GUESSES; r++) {
     const row = document.createElement('div');
     row.className = 'row';
     for (let i = 0; i < 5; i++) {
-      const tile = document.createElement('div');
-      tile.className = 'tile';
-      row.appendChild(tile);
+      row.appendChild(document.createElement('div'));
     }
     board.appendChild(row);
+  }
+
+  const KEY_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+  const KEY_LABEL = { correct: 'right spot', present: 'in word', absent: 'not in word' };
+  const keyButtons = new Map();
+  const keyboard = document.getElementById('keyboard');
+
+  KEY_ROWS.forEach((letters, index) => {
+    const krow = document.createElement('div');
+    krow.className = 'krow';
+    if (index === 2) {
+      krow.appendChild(makeKey('ENTER', 'Enter guess'));
+    }
+    for (const letter of letters) {
+      const key = makeKey(letter, letter);
+      keyButtons.set(letter, key);
+      krow.appendChild(key);
+    }
+    if (index === 2) {
+      krow.appendChild(makeKey('DELETE', 'Delete letter'));
+    }
+    keyboard.appendChild(krow);
+  });
+
+  function makeKey(value, label) {
+    const key = document.createElement('button');
+    key.type = 'button';
+    key.className = value.length > 1 ? 'key wide' : 'key';
+    key.textContent = value === 'DELETE' ? 'Del' : value === 'ENTER' ? 'Enter' : value;
+    key.setAttribute('aria-label', label);
+    key.addEventListener('click', () => {
+      if (done) return;
+      if (value === 'ENTER') {
+        guessForm.requestSubmit();
+        return;
+      }
+      if (value === 'DELETE') {
+        guessInput.value = guessInput.value.slice(0, -1);
+      } else {
+        guessInput.value = (guessInput.value + value).slice(0, 5).toUpperCase();
+      }
+      guessInput.focus();
+    });
+    return key;
   }
 
   function mark(guess) {
@@ -110,42 +416,55 @@ Send feedback &middot; &copy; Gridword</footer>
         letterState.absent.add(letter);
       }
     }
-    letters.textContent =
-      'Letters — correct: ' + [...letterState.correct].sort().join(' ') +
-      ' | present: ' + [...letterState.present].sort().join(' ') +
-      ' | absent: ' + [...letterState.absent].sort().join(' ');
+    const show = (set) => (set.size ? [...set].sort().join(' ') : 'none yet');
+    document.getElementById('lettersCorrect').textContent = 'Correct: ' + show(letterState.correct);
+    document.getElementById('lettersPresent').textContent = 'Present: ' + show(letterState.present);
+    document.getElementById('lettersAbsent').textContent = 'Absent: ' + show(letterState.absent);
+
+    for (const [letter, key] of keyButtons) {
+      let state = '';
+      if (letterState.correct.has(letter)) state = 'correct';
+      else if (letterState.present.has(letter)) state = 'present';
+      else if (letterState.absent.has(letter)) state = 'absent';
+      key.className = state ? 'key ' + state : 'key';
+      key.setAttribute('aria-label', state ? letter + ' ' + KEY_LABEL[state] : letter);
+    }
+  }
+
+  function glyphs(marks) {
+    return marks.map((x) => (x === 'correct' ? 'G' : x === 'present' ? 'Y' : '.')).join('');
   }
 
   function finish(message) {
     done = true;
     status.textContent = message;
-    document.getElementById('guessInput').disabled = true;
-    document.querySelector('#guessForm button').disabled = true;
-    const share = marksHistory
-      .map((m) => m.map((x) => (x === 'correct' ? 'G' : x === 'present' ? 'Y' : '.')).join(''))
-      .join('\n');
-    status.insertAdjacentHTML(
-      'afterend',
-      '<pre id="share">Gridword ' + (guesses <= MAX_GUESSES ? guesses : 'X') + '/6\n' + share + '</pre>'
-    );
+    answerLine.textContent = 'Answer: ' + ANSWER;
+    const submit = guessForm.querySelector('button[type="submit"]');
+    guessInput.disabled = true;
+    submit.disabled = true;
+    guessInput.setAttribute('aria-disabled', 'true');
+    submit.setAttribute('aria-disabled', 'true');
+    const share = document.getElementById('share');
+    share.textContent = 'Gridword ' + (guesses <= MAX_GUESSES ? guesses : 'X') + '/6\n' +
+      marksHistory.map(glyphs).join('\n');
+    share.style.display = 'block';
   }
 
-  document.getElementById('guessForm').addEventListener('submit', (event) => {
+  guessForm.addEventListener('submit', (event) => {
     event.preventDefault();
     if (done) return;
-    const input = document.getElementById('guessInput');
-    const guess = input.value.trim().toUpperCase();
+    const guess = guessInput.value.trim().toUpperCase();
     if (!/^[A-Z]{5}$/.test(guess)) {
-      status.textContent = 'Guesses must be exactly 5 letters.';
+      status.textContent = 'Guesses must be 5 letters.';
       return;
     }
     if (seen.has(guess)) {
-      status.textContent = 'Already guessed ' + guess + '. Try a different word.';
+      status.textContent = 'Already guessed ' + guess + '.';
       return;
     }
     seen.add(guess);
     status.textContent = '';
-    input.value = '';
+    guessInput.value = '';
 
     const marks = mark(guess);
     marksHistory.push(marks);
@@ -159,15 +478,14 @@ Send feedback &middot; &copy; Gridword</footer>
     counter.textContent = 'Guess ' + guesses + ' of ' + MAX_GUESSES;
 
     const line = document.createElement('div');
-    line.textContent = 'Guess ' + guesses + ': ' + guess + ' → ' +
-      guess.split('').map((letter, i) => letter + ':' + marks[i]).join(' ');
+    line.textContent = 'Guess ' + guesses + ': ' + guess + ' = ' + glyphs(marks);
     feedback.appendChild(line);
     updateLetterState(guess, marks);
 
     if (guess === ANSWER) {
-      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!') + ' The word was ' + ANSWER + '.');
+      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!'));
     } else if (guesses >= MAX_GUESSES) {
-      finish('Out of guesses. The word was ' + ANSWER + '.');
+      finish('Out of guesses.');
     }
   });
 </script>
