@@ -12,12 +12,39 @@ that, split by who owns each fix.
 
 ---
 
-## Just looking at the websites (no install needed)
+## Getting the branch
 
-The fixture server uses only Node builtins, so you need nothing but Node:
+This work lives on the `firefox-cli` branch of a public fork, not on
+`mozilla/firefox-devtools-mcp`.
+
+**If you already have the Mozilla repo cloned**, add the fork as a second remote
+and track its branch:
 
 ```sh
-git fetch && git checkout firefox-cli
+git remote add bgrins https://github.com/bgrins/firefox-devtools-mcp
+git fetch bgrins firefox-cli
+git checkout -b firefox-cli --track bgrins/firefox-cli
+```
+
+Your existing remote (usually `origin` = mozilla) is untouched, so
+`git checkout main` returns you to normal. Later updates are
+`git pull bgrins firefox-cli` from the branch.
+
+**If you do not have it yet**, clone the fork directly — no access needed, it is
+public:
+
+```sh
+git clone https://github.com/bgrins/firefox-devtools-mcp
+cd firefox-devtools-mcp
+git checkout firefox-cli
+```
+
+## Just looking at the websites (no install needed)
+
+The fixture server uses only Node builtins, so you need nothing but Node
+(no `npm install`, no API key, no Firefox):
+
+```sh
 node cli/eval/server.mjs --port 8907
 ```
 
