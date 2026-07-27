@@ -78,6 +78,58 @@
 > **Blocked, not built:** T052 (file upload) needs the P-2 CLI `upload` command, same as T067
 > (viewport). Both remain out of scope until P-2 lands.
 
+> **Wave 5 (2026-07-27): forms + a11y.** T054 (`office-finder`), T055 (`draft-resume`), T056
+> (`abstract-length`), T058 (`grid-edit`), T060 (`unit-quote`), T066 (`modal-escape`), T081
+> (`unsub-dark-patterns`). Built via `.claude/workflows/eval-task-wave.js` (implement -> adversarial
+> review -> fix, per fixture group). Acceptance: 38 tasks x cli+mcp, mcp 38/38, cli 36/38, all 14
+> new-task runs passing. New findings: the snapshot walker emits no `<option>` nodes, so a
+> `<select>`'s choices are invisible until one is selected, and `firefox-cli fill` on a select is
+> keyboard typeahead that silently does nothing for a non-prefix value; ARIA STATE attributes
+> (`aria-expanded`, `aria-disabled`) never reach the snapshot at all (`aria-label` does, as `name`);
+> `firefox-cli screenshot` silently ignores `--full-page` and `--output`. Process lesson: three
+> groups came back "ok" while carrying an unrecoverable modal state, a validator that false-failed
+> correct agents, and a lenient tie-break — so the workflow now escalates any brittleness/
+> recoverability finding to a fix pass regardless of severity.
+>
+> **Wave 4.5 (2026-07-27): fixture realism.** Every site got its own design language (they had
+> converged into three near-identical looks because the briefing pointed every agent at one
+> reference fixture), the three shops were split off a shared renderer, all "this is a fictional
+> test site" disclaimers were removed, and `pages/index.html` moved OUT of the served root — it
+> was reachable at `/` on the same origin and spoiled three tasks' answers ("some photos fail to
+> load", "only one actually clickable", "backend that fails before it succeeds"). Findings: a
+> restyle can change measured behaviour with no logic change (popup-storm's dialog chain only
+> advanced on dismissal, so an easier-to-read layout halved turns and the storm stopped arriving;
+> triggers are now independent, per the original T080 plan).
+>
+> **Wave 6 (2026-07-27): ecommerce cart cluster.** T018 (`cart-math`), T026 (`qty-limit`), T019
+> (`coupon-stack`), T024 (`variant-matrix`), T020 (`oos-substitute`) — all five on one shared
+> server-side cart, built as ONE workflow entry because parallel agents would each invent an
+> incompatible contract. NOT YET MEASURED: no recorded run exists for these five.
+>
+> **Harness changes (2026-07-27) — earlier recorded runs describe a harness that no longer exists:**
+> default conditions are now `mcp,playwright` (the comparison this suite exists for: our server vs
+> playwright-mcp, for mining improvements to ours); `cli` is opt-in and destined to move out.
+> Both MCP conditions now share a byte-identical prompt, and the cli cheatsheet's "prefer find"
+> efficiency hint is gone — coaching only one condition biased the metric. Every condition gets a
+> shell (the non-cli ones without the firefox-cli wrapper on PATH). `maxTurns` is REMOVED: a cli
+> Bash call performs 1.21 browser ops per turn vs mcp's 1.00, and codex only approximates turns,
+> so turns are neither a fair metric nor a usable limit. Runaway protection is `--max-wall`
+> (default 600s, retried as infra slowness) and `--max-output` (never retried). Also added:
+> `--task` comma lists + wildcards, `--list-tasks`, `--rerun-failed <dir>`, `--retries` for
+> transient API errors, and locally computed codex costs via `@pydantic/genai-prices`.
+>
+> **Corrections to earlier claims in this document:** the wave-4 headline cost/turn figures were a
+> SINGLE draw — the same 38 tasks re-run gave a cost ratio of 1.03 where the first gave 1.50, and
+> `cache_creation` swung 6x between runs, so absolute cost is not comparable across runs at all.
+> The "five snapshot information-loss modes cost turns rather than success" claim is unsupported
+> for at least three of them (on `iframe-schedule` and `handbook`, mcp was FASTER than cli); the
+> modes are real but were established by hand-probe, and both conditions route around them with
+> `eval`, which is ~20-25% of all browser operations. The "accepted curl confound" was never
+> actually exercised: one curl call per full run, always fetching a page's own `app.js`. And ~31%
+> of recorded non-passes were infra errors (`Connection closed mid-response`) counted as failures
+> — hence the new `--retries`. Prefer OUTPUT TOKENS and WALL TIME as the metrics; treat pass rate
+> as near-ceiling (most tasks pass in every condition) and turns as diagnostic only.
+
 This document has been through adversarial review (round 1): a validity/cheatability pass and a
 value/cost pass. **68 of the original 100 ideas survive.** Ids are stable (no renumbering); killed
 and merged ideas are listed in the Graveyard at the bottom with one-line reasons.
