@@ -24,7 +24,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { chmodSync, createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,10 +76,43 @@ const SUITE = flag('suite', 'basic');
 //   --task cart-math,coupon-stack         several
 //   --task 'ledger-*,crm-join'            wildcard plus an exact id
 const ONLY_TASK = flag('task', null);
-const TASK_PATTERNS = ONLY_TASK
-  ? ONLY_TASK.split(',').map((s) => s.trim()).filter(Boolean)
-  : null;
+// --rerun-failed <run-dir> selects exactly the tasks that did not pass in an
+// earlier run (failures AND errored rows), so a flaky run can be topped up
+// without re-running everything or hand-copying ids out of a log.
+const RERUN_FAILED = flag('rerun-failed', null);
+let RERUN_IDS = null;
+if (RERUN_FAILED) {
+  const prior = JSON.parse(
+    readFileSync(join(RERUN_FAILED.replace(/\/results\.json$/, ''), 'results.json'), 'utf8')
+  );
+  RERUN_IDS = [...new Set(prior.results.filter((r) => !r.success).map((r) => r.task))]
+    .filter((id) => id && id !== '(condition)');
+  if (!RERUN_IDS.length) {
+    console.log(`--rerun-failed: every task passed in ${RERUN_FAILED}, nothing to do`);
+    process.exit(0);
+  }
+  console.log(`--rerun-failed: ${RERUN_IDS.length} task(s) from ${RERUN_FAILED}: ${RERUN_IDS.join(', ')}`);
+}
+const TASK_PATTERNS = RERUN_IDS
+  ? RERUN_IDS
+  : ONLY_TASK
+    ? ONLY_TASK.split(',').map((s) => s.trim()).filter(Boolean)
+    : null;
 const LIST_TASKS = args.includes('--list-tasks');
+// API/infrastructure hiccups (dropped connections, overload, 5xx) otherwise land
+// as ERROR rows that look like task failures and poison a whole run's numbers.
+// Retries re-run the task from scratch against freshly reset server state.
+// A maxTurns exhaustion is a real result, not a hiccup, so it is never retried.
+const RETRIES = Number(flag('retries', '2'));
+if (!Number.isInteger(RETRIES) || RETRIES < 0) {
+  throw new Error('--retries must be a non-negative integer');
+}
+const TRANSIENT = /connection closed|connection error|econnreset|epipe|etimedout|socket hang up|overloaded|rate.?limit|too many requests|\b(429|500|502|503|504|529)\b|internal server error|service unavailable/i;
+function isTransient(error) {
+  const message = String(error?.message ?? '');
+  if (/maximum number of turns/i.test(message)) return false;
+  return TRANSIENT.test(message);
+}
 function taskSelected(id) {
   if (!TASK_PATTERNS) return true;
   return TASK_PATTERNS.some((p) =>
@@ -101,6 +134,10 @@ Usage: node eval/run.mjs [options]
                           e.g. --task cart-math,coupon-stack or --task 'ledger-*'
   --list-tasks            print the selected task ids and exit (pairs with
                           --suite/--task to preview a subset)
+  --rerun-failed <dir>    re-run only the tasks that failed or errored in an
+                          earlier run directory (overrides --task)
+  --retries <n>           retry a task on transient API/infra errors
+                          (default: 2; turn exhaustion is never retried)
   --repeat <n>            run each task n times; report adds per-task medians
   --model <id>            model for the agent backend
   --effort <level>        reasoning effort for both backends (default: medium;
@@ -2159,27 +2196,41 @@ async function runCondition(backendName, condition, shared) {
     // Task asks embed the env's pages URL, so rebuild against this env.
     const task = (await buildTasks(env.pages.url)).find((t) => t.id === item.id);
     const tag = REPEAT > 1 ? `${item.id} (r${item.rep})` : item.id;
-    env.pages.state.reset();
-    try {
-      const ctx = {
-        ...shared,
-        stateDir: env.stateDir,
-        pages: env.pages,
-        endpoint: env.endpoint,
-        stdioProfile: env.stdioProfile,
-      };
-      const r = await runTask(backendName, condition, label, task, ctx, item.rep);
-      console.log(
-        `[${label}] ${tag}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
-          `in=${r.input_tokens} cacheW=${r.cache_creation} cacheR=${r.cache_read} ` +
-          `out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
-          `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
-          (r.detail ? ` (${r.detail})` : '')
-      );
-      return r;
-    } catch (error) {
-      console.log(`[${label}] ${tag}: ERROR ${error.message}`);
-      return { backend: backendName, condition: label, task: item.id, rep: item.rep, success: false, error: error.message };
+    for (let attempt = 0; ; attempt++) {
+      // Fresh server state per attempt, so a retry is graded on its own run.
+      env.pages.state.reset();
+      try {
+        const ctx = {
+          ...shared,
+          stateDir: env.stateDir,
+          pages: env.pages,
+          endpoint: env.endpoint,
+          stdioProfile: env.stdioProfile,
+        };
+        const r = await runTask(backendName, condition, label, task, ctx, item.rep);
+        console.log(
+          `[${label}] ${tag}: ${r.success ? 'PASS' : 'FAIL'} turns=${r.turns} ` +
+            `in=${r.input_tokens} cacheW=${r.cache_creation} cacheR=${r.cache_read} ` +
+            `out=${r.output_tokens} $${r.cost_usd?.toFixed?.(4) ?? '?'} ` +
+            `wall=${r.wall_s}s api=${r.api_s ?? '?'}s` +
+            (r.detail ? ` (${r.detail})` : '') +
+            (attempt ? ` [after ${attempt} retry]` : '')
+        );
+        return attempt ? { ...r, retries: attempt } : r;
+      } catch (error) {
+        if (isTransient(error) && attempt < RETRIES) {
+          console.log(
+            `[${label}] ${tag}: transient error, retrying ` +
+              `(${attempt + 1}/${RETRIES}): ${error.message.slice(0, 90)}`
+          );
+          continue;
+        }
+        console.log(`[${label}] ${tag}: ERROR ${error.message}`);
+        return {
+          backend: backendName, condition: label, task: item.id, rep: item.rep,
+          success: false, error: error.message, ...(attempt ? { retries: attempt } : {}),
+        };
+      }
     }
   }
 
