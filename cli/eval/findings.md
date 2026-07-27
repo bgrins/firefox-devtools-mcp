@@ -237,6 +237,90 @@ re-parented directly under the preceding `<button>`. An agent or driver that
 navigates by tree structure rather than by text can therefore resolve a different
 element from one snapshot to the next.
 
+---
+
+## The devtools surface (A15-A21)
+
+Found while designing a future wave, NOT by any shipped task — none of the 61
+tasks touches console, network, the debugger or the profiler, which is half of
+what makes us a *devtools* MCP. Full write-up and the proposed tasks are in
+`devtools-wave-proposal.md`. Every item below was reproduced headless against a
+scratch fixture and cross-checked against playwright-mcp on the same page.
+
+**The competitive picture is the opposite of what we assumed.** playwright-mcp is
+at parity or ahead of us on console and network: it returns failing response
+bodies, prints full stack traces, attaches `@ url:line` to every message, and
+appends `Console: N errors, M warnings` to *every* tool response so its agent is
+prompted to look. We do none of that. The one axis we clearly win is retention
+(below).
+
+## A15. Console and network logs are silently emptied after five minutes
+`CONSOLE_TTL_MS` and `NETWORK_TTL_MS` are both `5 * 60 * 1000`
+(`src/firefox/events/console.ts:11`, `src/firefox/events/network.ts:10`). Entries
+older than that are dropped, and `list_network_requests` then reports
+`total: 0` with nothing to indicate anything was discarded. A 9-request log was
+watched going empty mid-probe.
+
+Our wall tiers run to 600s and 1800s, so a long task can ask about a request that
+the tool has already forgotten — and be told, indistinguishably, that it never
+happened. This is the worst of the set because it turns a correct answer into a
+confidently wrong one. Note the irony: retention is otherwise **our advantage** —
+playwright wipes its network log on every navigation with no way to opt out, so
+any question asked after the failing step favours us. The TTL quietly gives that
+advantage back on exactly the long tasks where it matters most.
+
+## A16. Response and request bodies are never captured
+Not stored at all, so a failing endpoint's error payload is unreachable through
+our tools. playwright-mcp returns both (`part: "response-body"`, verified
+verbatim). This is the single largest capability gap on the devtools surface.
+
+## A17. Console messages carry no stack trace and no source location
+An uncaught error arrives as bare `Error: <msg>` — no frames, no `url:line`.
+Worse, the `source` field we *do* expose is `entry.source.realm`, a GUID, which
+makes the documented filter useless for its apparent purpose. playwright prints
+the full trace and appends `@ url:line` to every message.
+
+## A18. Nothing in our output ever mentions console state
+playwright appends `Console: N errors, M warnings` to every tool response, so its
+agent learns for free that something is wrong. Ours stays silent until asked, and
+an agent with no reason to suspect a console error will not ask. Cheap to fix and
+probably the highest ratio of behaviour change to effort in this document.
+
+## A19. `isXHR` matches nothing in Firefox
+`src/firefox/events/network.ts:104` derives it from
+`req.initiator?.type === 'xmlhttprequest' || 'fetch'`, which returned **zero**
+rows on a page making nothing but `fetch` calls. `resourceType` is likewise
+guessed from the URL string rather than reported by the browser. So the two
+filters an agent would naturally reach for to isolate API traffic both fail
+silently.
+
+## A20. The logpoint lifecycle is broken, silently
+- A logpoint set before a reload never collects again, and
+  `get_logpoint_results` keeps returning the stale pre-reload results.
+- `enable_debugger` does not re-arm it.
+- A second logpoint on the same line never collects.
+- `set_logpoint` on line 999 of a 12-line file reports success.
+
+Together these kill the canonical instrument-then-reload workflow, which is the
+main reason to have logpoints at all. Every failure is silent.
+
+## A21. Transport failures are invisible
+We do not subscribe to `network.fetchError`, so a connection-refused fetch is
+absent from the log entirely and an aborted response reads as a clean `200`.
+playwright is equally blind here, so this is a correctness gap rather than a
+competitive one.
+
+## A22. The profiler does not run on the Firefox the eval launches
+It errors out on release 153 and needs 154+. Combined with playwright having no
+profiling tool at all, a profiler task would be a zero-information row three
+different ways.
+
+Also, a project-rule violation rather than a defect: `src/tools/network.ts` emits
+an emoji in the header of every `list_network_requests` response (lines 241, 257,
+276). `AGENTS.md` forbids emoji anywhere in the codebase.
+
+---
+
 ## Suggested order for Part A
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
 every change has a measured before/after.
@@ -256,6 +340,12 @@ every change has a measured before/after.
    it is the one finding that makes a whole task class unwinnable for us and
    winnable for playwright, invisibly.
 9. **A6, A7, A9, A9b, A12, A13, A14** — cheap and independent.
+
+The devtools findings sit on their own track, since no shipped task measures them
+yet. Order there: **A18** (free console cue — smallest change, largest behaviour
+delta), **A15** (the 5-minute TTL, which silently converts a correct answer into
+a wrong one on long tasks), **A17** then **A16** (stack traces, then response
+bodies — the two things playwright has and we do not), **A19**, **A20**, **A21**.
 
 Verified working, for contrast: `upload_file_by_uid` is sound end to end,
 headless. It fires the change event, the page sees a real `File` with the right

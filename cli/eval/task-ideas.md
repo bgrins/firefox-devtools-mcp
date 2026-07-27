@@ -1416,6 +1416,103 @@ alongside `submissions`/`progress` (or reset the whole session map).
 - Validator: `s = ctx.pages.state.scale[sid]`; pass = `s?.correct === true` AND `s.weighings <= 3` AND answer contains `s.code`.
 - Effort: M · Depends: P-1. Per-session randomization defeats memorized answers; executing adaptive weighings via UI is the probe.
 
+# Plans 7 — New site genres (T110, T111, T112, T113)
+
+Motivation, and it differs from every prior wave. Waves 4-9 built tasks against
+gaps we already knew about, which means the suite may be systematically blind to
+gaps nobody thought to probe. These four sites are chosen for STRUCTURAL novelty:
+each is an interaction genre with no analogue among the existing 28 sites, and
+each is to be built in its genre's natural idiom rather than designed around our
+snapshot's known limits. If our surface loses information on an honest fixture,
+that is the finding we are hunting — record it, do not paper over it.
+
+Consequence for implementers: the usual "design tasks AWARE of the tool bugs"
+rule is SUSPENDED for this wave. Build the page the way a real site would be
+built, then measure both surfaces on it and report the delta.
+
+### T110 — Pull Request Review (new genre: code hosting)
+- Fixture: new `pages/forge/` — Kettleforge, a code host. PR view with a
+  Conversation / Files changed / Checks tab strip; the diff is a real unified
+  diff over 3 files (~120 changed lines) in monospace with old/new line-number
+  gutters, per-line comment affordances, and collapsed context that expands.
+  A failing check on the Checks tab reports an assertion message naming the
+  symptom but not the line.
+- Why this genre: dense monospace with LONG lines is the worst case for the
+  27-char snapshot cap (A1), and real diffs are commonly laid out as tables,
+  which our walker drops entirely (A2). This is the honest version of the
+  question wave 6 raised with `oos-substitute`. Also: line-anchored interaction
+  (comment on ONE specific line) is an addressing problem nothing else tests.
+- Server: the diff is NOT on disk — `GET /api/forge/diff` (session-gated) serves
+  it, and WHICH hunk carries the defect is chosen per session from several
+  seeded variants, so the line number differs run to run.
+  `POST /api/forge/review {file, line, body, verdict}` records to the session.
+- Ask: review the PR, find the change that causes the reported check failure,
+  comment on the exact line, and request changes.
+- Validator: server-observed — session's review must name the right file and the
+  right line, verdict `changes`, body naming the at-fault identifier.
+- Effort: L · Depends: P-1
+
+### T111 — Room Scheduling (new genre: calendar with a time axis)
+- Fixture: new `pages/schedule/` — a week grid (5 days x half-hour rows) across
+  three rooms, existing bookings blocked out and spanning multiple rows, plus a
+  request card stating the constraints (duration, earliest start, capacity, a
+  day to avoid).
+- Why this genre: nothing in the suite has a TIME axis, and a booking grid is
+  naturally a `<table>` — the exact structure finding A2 says never reaches our
+  snapshot. Spanning cells make it harder than a flat data table.
+- Server: the occupancy grid is generated per session by
+  `GET /api/schedule/grid`, so the free slot moves. `POST /api/schedule/book
+  {day, start, room}` validates the constraints SERVER-side and mints a code
+  only for the EARLIEST slot that satisfies all of them; a valid-but-later slot
+  is accepted as a booking and refused a code, so near-misses are visible.
+- Ask: book the earliest slot meeting the request card's constraints, report the
+  confirmation code.
+- Validator: server-observed booking is the earliest valid slot, and the answer
+  carries that session's code.
+- Effort: L · Depends: P-1
+
+### T112 — Support Chat (new genre: conversational async)
+- Fixture: new `pages/support/` — a live-chat widget on a service provider's
+  help page. The rep replies after a few seconds with a clarifying question that
+  can only be answered from the account page elsewhere on the site; supplying it
+  yields a case number.
+- Why this genre: distinct from `flaky/slow` (a progress bar with a known
+  duration). Here replies arrive at unpredictable intervals, the transcript
+  GROWS with each turn (pushing the 100-line snapshot cap, A6), and the agent
+  must carry a value between two pages. It also tests restraint: an agent that
+  invents an answer to the rep's question rather than going to look it up fails.
+- Server: scripted per-session state machine. `POST /api/support/msg` advances
+  it; `GET /api/support/thread` returns messages due so far. The account's model
+  number is per-session and rendered only by the account page, so it is not on
+  disk. Case number minted only after the correct value is supplied in chat.
+- Ask: open a support case about the stated fault, answer what the rep asks, and
+  report the case number.
+- Validator: server-observed — the session supplied the right model number in a
+  chat message, and the answer carries the minted case number.
+- Effort: M · Depends: P-1
+
+### T113 — Cross-Tab Payment Authorization (new genre: multi-tab)
+- Fixture: new `pages/paylink/` — a merchant checkout whose Authorize button
+  opens a payment authorizer in a REAL new tab (`target="_blank"`). The
+  authorizer shows an amount and last-4 to confirm against the merchant page.
+  On confirm it says to return to the merchant tab; the confirmation code
+  appears ONLY in the merchant tab, and the authorizer shows a decoy code.
+- Why this genre: the suite has ZERO tab coverage. This is the only test of
+  `list_pages` / `select_page` / `close_page` against playwright's `browser_tabs`
+  — a whole capability axis we have never measured. Note T048 was killed as
+  "tab requirement unenforceable"; the fix is that the graded code is minted
+  server-side and rendered only into the merchant tab, so reading the authorizer
+  alone yields the decoy and fails.
+- Server: `POST /api/paylink/authorize` (authorizer tab) marks the session
+  authorized; the merchant page polls, renders the real code, and `POST
+  /api/paylink/settle` reports that it displayed it. Re-authorizing after a
+  merchant reload is allowed, so the task is not a one-shot trap.
+- Ask: complete the payment authorization and report the merchant's confirmation
+  code.
+- Validator: server-observed settle beacon exists for the session AND the answer
+  carries the real code, not the decoy.
+- Effort: M · Depends: P-1
+
 ## Graveyard
 
 Killed or merged in adversarial review round 1 (32 ids):
