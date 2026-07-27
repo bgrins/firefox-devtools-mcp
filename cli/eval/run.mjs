@@ -1745,13 +1745,18 @@ or adjust its arguments instead of managing instances.
 
 Uids are only valid from your most recent find/snapshot output.`;
 
+// Non-cli conditions also get a shell, so the only difference between conditions
+// is how the browser is driven rather than whether a shell exists at all.
+const SHELL_NOTE = `You also have a shell (Bash) for anything else you find useful.
+It has no browser-automation command in it — the MCP tools are how you drive the page.`;
+
 function taskPrompt(condition, task) {
   const intro =
     condition === 'cli'
       ? CLI_CHEATSHEET
       : condition === 'playwright' || CUSTOM_MCP
-        ? 'You control a web browser via the connected "firefox" MCP tools.'
-        : 'You control a running Firefox via the connected "firefox" MCP tools.';
+        ? `You control a web browser via the connected "firefox" MCP tools.\n${SHELL_NOTE}`
+        : `You control a running Firefox via the connected "firefox" MCP tools.\n${SHELL_NOTE}`;
   return `${intro}\n\nTask: ${task.ask}\nAnswer concisely with the requested information.`;
 }
 

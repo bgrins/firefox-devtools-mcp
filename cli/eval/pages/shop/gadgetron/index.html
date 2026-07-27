@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <title>Gadgetron | Monitor spec index</title>
 <link rel="stylesheet" href="gadgetron.css">
+<style>
+  .notices { margin-bottom: 12px; border-left: 3px solid #ffb020; padding: 2px 0 2px 9px; }
+  .notices h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #626a7a; margin: 0 0 6px; }
+  .notices p { font-size: 12px; margin: 0 0 4px; max-width: 82ch; }
+  .notices .oos { color: #a3230f; font-weight: bold; }
+</style>
 </head>
 <body>
 <div class="railbar">
@@ -13,7 +19,8 @@
     <input aria-label="Search part numbers or models" placeholder="Model, brand or part no.">
     <button type="submit">Find</button>
   </form>
-  <span class="who">Guest &middot; <a href="#">sign in</a> &middot; order list: <span id="order-count">0 queued</span></span>
+  <span class="who">Guest &middot; <a href="#">sign in</a> &middot;
+    <a href="order-list.html">order list</a>: <span id="order-count">0 queued</span></span>
 </div>
 <nav class="tabs" aria-label="Sections">
   <a href="#" aria-current="page">Catalog</a>
@@ -69,6 +76,15 @@
           <option>Diagonal</option>
         </select>
       </label>
+    </div>
+    <div class="notices">
+      <h2>Availability notices</h2>
+      <p class="oos">PF-27: sold out online.</p>
+      <p class="oos">CS27-OB: sold out online.</p>
+      <p>A sold-out part number cannot be queued on an order list. The buying desk publishes
+      an approved alternate for each one: see the
+      <a href="substitutions.html">approved substitution list</a>.</p>
+      <p>Part numbers are queued from the <a href="order-list.html">order list</a> page.</p>
     </div>
     <table class="grid">
       <caption>Monitor specification comparison. One row per stock keeping unit.</caption>
@@ -126,6 +142,8 @@ window.GADGETRON_ROWS = [
   { model: 'ScreenCraft SC-24U', diag: 24, res: '4K', price: 234.0, rating: 4.4, reviews: 733, stock: 'y' },
   { model: 'Voltro Vision27 FHD', diag: 27, res: '1080p', price: 134.99, rating: 4.1, reviews: 7301, stock: 'y' },
   { model: 'ClaritySee CS32-Q Curve', diag: 32, res: '1440p', price: 299.99, rating: 4.5, reviews: 841, stock: 'y' },
+  { model: 'PixelForge PF-27', diag: 27, res: '4K', price: 296.0, rating: 4.3, reviews: 640, stock: 'n' },
+  { model: 'BrightPanel BP-27U', diag: 27, res: '4K', price: 311.5, rating: 4.4, reviews: 1180, stock: 'y' },
 ];
 </script>
 <script src="gadgetron.js"></script>

@@ -12,8 +12,11 @@
 //   default, or attached via the streamable HTTP `endpoint`, through a
 //   `mcp_servers` config override (the SDK flattens `config` into --config
 //   flags). Tools are auto-approved (default_tools_approval_mode) since
-//   codex otherwise cancels non-read-only MCP tools under approval 'never';
-//   MCP tool calls bypass the command sandbox, so read-only is enough.
+//   codex otherwise cancels non-read-only MCP tools under approval 'never'.
+//   It gets the same network-enabled workspace-write sandbox as 'cli' so the
+//   only difference between conditions is how the browser is driven — but its
+//   shell env drops the firefox-cli wrapper from PATH, so it cannot drive the
+//   browser through the CLI and collapse the comparison.
 //
 // maxTurns is not enforced — the SDK has no equivalent option.
 // api_duration_ms is not reported by codex; cost_usd is computed locally from
@@ -27,6 +30,15 @@ import { calcPrice } from '@pydantic/genai-prices';
 // are reproducible and the model is recorded in results. terra is the
 // sonnet-4-6-equivalent tier.
 export const DEFAULT_MODEL = 'gpt-5.6-terra';
+
+// run.mjs prepends a temp dir holding the firefox-cli wrapper to PATH. Drop that
+// entry so non-cli conditions get an ordinary shell without the browser CLI.
+function stripWrapperDir(path) {
+  return (path ?? '')
+    .split(':')
+    .filter((dir) => !/ffcli-eval-bin-/.test(dir))
+    .join(':');
+}
 
 // Warn once per model id whose price entry was resolved by approximate match,
 // so a silently mispriced model is visible instead of quietly wrong.
@@ -75,6 +87,22 @@ export async function run({ prompt, model, effort, condition, env, endpoint, cwd
       ...(effort ? { model_reasoning_effort: effort } : {}),
     },
   };
+  // Both conditions get a network-enabled shell so the only difference is how the
+  // browser is driven; the non-cli shell is denied the firefox-cli wrapper (see
+  // the else branch) so it cannot drive the browser through the CLI instead.
+  if (condition !== 'cli') {
+    codexOptions.config.sandbox_workspace_write = {
+      network_access: true,
+      writable_roots: [tmpdir()],
+    };
+    codexOptions.config.shell_environment_policy = {
+      inherit: 'all',
+      set: {
+        ...(env?.PATH ? { PATH: stripWrapperDir(env.PATH) } : {}),
+        FIREFOX_CLI_STATE_DIR: '',
+      },
+    };
+  }
   if (condition === 'cli') {
     codexOptions.config.sandbox_workspace_write = {
       network_access: true,
@@ -113,7 +141,7 @@ export async function run({ prompt, model, effort, condition, env, endpoint, cwd
     ...(model ? { model } : {}),
     workingDirectory: cwd,
     skipGitRepoCheck: true,
-    sandboxMode: condition === 'cli' ? 'workspace-write' : 'read-only',
+    sandboxMode: 'workspace-write',
   });
 
   const started = Date.now();

@@ -15,6 +15,15 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 
 export const DEFAULT_MODEL = 'claude-sonnet-5';
 
+// run.mjs prepends a temp dir holding the firefox-cli wrapper to PATH. Drop that
+// entry so non-cli conditions get an ordinary shell without the browser CLI.
+function stripWrapperDir(path) {
+  return (path ?? '')
+    .split(':')
+    .filter((dir) => !/ffcli-eval-bin-/.test(dir))
+    .join(':');
+}
+
 export async function run({ prompt, model, effort, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const options = {
     model,
@@ -28,7 +37,15 @@ export async function run({ prompt, model, effort, maxTurns, condition, env, end
     options.allowedTools = ['Bash'];
     options.env = env;
   } else {
-    options.allowedTools = ['mcp__firefox'];
+    // Every condition gets a shell so the ONLY difference is how the browser is
+    // driven. Without this, cli could curl a static fixture while mcp could not,
+    // and a cost/turn gap would partly measure shell access rather than the tool
+    // surface. The mcp shell deliberately does NOT get the firefox-cli wrapper on
+    // PATH (nor its state dir) — with those, an mcp agent could drive the browser
+    // through the CLI and the two conditions would collapse into one.
+    const { PATH, FIREFOX_CLI_STATE_DIR, ...rest } = env ?? process.env;
+    options.allowedTools = ['mcp__firefox', 'Bash'];
+    options.env = { ...rest, PATH: stripWrapperDir(PATH ?? process.env.PATH) };
     options.mcpServers = {
       firefox: mcpStdio
         ? { type: 'stdio', command: mcpStdio.command, args: mcpStdio.args }
