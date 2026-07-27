@@ -5,56 +5,257 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Boxelder Workspace — Files</title>
 <style>
-  body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; background: #f4f5f2; color: #23301f; margin: 0; }
-  header { background: #2f4a2a; color: #eef3ea; padding: 16px 32px; display: flex; align-items: baseline; gap: 14px; }
-  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
-  header .crumb { font-size: 13px; color: #b9ccb0; }
-  main { max-width: 760px; margin: 28px auto; padding: 0 20px; }
-  .panel { background: #fff; border: 1px solid #d5dccf; border-radius: 6px; padding: 20px 24px; }
-  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6a755f; border-bottom: 2px solid #d5dccf; padding: 6px 10px; }
-  td { border-bottom: 1px solid #e6eadf; padding: 9px 10px; font-size: 14px; }
-  td.name { font-weight: 600; }
-  td.meta { color: #6a755f; font-size: 13px; }
-  button { font: inherit; font-size: 13px; padding: 5px 14px; border: 1px solid #4a6b3f; background: #fff; color: #2f4a2a; border-radius: 4px; cursor: pointer; }
-  button:hover { background: #eef3ea; }
-  button.primary { background: #2f4a2a; color: #fff; }
-  input.rename { font: inherit; font-size: 14px; padding: 4px 8px; width: 180px; }
-  #toast { display: none; margin-top: 16px; border: 1px solid #b0483a; background: #fbeeec; color: #7c2d22; border-radius: 5px; padding: 12px 16px; font-size: 14px; align-items: center; gap: 14px; }
+  :root {
+    --chrome: #e9eaf0;
+    --chrome-line: #cfd2de;
+    --ink: #1b1c2a;
+    --muted: #6f7286;
+    --indigo: #4f46c5;
+    --indigo-soft: #eceafb;
+    --row-line: #edeef4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 26px 22px;
+    background: #d9dbe6;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Roboto", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  .window {
+    max-width: 940px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid var(--chrome-line);
+    border-radius: 10px;
+    box-shadow: 0 14px 40px rgba(24, 26, 48, 0.22);
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(#f2f3f7, var(--chrome));
+    border-bottom: 1px solid var(--chrome-line);
+    padding: 9px 14px;
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; background: #c3c6d4; display: block; }
+  .titlebar .app { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+  .titlebar .doc { font-size: 12px; color: var(--muted); }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f6f7fa;
+    border-bottom: 1px solid var(--chrome-line);
+    padding: 8px 12px;
+  }
+  .tbtn {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 11px;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--chrome-line);
+    border-radius: 6px;
+    box-shadow: 0 1px 1px rgba(27, 28, 42, 0.05);
+    cursor: pointer;
+  }
+  .tbtn:hover { background: #f0f1f7; }
+  .tbtn[disabled] { color: #a3a6b6; background: #f4f5f9; box-shadow: none; cursor: default; }
+  .seg { display: flex; margin-left: auto; border: 1px solid var(--chrome-line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 12px;
+    border: 0;
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--indigo); color: #fff; }
+  .seg button[disabled] { color: #a3a6b6; cursor: default; }
+  .crumbbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--row-line);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .crumbbar b { color: var(--ink); font-weight: 600; }
+  .frame { display: flex; min-height: 340px; }
+  .sidebar {
+    width: 176px;
+    flex: 0 0 176px;
+    border-right: 1px solid var(--row-line);
+    background: #fbfbfd;
+    padding: 12px 8px;
+  }
+  .sidebar .group { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #9296a8; padding: 8px 8px 4px; }
+  .sidebar .place {
+    display: block;
+    padding: 5px 9px;
+    border-radius: 6px;
+    color: #3c3f52;
+    cursor: default;
+  }
+  .sidebar .place[aria-current="true"] { background: var(--indigo-soft); color: var(--indigo); font-weight: 600; }
+  .pane { flex: 1; padding: 0; min-width: 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    background: #fafbfd;
+    border-bottom: 1px solid var(--chrome-line);
+    padding: 7px 12px;
+    position: sticky;
+    top: 0;
+  }
+  th.sorted::after { content: " \25B4"; color: var(--indigo); }
+  td { border-bottom: 1px solid var(--row-line); padding: 7px 12px; }
+  tbody tr:nth-child(even) { background: #fcfcfe; }
+  tbody tr:hover { background: var(--indigo-soft); }
+  td.name { font-weight: 500; }
+  td.kind, td.size, td.mod { color: var(--muted); font-size: 12.5px; }
+  td.actions { text-align: right; white-space: nowrap; }
+  .rowbtn {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    background: #fff;
+    border: 1px solid var(--chrome-line);
+    border-radius: 5px;
+    color: var(--indigo);
+    cursor: pointer;
+  }
+  .rowbtn:hover { border-color: var(--indigo); }
+  .rowbtn.save { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+  .rowbtn + .rowbtn { margin-left: 5px; }
+  input.rename {
+    font: inherit;
+    font-size: 13px;
+    padding: 3px 7px;
+    width: 190px;
+    border: 1px solid var(--indigo);
+    border-radius: 5px;
+    outline: 2px solid rgba(79, 70, 197, 0.18);
+  }
+  #loading { color: var(--muted); padding: 14px; }
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    background: #f6f7fa;
+    border-top: 1px solid var(--chrome-line);
+    padding: 6px 14px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  #toast {
+    display: none;
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    max-width: 640px;
+    align-items: center;
+    gap: 16px;
+    background: #2a1c2b;
+    color: #ffe9e6;
+    border: 1px solid #7d3b36;
+    border-left: 5px solid #e05a4c;
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: 0 10px 28px rgba(20, 10, 20, 0.35);
+    font-size: 13px;
+  }
   #toast.show { display: flex; }
   #toast .msg { flex: 1; }
-  #loading { color: #6a755f; font-size: 14px; margin-top: 10px; }
-  .fine { color: #8a927f; font-size: 12px; margin-top: 34px; }
+  #toast button {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 13px;
+    background: #ffe9e6;
+    color: #4a1f19;
+    border: 0;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .fine { max-width: 940px; margin: 14px auto 0; font-size: 11.5px; color: #6b6e80; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Boxelder Workspace</h1>
-  <span class="crumb">Shared drive / Marketing / Working files</span>
-</header>
-<main>
-  <div class="panel">
-    <h2 style="margin-top:0;font-size:16px;">Working files</h2>
-    <p style="font-size:14px;color:#4b5644;margin:4px 0 0;">Use Rename to change a
-    file name in place. Changes sync to the workspace server.</p>
-    <div id="loading">Loading file list…</div>
-    <table id="files" style="display:none;">
-      <thead>
-        <tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div id="toast" role="alert">
-      <span class="msg" id="toastMsg"></span>
-      <button id="refreshBtn" type="button">Refresh</button>
+<div class="window">
+  <div class="titlebar">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span class="app">Boxelder Workspace</span>
+    <span class="doc">Working files &mdash; Shared drive</span>
+  </div>
+  <div class="toolbar">
+    <button class="tbtn" type="button" disabled title="Your workspace role cannot create folders here">New folder</button>
+    <button class="tbtn" type="button" disabled title="Your workspace role cannot upload here">Upload</button>
+    <button class="tbtn" type="button" disabled title="Select a file to see details">Get info</button>
+    <span class="seg">
+      <button type="button" aria-pressed="true">List</button>
+      <button type="button" aria-pressed="false" disabled title="Grid view is unavailable on shared drives">Grid</button>
+    </span>
+  </div>
+  <div class="crumbbar">
+    <span>Shared drive</span><span>/</span><span>Marketing</span><span>/</span><b>Working files</b>
+  </div>
+  <div class="frame">
+    <div class="sidebar">
+      <div class="group">Places</div>
+      <span class="place">My files</span>
+      <span class="place" aria-current="true">Shared drive</span>
+      <span class="place">Recent</span>
+      <span class="place">Trash</span>
+      <div class="group">Tags</div>
+      <span class="place">Campaign 26</span>
+      <span class="place">Needs review</span>
+    </div>
+    <div class="pane">
+      <div id="loading">Loading file list…</div>
+      <table id="files" style="display:none;">
+        <thead>
+          <tr><th class="sorted">Name</th><th>Kind</th><th>Size</th><th>Modified</th><th></th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
     </div>
   </div>
-  <p class="fine">Boxelder Workspace is a fictional product used for local browser
-  testing. File entries are held server-side per session.</p>
-</main>
+  <div class="statusbar">
+    <span id="count">Reading workspace…</span>
+    <span>Rename edits sync to the workspace server</span>
+  </div>
+</div>
+<div id="toast" role="alert">
+  <span class="msg" id="toastMsg"></span>
+  <button id="refreshBtn" type="button">Refresh</button>
+</div>
+<p class="fine">Boxelder Workspace &middot; changes sync to every collaborator on this
+link. Deleted items stay recoverable for 30 days. Help centre &middot; Keyboard shortcuts</p>
 <script>
   const NONCE = '__SESSION_NONCE__';
   let files = [];
+
+  const KINDS = {
+    xlsx: 'Spreadsheet', png: 'Image', txt: 'Plain text',
+    pdf: 'PDF document', zip: 'Archive',
+  };
+
+  function kindOf(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot < 1) return 'Document';
+    return KINDS[name.slice(dot + 1).toLowerCase()] ?? 'Document';
+  }
 
   async function loadFiles() {
     const res = await fetch('/api/files', { headers: { 'X-Eval-Nonce': NONCE } });
@@ -77,19 +278,26 @@
       nameCell.textContent = file.name;
       tr.appendChild(nameCell);
 
+      const kindCell = document.createElement('td');
+      kindCell.className = 'kind';
+      kindCell.textContent = kindOf(file.name);
+      tr.appendChild(kindCell);
+
       const sizeCell = document.createElement('td');
-      sizeCell.className = 'meta';
+      sizeCell.className = 'size';
       sizeCell.textContent = file.size;
       tr.appendChild(sizeCell);
 
       const modCell = document.createElement('td');
-      modCell.className = 'meta';
+      modCell.className = 'mod';
       modCell.textContent = file.modified;
       tr.appendChild(modCell);
 
       const actionCell = document.createElement('td');
+      actionCell.className = 'actions';
       const renameBtn = document.createElement('button');
       renameBtn.type = 'button';
+      renameBtn.className = 'rowbtn';
       renameBtn.textContent = 'Rename';
       renameBtn.addEventListener('click', () => startEdit(file, tr, nameCell, actionCell));
       actionCell.appendChild(renameBtn);
@@ -97,6 +305,8 @@
 
       tbody.appendChild(tr);
     }
+    document.getElementById('count').textContent =
+      files.length + ' items in Working files';
   }
 
   function startEdit(file, tr, nameCell, actionCell) {
@@ -109,12 +319,12 @@
 
     const save = document.createElement('button');
     save.type = 'button';
-    save.className = 'primary';
+    save.className = 'rowbtn save';
     save.textContent = 'Save';
     const cancel = document.createElement('button');
     cancel.type = 'button';
+    cancel.className = 'rowbtn';
     cancel.textContent = 'Cancel';
-    cancel.style.marginLeft = '6px';
     actionCell.textContent = '';
     actionCell.appendChild(save);
     actionCell.appendChild(cancel);

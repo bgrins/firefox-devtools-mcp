@@ -1,42 +1,115 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"><link rel="stylesheet" href="../shop.css"></head>
+<meta charset="utf-8">
+<title>Monitors - Computers &amp; Tablets - NexBuy</title>
+<link rel="stylesheet" href="nexbuy.css">
+</head>
 <body>
+<div class="locstrip">
+  <span>Store: Riverside Commons &middot; Open until 9:00 pm</span>
+  <a href="#">Change store</a>
+  <a href="#">Order status</a>
+  <a href="#">Trade-in and recycling</a>
+</div>
+<header class="masthead">
+  <a class="wordmark" href="#">nexbuy</a>
+  <form class="finder" onsubmit="return false">
+    <input aria-label="Search NexBuy" placeholder="What can we help you find today?">
+    <button type="submit">Search</button>
+  </form>
+  <div class="acct">
+    <a href="#">My NexBuy</a>
+    <a href="#">Saved items</a>
+    <a href="#">Basket &middot; 0 items</a>
+  </div>
+</header>
+<nav class="deptbar" aria-label="Departments">
+  <a href="#">TV &amp; Home Theater</a>
+  <a href="#">Computers &amp; Tablets</a>
+  <a class="on" href="#">Monitors</a>
+  <a href="#">Audio</a>
+  <a href="#">Smart Home</a>
+  <a href="#">Cameras</a>
+  <a href="#">Outlet &amp; Open-Box</a>
+  <a href="#">Services</a>
+</nav>
+<p class="crumbs">Home / Computers &amp; Tablets / Monitors / All monitors</p>
+<div class="memberbar">Member Mondays: free shipping on orders over $35 for My NexBuy members.</div>
+<div class="pagehead"><h1>Monitors</h1></div>
+<section class="refine" aria-label="Refine results">
+  <strong>Refine</strong>
+  <label>Screen size
+    <select aria-label="Screen size">
+      <option>Any size</option><option>23 - 24 in</option><option>25 - 27 in</option><option>28 - 32 in</option>
+    </select>
+  </label>
+  <label>Resolution
+    <select aria-label="Resolution">
+      <option>Any resolution</option><option>Full HD</option><option>Quad HD</option><option>4K Ultra HD</option>
+    </select>
+  </label>
+  <label>Availability
+    <select aria-label="Availability">
+      <option>Show everything</option><option>Available to ship</option><option>Pickup today</option>
+    </select>
+  </label>
+  <label>Sort
+    <select aria-label="Sort results">
+      <option>Best match</option><option>Price low to high</option><option>Price high to low</option>
+      <option>Customer rating</option>
+    </select>
+  </label>
+  <a class="chip" href="#">Monitors &times;</a>
+  <a class="chip" href="#">Riverside Commons &times;</a>
+</section>
+<p class="tally" id="tally" role="status"></p>
+<ol class="results" id="results"></ol>
+<div class="more">
+  <button id="more-results" type="button">Load more results</button>
+  <p id="more-note"></p>
+</div>
+<footer class="legal">
+  <ul>
+    <li><a href="#">Basket help</a></li>
+    <li><a href="#">Return policy</a></li>
+    <li><a href="#">Price match</a></li>
+    <li><a href="#">Accessibility</a></li>
+    <li><a href="#">Store directory</a></li>
+  </ul>
+  Prices shown exclude tax. Online prices may differ from prices in store. NexBuy
+  matches any advertised price from a qualifying local retailer within seven days of
+  purchase. &copy; 2026 NexBuy Retail Group.
+</footer>
 <script>
-window.STORE = {
-  name: 'NexBuy',
-  theme: '#ffe000',
-  promo: 'Member Mondays: free shipping on orders over $35 for My NexBuy members.',
-  products: [
-    ['ClaritySee CS27-4K', 27, '4K', 274.5, 4.4, 2731, true],
-    ['ClaritySee CS27-4K Refurbished', 27, '4K', 239.99, 4.0, 312, false],
-    ['NorthLite NL24-F', 24, '1080p', 94.99, 4.0, 9822, true],
-    ['PixelPeak P27Q', 27, '1440p', 199.0, 4.5, 4310, true],
-    ['ScreenCraft SC-27U', 27, '4K', 329.99, 4.6, 1544, true],
-    ['Voltro Vision32 UHD', 32, '4K', 399.99, 4.5, 903, true],
-    ['ClaritySee CS24-4K', 24, '4K', 209.99, 4.2, 1187, true],
-    ['NorthLite NL27-4K', 27, '4K', 288.0, 4.3, 1902, true],
-    ['PixelPeak P24F', 24, '1080p', 104.99, 4.1, 7215, true],
-    ['ScreenCraft SC-32U Studio', 32, '4K', 469.0, 4.7, 431, true],
-    ['Voltro Vision27 QHD', 27, '1440p', 219.99, 4.4, 2660, true],
-    ['ClaritySee CS27-Q Gaming', 27, '1440p', 244.99, 4.6, 3801, true],
-    ['NorthLite NL32-F', 32, '1080p', 159.0, 3.9, 3312, true],
-    ['PixelPeak P27U', 27, '4K', 309.99, 4.5, 1276, true],
-    ['ScreenCraft SC-24Q', 24, '1440p', 154.5, 4.3, 2087, true],
-    ['Voltro Vision27 UHD HDR', 27, '4K', 355.0, 4.6, 890, true],
-    ['ClaritySee CS27-F', 27, '1080p', 129.99, 4.0, 5240, true],
-    ['NorthLite NL27-Q', 27, '1440p', 189.99, 4.2, 1954, true],
-    ['PixelPeak P32Q Curve', 32, '1440p', 279.99, 4.4, 1108, true],
-    ['ScreenCraft SC-27F', 27, '1080p', 144.99, 4.1, 4877, true],
-    ['Voltro Vision24 UHD', 24, '4K', 229.0, 4.3, 655, true],
-    ['ClaritySee CS32-4K HDR', 32, '4K', 439.99, 4.6, 377, true],
-    ['NorthLite NL24-Q Slim', 24, '1440p', 139.99, 4.2, 1450, true],
-    ['PixelPeak P27U Mini-LED', 27, '4K', 549.0, 4.8, 204, true],
-    ['ScreenCraft SC-27Q Pro', 27, '1440p', 259.99, 4.5, 1733, true],
-  ],
-};
+window.NEXBUY_FEED = [
+  { sku: '6428193', title: 'ClaritySee CS27-4K', screen: 27, res: '4K', price: 274.5, rating: 4.4, reviews: 2731, availability: 'ships' },
+  { sku: '6428194', title: 'ClaritySee CS27-4K Refurbished', screen: 27, res: '4K', price: 239.99, rating: 4.0, reviews: 312, availability: 'sold-out' },
+  { sku: '6301882', title: 'NorthLite NL24-F', screen: 24, res: '1080p', price: 94.99, rating: 4.0, reviews: 9822, availability: 'ships' },
+  { sku: '6377410', title: 'PixelPeak P27Q', screen: 27, res: '1440p', price: 199.0, rating: 4.5, reviews: 4310, availability: 'ships' },
+  { sku: '6419055', title: 'ScreenCraft SC-27U', screen: 27, res: '4K', price: 329.99, rating: 4.6, reviews: 1544, availability: 'ships' },
+  { sku: '6452006', title: 'Voltro Vision32 UHD', screen: 32, res: '4K', price: 399.99, rating: 4.5, reviews: 903, availability: 'ships' },
+  { sku: '6428077', title: 'ClaritySee CS24-4K', screen: 24, res: '4K', price: 209.99, rating: 4.2, reviews: 1187, availability: 'ships' },
+  { sku: '6301944', title: 'NorthLite NL27-4K', screen: 27, res: '4K', price: 288.0, rating: 4.3, reviews: 1902, availability: 'ships' },
+  { sku: '6377128', title: 'PixelPeak P24F', screen: 24, res: '1080p', price: 104.99, rating: 4.1, reviews: 7215, availability: 'ships' },
+  { sku: '6419203', title: 'ScreenCraft SC-32U Studio', screen: 32, res: '4K', price: 469.0, rating: 4.7, reviews: 431, availability: 'ships' },
+  { sku: '6452118', title: 'Voltro Vision27 QHD', screen: 27, res: '1440p', price: 219.99, rating: 4.4, reviews: 2660, availability: 'ships' },
+  { sku: '6428310', title: 'ClaritySee CS27-Q Gaming', screen: 27, res: '1440p', price: 244.99, rating: 4.6, reviews: 3801, availability: 'ships' },
+  { sku: '6302017', title: 'NorthLite NL32-F', screen: 32, res: '1080p', price: 159.0, rating: 3.9, reviews: 3312, availability: 'ships' },
+  { sku: '6377566', title: 'PixelPeak P27U', screen: 27, res: '4K', price: 309.99, rating: 4.5, reviews: 1276, availability: 'ships' },
+  { sku: '6419488', title: 'ScreenCraft SC-24Q', screen: 24, res: '1440p', price: 154.5, rating: 4.3, reviews: 2087, availability: 'ships' },
+  { sku: '6452240', title: 'Voltro Vision27 UHD HDR', screen: 27, res: '4K', price: 355.0, rating: 4.6, reviews: 890, availability: 'ships' },
+  { sku: '6428455', title: 'ClaritySee CS27-F', screen: 27, res: '1080p', price: 129.99, rating: 4.0, reviews: 5240, availability: 'ships' },
+  { sku: '6302183', title: 'NorthLite NL27-Q', screen: 27, res: '1440p', price: 189.99, rating: 4.2, reviews: 1954, availability: 'ships' },
+  { sku: '6377701', title: 'PixelPeak P32Q Curve', screen: 32, res: '1440p', price: 279.99, rating: 4.4, reviews: 1108, availability: 'ships' },
+  { sku: '6419612', title: 'ScreenCraft SC-27F', screen: 27, res: '1080p', price: 144.99, rating: 4.1, reviews: 4877, availability: 'ships' },
+  { sku: '6452399', title: 'Voltro Vision24 UHD', screen: 24, res: '4K', price: 229.0, rating: 4.3, reviews: 655, availability: 'ships' },
+  { sku: '6428588', title: 'ClaritySee CS32-4K HDR', screen: 32, res: '4K', price: 439.99, rating: 4.6, reviews: 377, availability: 'ships' },
+  { sku: '6302266', title: 'NorthLite NL24-Q Slim', screen: 24, res: '1440p', price: 139.99, rating: 4.2, reviews: 1450, availability: 'ships' },
+  { sku: '6377840', title: 'PixelPeak P27U Mini-LED', screen: 27, res: '4K', price: 549.0, rating: 4.8, reviews: 204, availability: 'ships' },
+  { sku: '6419755', title: 'ScreenCraft SC-27Q Pro', screen: 27, res: '1440p', price: 259.99, rating: 4.5, reviews: 1733, availability: 'ships' },
+];
 </script>
-<script src="../shop.js"></script>
+<script src="nexbuy.js"></script>
 </body>
 </html>

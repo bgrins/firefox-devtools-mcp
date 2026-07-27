@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Two-step verification — Bluefern Operations Portal</title>
 <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-<header><h1>Bluefern Operations Portal</h1></header>
-<main>
-  <div class="card">
+<div class="sysbar">
+  <span><span class="brand">Bluefern Ops</span> / access control</span>
+  <span>step 2 of 2 &middot; passphrase accepted</span>
+</div>
+<div class="auth">
+  <div class="auth-brand">Operations Portal &mdash; restricted</div>
+  <div class="panel">
     <h2>Two-step verification</h2>
     <p>Enter the current 6-digit code from your Bluefern Authenticator.
     If you do not have it handy,
@@ -17,12 +22,12 @@
     <form id="mfa" novalidate>
       <label for="code">6-digit code</label>
       <input id="code" inputmode="numeric" autocomplete="one-time-code">
-      <button type="submit" id="submitBtn">Verify</button>
+      <button type="submit" id="submitBtn">Verify code</button>
       <div id="status" role="alert"></div>
     </form>
   </div>
-  <p class="fine"><a href="index.html">Back to sign-in</a></p>
-</main>
+  <p class="fine"><a href="index.html">Abandon and return to sign-in</a></p>
+</div>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const status = document.getElementById('status');

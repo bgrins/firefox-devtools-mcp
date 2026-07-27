@@ -126,163 +126,165 @@ const head = (title) => `<!doctype html>
 <body>
 <header class="topbar">
   <span class="brand">Ridgeline CRM</span>
-  <span class="ws">Workspace: Northfield Supply Co. (fiscal 2026)</span>
+  <span class="ws">wkspc northfield-supply &middot; fiscal 2026 &middot; role: analyst</span>
   <span class="who">dana.kessler@northfield.example</span>
 </header>
-<div class="shell">
-  <nav class="side">
-    <a href="index.html"${title === 'Dashboard' ? ' class="on"' : ''}>Dashboard</a>
-    <a href="orders.html"${title === 'Orders' ? ' class="on"' : ''}>Orders</a>
-    <a href="customers.html"${title === 'Customers' ? ' class="on"' : ''}>Customers</a>
-    <a href="#pipeline">Pipeline</a>
-    <a href="#reports">Reports</a>
-    <a href="#tasks">Tasks</a>
-    <a href="#settings">Settings</a>
-    <span class="side-foot">Build 3.14.2</span>
-  </nav>
-  <main class="main">`;
-
-const foot = `  </main>
+<nav class="tabs">
+  <a href="index.html"${title === 'Dashboard' ? ' class="on"' : ''}>Dashboard</a>
+  <a href="orders.html"${title === 'Orders' ? ' class="on"' : ''}>Orders</a>
+  <a href="customers.html"${title === 'Customers' ? ' class="on"' : ''}>Customers</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#reports">Reports</a>
+  <a href="#tasks">Tasks</a>
+  <a href="#admin">Admin</a>
+</nav>
+<div class="pathbar">
+  <span>northfield-supply / ${title.toLowerCase()}</span>
+  <span class="build">grid engine v3 &middot; build 3.14.2</span>
 </div>
+<main class="main">`;
+
+const foot = `</main>
 <footer class="siteftr">
-  Ridgeline CRM is an invented product used for local browser testing. Every
-  account, order, region and person on these pages is fictional.
+  Ridgeline CRM &middot; workspace data is confidential to northfield-supply.
+  Support: help.ridgelinecrm.example &middot; Status &middot; Keyboard shortcuts &middot;
+  Terms &middot; Privacy
 </footer>
 </body>
 </html>
 `;
 
 const dashboard = `${head('Dashboard')}
-    <h1>Dashboard</h1>
-    <p class="sub">Fiscal year 2026 to date. Figures refresh nightly at 02:00.</p>
-    <div class="tiles">
-      <div class="tile"><span class="tk">Orders recorded</span><span class="tv">${ORDERS.length}</span></div>
-      <div class="tile"><span class="tk">Active accounts</span><span class="tv">${CUSTOMERS.length}</span></div>
-      <div class="tile"><span class="tk">Total order value</span><span class="tv">$${money(grandTotal)}</span></div>
-      <div class="tile"><span class="tk">Average order value</span><span class="tv">$${money(averageOrder)}</span></div>
-      <div class="tile"><span class="tk">Largest single order</span><span class="tv">$${money(cents(largest[2]))}</span></div>
-      <div class="tile"><span class="tk">Sales regions</span><span class="tv">${REGIONS.length}</span></div>
-    </div>
-    <div class="cards">
-      <section class="card">
-        <h2>What's new in 3.14</h2>
-        <p><a href="orders.html">Orders</a> and <a href="customers.html">Customers</a> now use the
-        new grid component. Sort order and column widths are remembered per user.</p>
-        <p class="muted">Saved filters are read-only on shared workspace links.</p>
-      </section>
-      <section class="card">
-        <h2>Region rollup</h2>
-        <p class="warn">Rebuilding.</p>
-        <p>This report was retired with the v3 warehouse migration and region
-        totals are no longer published here. Compile them from Orders and
-        Customers until the replacement ships.</p>
-      </section>
-      <section class="card">
-        <h2>Recent orders</h2>
-        <table class="mini">
-          <tr><th>Order</th><th>Account</th><th>Value</th></tr>
+  <h1>Dashboard</h1>
+  <p class="sub">Fiscal year 2026 to date. Warehouse snapshot rebuilt nightly at 02:00.</p>
+  <div class="tiles">
+    <div class="tile"><span class="tk">Orders recorded</span><span class="tv">${ORDERS.length}</span></div>
+    <div class="tile"><span class="tk">Active accounts</span><span class="tv">${CUSTOMERS.length}</span></div>
+    <div class="tile"><span class="tk">Total order value</span><span class="tv">$${money(grandTotal)}</span></div>
+    <div class="tile"><span class="tk">Average order value</span><span class="tv">$${money(averageOrder)}</span></div>
+    <div class="tile"><span class="tk">Largest single order</span><span class="tv">$${money(cents(largest[2]))}</span></div>
+    <div class="tile"><span class="tk">Sales regions</span><span class="tv">${REGIONS.length}</span></div>
+  </div>
+  <div class="cards">
+    <section class="card">
+      <h2>Release notes 3.14</h2>
+      <p><a href="orders.html">Orders</a> and <a href="customers.html">Customers</a> now run on the
+      v3 grid engine. Column widths and sort order persist per operator.</p>
+      <p class="muted">Saved views are read-only on shared workspace links.</p>
+    </section>
+    <section class="card">
+      <h2>Region rollup</h2>
+      <p class="warn">Rebuilding</p>
+      <p>This report was retired with the v3 warehouse migration and region
+      totals are no longer published here. Compile them from Orders and
+      Customers until the replacement ships.</p>
+    </section>
+    <section class="card">
+      <h2>Order feed (tail)</h2>
+      <table class="mini">
+        <tr><th>Order</th><th>Account</th><th class="num">Value</th></tr>
 ${ORDERS.slice(-4)
   .reverse()
   .map(
     ([id, customerId, value]) =>
-      `          <tr><td>${id}</td><td>${accountOf.get(customerId)}</td><td class="num">$${money(cents(value))}</td></tr>`
+      `        <tr><td>${id}</td><td>${accountOf.get(customerId)}</td><td class="num">$${money(cents(value))}</td></tr>`
   )
   .join('\n')}
-        </table>
-      </section>
-      <section class="card">
-        <h2>Announcements</h2>
-        <p>Quarter-end close is the 9th. Late orders roll into the next period.</p>
-        <p>Territory reassignments are frozen until the rollup report returns.</p>
-      </section>
-    </div>
+      </table>
+    </section>
+    <section class="card">
+      <h2>Operator notices</h2>
+      <p>Quarter-end close is the 9th. Late orders roll into the next period.</p>
+      <p>Territory reassignments are frozen until the rollup report returns.</p>
+    </section>
+  </div>
 ${foot}`;
 
 const orders = `${head('Orders')}
-    <h1>Orders</h1>
-    <p class="sub">All ${ORDERS.length} orders recorded in fiscal 2026, oldest first.</p>
-    <form class="filters" id="filters">
-      <label>Account id <input type="search" name="q" placeholder="CU-1001" autocomplete="off"></label>
-      <label>From <input type="date" name="from" value="2026-01-01"></label>
-      <label>To <input type="date" name="to" value="2026-07-31"></label>
-      <button type="submit">Apply</button>
-      <span class="fnote" id="fnote"></span>
-    </form>
-    <table class="grid">
-      <thead>
-        <tr><th>Order</th><th>Account id</th><th class="num">Order value</th><th>Order date</th></tr>
-      </thead>
-      <tbody>
+  <h1>Orders</h1>
+  <p class="sub">All ${ORDERS.length} orders recorded in fiscal 2026, oldest first.</p>
+  <form class="filters" id="filters">
+    <label>acct <input type="search" name="q" placeholder="CU-1001" autocomplete="off" size="10"></label>
+    <label>from <input type="date" name="from" value="2026-01-01"></label>
+    <label>to <input type="date" name="to" value="2026-07-31"></label>
+    <button type="submit">Run query</button>
+    <span class="fnote" id="fnote"></span>
+  </form>
+  <table class="grid">
+    <thead>
+      <tr><th>Order</th><th>Account id</th><th class="num">Order value</th><th>Order date</th></tr>
+    </thead>
+    <tbody>
 ${ORDERS.map(
   ([id, customerId, value, date]) =>
-    `        <tr><td>${id}</td><td>${customerId}</td><td class="num">$${money(cents(value))}</td><td>${date}</td></tr>`
+    `      <tr><td>${id}</td><td>${customerId}</td><td class="num">$${money(cents(value))}</td><td>${date}</td></tr>`
 ).join('\n')}
-      </tbody>
-      <tfoot>
-        <tr><td>Total</td><td>${ORDERS.length} orders</td><td class="num">$${money(grandTotal)}</td><td></td></tr>
-      </tfoot>
-    </table>
-    <p class="muted">Showing ${ORDERS.length} of ${ORDERS.length}. CSV export is unavailable on shared workspace links.</p>
-    <script>
-      document.getElementById('filters').addEventListener('submit', (event) => {
-        event.preventDefault();
-        document.getElementById('fnote').textContent =
-          'Saved filters are read-only on shared workspace links.';
-      });
-    </script>
+    </tbody>
+    <tfoot>
+      <tr><td>Total</td><td>${ORDERS.length} orders</td><td class="num">$${money(grandTotal)}</td><td></td></tr>
+    </tfoot>
+  </table>
+  <p class="muted">rows ${ORDERS.length}/${ORDERS.length} &middot; CSV export is unavailable on shared workspace links.</p>
+  <script>
+    document.getElementById('filters').addEventListener('submit', (event) => {
+      event.preventDefault();
+      document.getElementById('fnote').textContent =
+        'Saved views are read-only on shared workspace links.';
+    });
+  </script>
 ${foot}`;
 
 const customers = `${head('Customers')}
-    <h1>Customers</h1>
-    <p class="sub">${CUSTOMERS.length} active accounts. Region is set by the assigned territory, not by billing address.</p>
-    <form class="filters" id="filters">
-      <label>Region
-        <select name="region">
-          <option>All regions</option>
-${REGIONS.map((region) => `          <option>${region}</option>`).join('\n')}
-        </select>
-      </label>
-      <label>Owner
-        <select name="owner">
-          <option>All owners</option>
+  <h1>Customers</h1>
+  <p class="sub">${CUSTOMERS.length} active accounts. Region is set by the assigned territory, not by billing address.</p>
+  <form class="filters" id="filters">
+    <label>region
+      <select name="region">
+        <option>All regions</option>
+${REGIONS.map((region) => `        <option>${region}</option>`).join('\n')}
+      </select>
+    </label>
+    <label>owner
+      <select name="owner">
+        <option>All owners</option>
 ${[...new Set(CUSTOMERS.map((c) => c[3]))]
   .sort()
-  .map((owner) => `          <option>${owner}</option>`)
+  .map((owner) => `        <option>${owner}</option>`)
   .join('\n')}
-        </select>
-      </label>
-      <button type="submit">Apply</button>
-      <span class="fnote" id="fnote"></span>
-    </form>
-    <table class="grid">
-      <thead>
-        <tr><th>Account id</th><th>Account</th><th>Region</th><th>Owner</th><th>Customer since</th></tr>
-      </thead>
-      <tbody>
+      </select>
+    </label>
+    <button type="submit">Run query</button>
+    <span class="fnote" id="fnote"></span>
+  </form>
+  <table class="grid">
+    <thead>
+      <tr><th>Account id</th><th>Account</th><th>Region</th><th>Owner</th><th>Customer since</th></tr>
+    </thead>
+    <tbody>
 ${CUSTOMERS.map(
   ([id, account, region, owner, since]) =>
-    `        <tr><td>${id}</td><td>${account}</td><td>${region}</td><td>${owner}</td><td>${since}</td></tr>`
+    `      <tr><td>${id}</td><td>${account}</td><td>${region}</td><td>${owner}</td><td>${since}</td></tr>`
 ).join('\n')}
-      </tbody>
-    </table>
-    <section class="card wide">
-      <h2>Accounts per region</h2>
-      <table class="mini">
-        <tr><th>Region</th><th class="num">Accounts</th></tr>
+    </tbody>
+  </table>
+  <section class="card wide">
+    <h2>Accounts per region</h2>
+    <table class="mini">
+      <tr><th>Region</th><th class="num">Accounts</th></tr>
 ${REGIONS.map(
   (region) =>
-    `        <tr><td>${region}</td><td class="num">${regionCustomerCounts.get(region)}</td></tr>`
+    `      <tr><td>${region}</td><td class="num">${regionCustomerCounts.get(region)}</td></tr>`
 ).join('\n')}
-      </table>
-      <p class="muted">Account counts only. Order value is not held on the account record.</p>
-    </section>
-    <script>
-      document.getElementById('filters').addEventListener('submit', (event) => {
-        event.preventDefault();
-        document.getElementById('fnote').textContent =
-          'Saved filters are read-only on shared workspace links.';
-      });
-    </script>
+    </table>
+    <p class="muted">Account counts only. Order value is not held on the account record.</p>
+  </section>
+  <script>
+    document.getElementById('filters').addEventListener('submit', (event) => {
+      event.preventDefault();
+      document.getElementById('fnote').textContent =
+        'Saved views are read-only on shared workspace links.';
+    });
+  </script>
 ${foot}`;
 
 const pages = {

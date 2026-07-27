@@ -2,20 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bluefern Authenticator</title>
 <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-<header><h1>Bluefern Authenticator</h1></header>
-<main>
-  <div class="card">
+<div class="sysbar">
+  <span><span class="brand">Bluefern Authenticator</span> / token viewer</span>
+  <span>issuer node 4</span>
+</div>
+<div class="auth">
+  <div class="auth-brand">Soft token &mdash; current window</div>
+  <div class="panel">
     <h2>Your verification code</h2>
     <div id="code" class="bigcode" hidden></div>
     <div id="status" role="status">Fetching your current code…</div>
   </div>
+  <div class="panel">
+    <h2>Token detail</h2>
+    <div class="kv">
+      <div><span class="k">Algorithm</span><span class="v">TOTP-6</span></div>
+      <div><span class="k">Issuer</span><span class="v">Bluefern ID</span></div>
+      <div><span class="k">Binding</span><span class="v ok">session</span></div>
+    </div>
+  </div>
   <p class="fine">Codes are issued per signed-in session by the Bluefern
-  identity service.</p>
-</main>
+  identity service and are never stored on this device.</p>
+</div>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const status = document.getElementById('status');

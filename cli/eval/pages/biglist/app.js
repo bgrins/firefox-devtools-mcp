@@ -1,9 +1,17 @@
 const NONCE = window.EVAL_NONCE;
 const TOTAL = 5000;
 const CHUNK = 250;
-const ROW_H = 32;
+const ROW_H = 40;
 const OVERSCAN = 4;
 const MAX_FILTER_HITS = 50;
+const AVATAR_TINTS = [
+  ['#f3e3f7', '#634074'],
+  ['#e2ecf9', '#2f5580'],
+  ['#e6f2e8', '#3a6b48'],
+  ['#fbeada', '#8a5320'],
+  ['#f7e6e6', '#8c3f42'],
+  ['#e9e8f6', '#484490'],
+];
 
 const viewport = document.getElementById('viewport');
 const spacer = document.getElementById('spacer');
@@ -27,7 +35,7 @@ function loadedCount() {
 
 function updateStatus() {
   statusEl.textContent =
-    loadedCount().toLocaleString() + ' of ' + TOTAL.toLocaleString() + ' rows loaded';
+    loadedCount().toLocaleString() + ' / ' + TOTAL.toLocaleString() + ' streamed';
 }
 
 function fetchChunk(c) {
@@ -84,6 +92,24 @@ function makeCell(cls, text) {
   return span;
 }
 
+function initials(name) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  return ((parts[0] ?? '').charAt(0) + (parts.at(-1) ?? '').charAt(0)).toUpperCase();
+}
+
+// The avatar chip is drawn by CSS from these attributes, so a row still holds
+// exactly four child cells in the virtualized list.
+function dressAvatar(div, name) {
+  let sum = 0;
+  for (let i = 0; i < name.length; i++) {
+    sum = (sum + name.charCodeAt(i) * (i + 1)) % 4093;
+  }
+  const [bg, fg] = AVATAR_TINTS[sum % AVATAR_TINTS.length];
+  div.dataset.initials = initials(name);
+  div.style.setProperty('--av-bg', bg);
+  div.style.setProperty('--av-fg', fg);
+}
+
 function render() {
   const top = viewport.scrollTop;
   const first = Math.max(0, Math.floor(top / ROW_H) - OVERSCAN);
@@ -98,15 +124,16 @@ function render() {
     div.style.top = i * ROW_H + 'px';
     const r = rowAt(i);
     if (r) {
+      dressAvatar(div, r.name);
       div.append(
+        makeCell('name', r.name),
         makeCell('badge', r.badge),
-        makeCell('', r.name),
-        makeCell('', r.dept),
-        makeCell('', String(r.floor))
+        makeCell('dept', r.dept),
+        makeCell('floor', String(r.floor))
       );
     } else {
       div.classList.add('pending');
-      div.textContent = 'Loading batch ' + (Math.floor(i / CHUNK) + 1) + '…';
+      div.textContent = 'Streaming batch ' + (Math.floor(i / CHUNK) + 1) + '…';
     }
     rowsEl.appendChild(div);
   }
@@ -133,13 +160,18 @@ function runFilter() {
     }
   }
   filterResults.textContent = '';
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent =
+    'Matches in the ' + loadedCount().toLocaleString() + ' rows streamed so far';
+  filterResults.appendChild(cap);
   if (!hits.length) {
     const none = document.createElement('div');
     none.className = 'none';
     none.textContent =
       'No matches among the ' +
       loadedCount().toLocaleString() +
-      ' loaded rows. Unloaded rows are not searched.';
+      ' streamed rows. Rows not yet streamed are not searched.';
     filterResults.appendChild(none);
   }
   for (const r of hits) {

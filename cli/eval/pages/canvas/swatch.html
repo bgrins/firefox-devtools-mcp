@@ -5,33 +5,124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swatch Calibration — TintForge Studio</title>
 <style>
-  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f3ef; color: #26251f; margin: 0; }
-  header { background: #26332b; color: #ece9dd; padding: 18px 36px; }
-  header h1 { margin: 0; font-size: 20px; font-weight: normal; }
-  main { max-width: 640px; margin: 36px auto; padding: 0 24px; }
-  .card { background: #fff; border: 1px solid #d8d4c6; border-radius: 4px; padding: 26px 30px; }
-  #grid { display: block; margin: 18px 0 0; border: 1px solid #b9b4a3; cursor: crosshair; }
-  #revealed { margin-top: 16px; font-size: 15px; min-height: 22px; }
-  #revealed.ok { color: #1f6b3a; font-weight: bold; }
-  #revealed.error { color: #a03123; }
-  .fine { color: #86816f; font-size: 12px; margin-top: 40px; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f7f6f3; color: #14130f;
+    font-family: Optima, "Gill Sans", Candara, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.55;
+  }
+  .masthead {
+    border-bottom: 1px solid #14130f; padding: 26px 40px 18px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .masthead h1 {
+    margin: 0; font-family: Didot, "Hoefler Text", Baskerville, Garamond, serif;
+    font-size: 34px; font-weight: normal; letter-spacing: 0.01em;
+  }
+  .masthead h1 em { font-style: italic; }
+  .masthead .who {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3em; color: #6f6c62;
+  }
+  nav {
+    border-bottom: 1px solid #ddd9cf; padding: 0 40px;
+    display: flex; gap: 30px;
+  }
+  nav a {
+    display: block; padding: 11px 0; color: #6f6c62; text-decoration: none;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.22em;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  nav a:hover { color: #14130f; }
+  nav a.here { color: #14130f; border-bottom-color: #14130f; }
+
+  .work { display: grid; grid-template-columns: 1fr 250px; gap: 52px; padding: 40px; max-width: 1000px; }
+  h2 {
+    margin: 0 0 4px; font-family: Didot, "Hoefler Text", Baskerville, serif;
+    font-size: 24px; font-weight: normal;
+  }
+  .deck { margin: 0 0 26px; color: #4c4941; max-width: 52ch; }
+  .proof {
+    display: inline-block; padding: 20px 20px 16px; background: #fff;
+    border: 1px solid #ddd9cf;
+  }
+  #grid { display: block; margin: 0; cursor: crosshair; }
+  .proof .caption {
+    margin-top: 12px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.24em;
+    color: #8b877c; display: flex; justify-content: space-between; gap: 30px;
+  }
+  #revealed {
+    margin-top: 22px; min-height: 22px; font-size: 14px; letter-spacing: 0.02em;
+    color: #4c4941;
+  }
+  #revealed.ok {
+    font-family: "SFMono-Regular", Menlo, "DejaVu Sans Mono", monospace; font-size: 15px;
+    color: #14130f; border-left: 3px solid #14130f; padding-left: 12px;
+  }
+  #revealed.error { color: #8f2d1c; border-left: 3px solid #8f2d1c; padding-left: 12px; }
+
+  aside dl { margin: 0; }
+  aside dt {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.24em; color: #8b877c;
+    margin-top: 18px;
+  }
+  aside dd {
+    margin: 3px 0 0; padding-bottom: 10px; border-bottom: 1px solid #e6e2d8;
+    font-family: "SFMono-Regular", Menlo, "DejaVu Sans Mono", monospace; font-size: 12px;
+  }
+  aside h3 {
+    margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.24em;
+    color: #14130f; padding-bottom: 8px; border-bottom: 1px solid #14130f;
+  }
+  aside p { font-size: 12px; color: #6f6c62; line-height: 1.6; }
+  .fine {
+    padding: 0 40px 44px; max-width: 62ch; color: #8b877c; font-size: 11px;
+    letter-spacing: 0.02em;
+  }
 </style>
 </head>
 <body>
-<header><h1>TintForge Studio — Print Calibration</h1></header>
-<main>
-  <div class="card">
-    <h2>Swatch Calibration Check</h2>
-    <p>The swatch sheet below is rendered directly onto a canvas, exactly as it
-    comes off the proofing press. To confirm your monitor is calibrated, click
-    the swatch matching the target hue named in your work order. A correct pick
-    reveals your calibration code.</p>
-    <canvas id="grid" width="320" height="240"></canvas>
+<div class="masthead">
+  <h1>TintForge <em>Studio</em></h1>
+  <span class="who">Print calibration desk</span>
+</div>
+<nav>
+  <a href="#">Libraries</a>
+  <a href="#" class="here">Calibration</a>
+  <a href="#">Ink recipes</a>
+  <a href="#">Press profiles</a>
+  <a href="#">Archive</a>
+</nav>
+<div class="work">
+  <section>
+    <h2>Swatch calibration check</h2>
+    <p class="deck">The sheet below is rendered straight onto a canvas, exactly as it comes
+    off the proofing press — no separate tiles, no labels. Confirm your monitor against
+    the press by picking the swatch that matches the target hue on the work order. A
+    correct pick releases the calibration code for this session.</p>
+    <div class="proof">
+      <canvas id="grid" width="320" height="240"></canvas>
+      <div class="caption">
+        <span>Sheet 14 &middot; 8 across, 6 down</span>
+        <span>Proof pull 3</span>
+      </div>
+    </div>
     <div id="revealed" role="status"></div>
-  </div>
-  <p class="fine">TintForge Studio is a fictional company used for local browser
-  testing. Calibration codes are issued server-side per session.</p>
-</main>
+  </section>
+  <aside>
+    <h3>Work order</h3>
+    <dl>
+      <dt>Order</dt><dd>WO-4471</dd>
+      <dt>Target hue</dt><dd>Warm amber, process orange</dd>
+      <dt>Substrate</dt><dd>Coated matte 170 gsm</dd>
+      <dt>Press</dt><dd>Heidel 4C, profile TF-2</dd>
+      <dt>Tolerance</dt><dd>dE 2.0 max</dd>
+    </dl>
+    <p>Only one swatch on this sheet carries the target hue. Everything else on the
+    sheet is a distractor pulled from the studio's standing library.</p>
+  </aside>
+</div>
+<p class="fine">TintForge Studio &middot; Unit 6, Dyehouse Yard &middot; a calibration code
+is issued for each proof run and must accompany any reprint request.</p>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const CELL = 40;

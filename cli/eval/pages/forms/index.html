@@ -4,117 +4,282 @@
 <meta charset="utf-8">
 <title>Meridian Dental — Request an Appointment</title>
 <style>
-  body { font-family: Georgia, serif; max-width: 640px; margin: 24px auto; color: #222; }
-  .steps { display: flex; gap: 8px; font-size: 13px; margin-bottom: 16px; }
-  .steps span { padding: 4px 10px; border-radius: 12px; background: #eee; }
-  .steps span.active { background: #2b6777; color: #fff; }
-  fieldset { border: 1px solid #ccc; padding: 16px; margin-bottom: 12px; }
-  label { display: block; margin: 10px 0 2px; font-weight: 700; font-size: 14px; }
-  .req { color: #b00020; }
-  input, select, textarea { padding: 8px; width: 100%; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  :root {
+    --ink: #10312f;
+    --muted: #5d7a78;
+    --teal: #0d6d70;
+    --teal-dark: #08484b;
+    --line: #d3e2e2;
+    --danger: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Avenir Next", Avenir, "Nimbus Sans", "DejaVu Sans", sans-serif;
+    margin: 0;
+    background: #eef5f5;
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .topbar {
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  .mark { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.2px; }
+  .mark .glyph {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--teal); color: #fff;
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .topbar nav { display: flex; gap: 20px; font-size: 14px; }
+  .topbar nav a { color: var(--muted); text-decoration: none; }
+  .topbar nav a[aria-current] { color: var(--teal-dark); font-weight: 600; }
+  .topbar .phone { margin-left: auto; font-size: 14px; color: var(--muted); }
+  main { max-width: 780px; margin: 0 auto; padding: 30px 20px 60px; }
+  .lede h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; margin: 0 0 6px; }
+  .lede p { margin: 0; color: var(--muted); font-size: 15px; max-width: 62ch; }
+  .rail { list-style: none; display: flex; margin: 26px 0 18px; padding: 0; gap: 0; }
+  .rail li {
+    flex: 1; position: relative; padding-top: 34px; text-align: center;
+    font-size: 13px; color: var(--muted);
+  }
+  .rail li::before {
+    content: counter(step); counter-increment: step;
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--line); color: var(--muted);
+    display: grid; place-items: center; font-size: 12px; font-weight: 600; z-index: 1;
+  }
+  .rail { counter-reset: step; }
+  .rail li::after {
+    content: ""; position: absolute; top: 12px; left: 0; right: 0;
+    height: 2px; background: var(--line);
+  }
+  .rail li:first-child::after { left: 50%; }
+  .rail li:last-child::after { right: 50%; }
+  .rail li.active { color: var(--teal-dark); font-weight: 600; }
+  .rail li.active::before { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 24px 26px; box-shadow: 0 1px 2px rgba(16, 49, 47, 0.05), 0 8px 20px rgba(16, 49, 47, 0.04);
+  }
+  fieldset { border: 0; margin: 0; padding: 0; }
+  legend {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--teal-dark); font-weight: 700; padding: 0 0 14px;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }
+  .field { margin-bottom: 14px; }
+  .field.wide { grid-column: 1 / -1; }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+  .req { color: var(--danger); font-weight: 400; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; font: inherit; font-size: 15px;
+    border: 1.5px solid var(--line); border-radius: 8px; background: #fbfdfd; color: var(--ink);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(13, 109, 112, 0.15);
+    background: #fff;
+  }
+  input[aria-invalid=true] { border-color: var(--danger); background: #fef7f6; }
+  .help { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .error:not(:empty) {
+    color: var(--danger); font-size: 13px; margin-top: 6px;
+    border-left: 3px solid var(--danger); padding-left: 8px;
+  }
+  .choice { display: flex; gap: 22px; padding: 4px 0 2px; }
+  .choice label { font-weight: 400; display: flex; align-items: center; gap: 7px; margin: 0; }
   input[type=radio], input[type=checkbox] { width: auto; }
-  .error { color: #b00020; font-size: 13px; margin-top: 2px; }
-  button { padding: 10px 22px; font-size: 15px; margin-top: 12px; margin-right: 8px; }
-  #review dt { font-weight: 700; }
-  #refcode { font-size: 18px; font-weight: 700; background: #fdf3d8; padding: 8px; display: inline-block; }
+  .attest {
+    display: flex; gap: 9px; align-items: flex-start;
+    background: #f3f9f9; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; margin-top: 4px; font-size: 14px;
+  }
+  .attest label { font-weight: 400; margin: 0; }
+  .actions {
+    display: flex; align-items: center; gap: 12px; margin-top: 22px;
+    border-top: 1px solid var(--line); padding-top: 18px;
+  }
+  button {
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    padding: 11px 24px; border-radius: 999px; border: 1.5px solid var(--teal);
+    background: var(--teal); color: #fff;
+  }
+  button:hover { background: var(--teal-dark); border-color: var(--teal-dark); }
+  button.ghost { background: #fff; color: var(--teal-dark); }
+  #review { display: grid; grid-template-columns: 190px 1fr; gap: 0; margin: 0 0 18px; font-size: 14.5px; }
+  #review dt {
+    font-weight: 600; color: var(--muted); text-transform: capitalize;
+    padding: 9px 0; border-bottom: 1px solid #eef3f3;
+  }
+  #review dd { margin: 0; padding: 9px 0; border-bottom: 1px solid #eef3f3; }
+  .refbox {
+    background: #f3f9f9; border: 1px dashed var(--teal); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 6px;
+  }
+  .refbox .lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
+  #refcode { font-size: 24px; font-weight: 700; letter-spacing: 1px; color: var(--teal-dark); display: block; }
+  #submitStatus:not(:empty) { margin-top: 14px; font-size: 14px; color: var(--teal-dark); }
   .hp { position: absolute; left: -9999px; top: -9999px; }
-  footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 12px; color: #666; }
+  footer {
+    border-top: 1px solid var(--line); background: #fff;
+    padding: 22px 28px; font-size: 12.5px; color: var(--muted);
+  }
+  footer a { color: var(--muted); }
 </style>
 </head>
 <body>
-<h1>Meridian Dental</h1>
-<p>Request an appointment. No account needed. A coordinator will confirm by phone.
-Fields marked <span class="req">*</span> are required.</p>
-<div class="steps">
-  <span id="s1" class="active">1. Contact</span>
-  <span id="s2">2. Visit details</span>
-  <span id="s3">3. Review &amp; submit</span>
+<header class="topbar">
+  <span class="mark"><span class="glyph">MD</span> Meridian Dental</span>
+  <nav>
+    <a href="#">Services</a>
+    <a href="#">Our team</a>
+    <a href="#">Insurance</a>
+    <a href="#" aria-current="page">Appointments</a>
+  </nav>
+  <span class="phone">Scheduling: 312-555-0188</span>
+</header>
+
+<main>
+<div class="lede">
+  <h1>Request an appointment</h1>
+  <p>No account needed. A coordinator will confirm by phone, usually the same
+  business day. Fields marked <span class="req">*</span> are required.</p>
 </div>
 
-<form id="step1" novalidate>
+<ol class="rail">
+  <li id="s1" class="active">Contact</li>
+  <li id="s2">Visit details</li>
+  <li id="s3">Review &amp; submit</li>
+</ol>
+
+<form id="step1" class="card" novalidate>
   <fieldset>
     <legend>Your contact information</legend>
-    <label for="fullname">Full name <span class="req">*</span></label>
-    <input id="fullname" autocomplete="off">
-    <div class="error" id="err-name" role="alert"></div>
-    <label for="email">Email address <span class="req">*</span></label>
-    <input id="email" autocomplete="off">
-    <div class="error" id="err-email" role="alert"></div>
-    <label for="phone">Phone number (format: XXX-XXX-XXXX) <span class="req">*</span></label>
-    <input id="phone" value="3125550164" aria-describedby="err-phone" autocomplete="off">
-    <div style="font-size:12px;color:#666">We pre-filled this from your call — please verify the format.</div>
-    <div class="error" id="err-phone" role="alert"></div>
+    <div class="grid">
+      <div class="field">
+        <label for="fullname">Full name <span class="req">*</span></label>
+        <input id="fullname" autocomplete="off">
+        <div class="error" id="err-name" role="alert"></div>
+      </div>
+      <div class="field">
+        <label for="email">Email address <span class="req">*</span></label>
+        <input id="email" autocomplete="off">
+        <div class="error" id="err-email" role="alert"></div>
+      </div>
+      <div class="field wide">
+        <label for="phone">Phone number (format: XXX-XXX-XXXX) <span class="req">*</span></label>
+        <input id="phone" value="3125550164" aria-describedby="err-phone" autocomplete="off">
+        <div class="help">We pre-filled this from your call — please verify the format.</div>
+        <div class="error" id="err-phone" role="alert"></div>
+      </div>
+    </div>
     <div class="hp" aria-hidden="true">
       <label for="fax">Fax</label>
       <input id="fax" name="fax" tabindex="-1" autocomplete="off">
     </div>
   </fieldset>
-  <button type="submit">Continue to visit details</button>
+  <div class="actions">
+    <button type="submit">Continue to visit details</button>
+  </div>
 </form>
 
-<form id="step2" hidden novalidate>
+<form id="step2" class="card" hidden novalidate>
   <fieldset>
     <legend>Visit details</legend>
-    <label for="service">Service <span class="req">*</span></label>
-    <select id="service">
-      <option value="">— select a service —</option>
-      <option>Cleaning</option>
-      <option>Whitening</option>
-      <option>Filling</option>
-      <option>Consultation</option>
-    </select>
-    <div class="error" id="err-service" role="alert"></div>
-    <label for="insurance">Insurance <span class="req">*</span></label>
-    <select id="insurance">
-      <option value="">— select —</option>
-      <option>Aurora Dental Plan</option>
-      <option>Blue Summit</option>
-      <option>Meridian Direct</option>
-      <option>Self-pay</option>
-    </select>
-    <div class="error" id="err-insurance" role="alert"></div>
-    <label>Are you a new patient? <span class="req">*</span></label>
-    <label style="font-weight:400"><input type="radio" name="newpatient" value="Yes"> Yes</label>
-    <label style="font-weight:400"><input type="radio" name="newpatient" value="No"> No</label>
-    <div class="error" id="err-newpatient" role="alert"></div>
-    <div id="dobwrap" hidden>
-      <label for="dob">Date of birth (new patients) <span class="req">*</span></label>
-      <input id="dob" type="date">
-      <div class="error" id="err-dob" role="alert"></div>
+    <div class="grid">
+      <div class="field">
+        <label for="service">Service <span class="req">*</span></label>
+        <select id="service">
+          <option value="">— select a service —</option>
+          <option>Cleaning</option>
+          <option>Whitening</option>
+          <option>Filling</option>
+          <option>Consultation</option>
+        </select>
+        <div class="error" id="err-service" role="alert"></div>
+      </div>
+      <div class="field">
+        <label for="insurance">Insurance <span class="req">*</span></label>
+        <select id="insurance">
+          <option value="">— select —</option>
+          <option>Aurora Dental Plan</option>
+          <option>Blue Summit</option>
+          <option>Meridian Direct</option>
+          <option>Self-pay</option>
+        </select>
+        <div class="error" id="err-insurance" role="alert"></div>
+      </div>
+      <div class="field">
+        <label>Are you a new patient? <span class="req">*</span></label>
+        <div class="choice">
+          <label><input type="radio" name="newpatient" value="Yes"> Yes</label>
+          <label><input type="radio" name="newpatient" value="No"> No</label>
+        </div>
+        <div class="error" id="err-newpatient" role="alert"></div>
+      </div>
+      <div class="field" id="dobwrap" hidden>
+        <label for="dob">Date of birth (new patients) <span class="req">*</span></label>
+        <input id="dob" type="date">
+        <div class="error" id="err-dob" role="alert"></div>
+      </div>
+      <div class="field">
+        <label for="date">Preferred date <span class="req">*</span></label>
+        <input id="date" type="date">
+        <div class="error" id="err-date" role="alert"></div>
+      </div>
+      <div class="field">
+        <label for="time">Preferred time of day</label>
+        <select id="time">
+          <option>Morning (8am–12pm)</option>
+          <option>Afternoon (12pm–4pm)</option>
+        </select>
+      </div>
+      <div class="field wide">
+        <label for="notes">Anything we should know? (optional)</label>
+        <textarea id="notes" rows="2" maxlength="300"></textarea>
+      </div>
+      <div class="field wide">
+        <div class="attest">
+          <label><input type="checkbox" id="consent"> I consent to be contacted about this request <span class="req">*</span></label>
+        </div>
+        <div class="error" id="err-consent" role="alert"></div>
+      </div>
     </div>
-    <label for="date">Preferred date <span class="req">*</span></label>
-    <input id="date" type="date">
-    <div class="error" id="err-date" role="alert"></div>
-    <label for="time">Preferred time of day</label>
-    <select id="time">
-      <option>Morning (8am–12pm)</option>
-      <option>Afternoon (12pm–4pm)</option>
-    </select>
-    <label for="notes">Anything we should know? (optional)</label>
-    <textarea id="notes" rows="2" maxlength="300"></textarea>
-    <label style="font-weight:400"><input type="checkbox" id="consent"> I consent to be contacted about this request <span class="req">*</span></label>
-    <div class="error" id="err-consent" role="alert"></div>
   </fieldset>
-  <button type="button" id="back2">Back</button>
-  <button type="submit">Continue to review</button>
+  <div class="actions">
+    <button type="submit">Continue to review</button>
+    <button type="button" class="ghost" id="back2">Back</button>
+  </div>
 </form>
 
-<div id="step3" hidden>
+<div id="step3" class="card" hidden>
   <fieldset>
     <legend>Review your request</legend>
     <dl id="review"></dl>
-    <p>Your reference code: <span id="refcode"></span></p>
-    <p>Press Submit to send this request to our scheduling team.</p>
+    <div class="refbox">
+      <span class="lab">Your reference code</span>
+      <span id="refcode"></span>
+    </div>
+    <p class="help">Press Submit to send this request to our scheduling team.</p>
   </fieldset>
-  <button type="button" id="back3">Back</button>
-  <button id="submitBtn">Submit request</button>
+  <div class="actions">
+    <button id="submitBtn">Submit request</button>
+    <button type="button" class="ghost" id="back3">Back</button>
+  </div>
   <div id="submitStatus" role="status"></div>
 </div>
+</main>
 
 <footer>
   Meridian Dental — 428 Harborview Ave, Suite 210 · Mon–Fri 8am–5pm ·
   Call us: 312-555-0188 · <a href="#">Privacy</a> · <a href="#">Accessibility</a> ·
-  Meridian Dental is a fictional clinic used for local browser testing.
+  <a href="#">Notice of Privacy Practices</a> · © 2026 Meridian Dental Group PLLC.
 </footer>
 
 <script>

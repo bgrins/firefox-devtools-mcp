@@ -5,38 +5,78 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Keeping a Small Team Sane — Grindstone Weekly</title>
 <style>
-  body { font-family: Georgia, "Times New Roman", serif; background: #fbf9f4; color: #26221c; margin: 0; }
-  header { background: #3d2c1e; color: #f3ead9; padding: 14px 32px; }
-  header .brand { font-size: 20px; letter-spacing: 1px; }
-  header .brand small { font-size: 12px; color: #cbb894; margin-left: 10px; }
-  article { max-width: 640px; margin: 32px auto 60px; padding: 0 24px; }
-  h1 { font-size: 30px; line-height: 1.2; margin-bottom: 4px; }
-  .byline { color: #7a6a52; font-size: 14px; margin-bottom: 24px; }
-  article p { font-size: 17px; line-height: 1.65; }
-  footer { border-top: 1px solid #d8cdb8; color: #8a7c64; font-size: 12px; padding: 16px 32px; }
-  .overlay { position: fixed; inset: 0; background: rgba(30, 22, 12, 0.55); display: flex;
+  body { font-family: "Hoefler Text", Baskerville, "Baskerville Old Face",
+         "Palatino Linotype", Garamond, "Times New Roman", serif;
+         background: #fffdf9; color: #15130f; margin: 0; }
+  header { background: #fffdf9; border-bottom: 1px solid #15130f; padding: 22px 0 10px;
+           text-align: center; }
+  header .brand { display: block; font-size: 15px; letter-spacing: 0.5em;
+                  text-transform: uppercase; }
+  header .brand small { display: block; font-size: 10px; letter-spacing: 0.24em;
+                        color: #8d8878; margin-top: 8px; }
+  .issue { max-width: 900px; margin: 0 auto; padding: 7px 28px 8px; display: flex;
+           font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+           color: #8d8878; border-bottom: 3px double #15130f; }
+  .issue span:last-child { margin-left: auto; }
+  article { max-width: 620px; margin: 0 auto 70px; padding: 0 28px; }
+  .kicker { font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase;
+            color: #96351f; margin: 44px 0 14px; text-align: center; }
+  h1 { font-size: 52px; line-height: 1.02; font-weight: 400; letter-spacing: -0.01em;
+       margin: 0 0 18px; text-align: center; }
+  .deck { font-size: 20px; line-height: 1.45; font-style: italic; color: #433e33;
+          text-align: center; margin: 0 auto 26px; max-width: 30em; }
+  .byline { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #6d6757; text-align: center; margin: 0 0 34px; padding: 9px 0;
+            border-top: 1px solid #ded6c4; border-bottom: 1px solid #ded6c4; }
+  article p { font-size: 18px; line-height: 1.68; margin: 0 0 1.15em;
+              text-align: justify; hyphens: auto; }
+  p.lede::first-letter { float: left; font-size: 76px; line-height: 0.76;
+                         padding: 6px 8px 0 0; color: #96351f; }
+  p.lede { text-indent: 0; }
+  article p + p { text-indent: 1.4em; }
+  blockquote { margin: 26px 0; padding: 16px 0; border-top: 1px solid #15130f;
+               border-bottom: 1px solid #15130f; font-size: 25px; line-height: 1.3;
+               font-style: italic; color: #96351f; text-align: center; text-indent: 0; }
+  .endmark { text-align: center; letter-spacing: 0.4em; color: #96351f; margin-top: 26px;
+             text-indent: 0; }
+  .kicker, .deck, .byline { text-indent: 0; }
+  footer { max-width: 900px; margin: 0 auto; border-top: 3px double #15130f;
+           color: #6d6757; font-size: 11px; line-height: 1.7; padding: 14px 28px 40px;
+           letter-spacing: 0.04em; }
+  .overlay { position: fixed; inset: 0; background: rgba(21, 19, 15, 0.62); display: flex;
              align-items: center; justify-content: center; z-index: 40; }
-  .dlg { background: #fff; border-radius: 6px; padding: 24px 28px; max-width: 380px;
-         box-shadow: 0 12px 40px rgba(0,0,0,0.35); text-align: center; }
-  .dlg h2 { margin: 0 0 8px; font-size: 20px; }
-  .dlg p { margin: 0 0 18px; font-size: 15px; color: #4c4436; }
-  .dlg button { font: inherit; font-size: 15px; padding: 9px 20px; margin: 0 6px;
-                border-radius: 4px; cursor: pointer; }
-  .dlg .primary { background: #8c2f1b; color: #fff; border: 0; }
-  .dlg .quiet { background: #f1ece0; color: #26221c; border: 1px solid #c9bda2; }
-  .dlg.offer { background: #fff8e6; border: 3px solid #c98a1b; }
-  .dlg.offer .primary { background: #c98a1b; }
+  .dlg { background: #fffdf9; border: 1px solid #15130f; border-radius: 0;
+         padding: 30px 34px 26px; max-width: 400px;
+         box-shadow: 10px 10px 0 rgba(21,19,15,0.85); text-align: center; }
+  .dlg h2 { margin: 0 0 10px; font-size: 15px; font-weight: 400; letter-spacing: 0.22em;
+            text-transform: uppercase; }
+  .dlg p { margin: 0 0 20px; font-size: 16px; line-height: 1.5; font-style: italic;
+           color: #433e33; }
+  .dlg button { font: inherit; font-size: 11px; letter-spacing: 0.18em;
+                text-transform: uppercase; padding: 9px 18px; margin: 0 5px;
+                border-radius: 0; cursor: pointer; }
+  .dlg .primary { background: #96351f; color: #fffdf9; border: 1px solid #96351f; }
+  .dlg .quiet { background: transparent; color: #15130f; border: 1px solid #15130f; }
+  .dlg.offer { background: #f7f0dd; border: 1px solid #96351f; }
+  .dlg.offer .primary { background: #15130f; border-color: #15130f; }
 </style>
 </head>
 <body>
 <header>
-  <span class="brand">GRINDSTONE WEEKLY<small>Notes on running small companies</small></span>
+  <span class="brand">Grindstone Weekly<small>Notes on running small companies</small></span>
 </header>
+<div class="issue">
+  <span>Issue 214 &middot; The Management Column</span>
+  <span>Four pounds where sold</span>
+</div>
 <article>
+  <p class="kicker">On small teams</p>
   <h1>Keeping a Small Team Sane</h1>
-  <p class="byline">By Rowena Callis · Management advice column · Issue 214</p>
+  <p class="deck">Seven people, good work, everyone on speaking terms &mdash; and still
+  the week feels like a blender. Three plain interventions, no software required.</p>
+  <p class="byline">By Rowena Callis &middot; Management advice column</p>
 
-  <p>Every founder I talk to eventually asks a version of the same question: my
+  <p class="lede">Every founder I talk to eventually asks a version of the same question: my
   team is seven people, we ship good work, everyone likes each other — so why
   does the week feel like a blender? The product is not the problem. The
   calendar is the problem, and the calendar is downstream of three habits that
@@ -56,6 +96,8 @@
   is a negotiable block, and everything negotiable in a small company
   eventually gets negotiated away. Pick Wednesday, put it in writing, and let
   the calendar defend the team instead of consuming it.</p>
+
+  <blockquote>The magic is not the hours themselves. The magic is certainty.</blockquote>
 
   <p>The second recommendation: write one-page decision memos before any
   decision that binds more than one person for more than a month. A decision
@@ -87,6 +129,8 @@
   half-weeks, no swaps without trades), and give the catcher explicit
   permission to let their project work idle while they hold the net.</p>
 
+  <blockquote>The first week feels strange. The fourth week feels obvious.</blockquote>
+
   <p>None of this requires software, budget, or permission from anyone but
   yourselves. Institute no-meeting Wednesdays so deep work has a home. Write
   one-page decision memos so choices leave a trail instead of a meeting series.
@@ -96,10 +140,13 @@
   feeling does not vanish — some weeks are simply loud — but it stops being
   the default, and a small team that controls its attention can outbuild a
   team three times its size that does not.</p>
+
+  <p class="endmark">* * *</p>
 </article>
 <footer>
-  Grindstone Weekly is a fictional publication used for local browser testing.
-  All people, companies, and offers are invented.
+  Grindstone Weekly &middot; ISSN 2417-9930 &middot; published forty-six times a year by
+  Grindstone Press, 8 Foundry Street. Letters to the column go to the managing editor;
+  unsolicited manuscripts are not returned.
 </footer>
 
 <script>
@@ -173,7 +220,6 @@
       text: 'Get a browser notification whenever a new issue of Grindstone Weekly is published.',
       acceptLabel: 'Enable',
       dismissLabel: 'Not now',
-      onDone: showOffer,
     });
   }
 
@@ -183,8 +229,12 @@
     text: 'Join 40,000 operators who get one management tip from Grindstone Weekly every Thursday.',
     acceptLabel: 'Subscribe',
     dismissLabel: 'No thanks',
-    onDone: showNotifications,
   });
+  // Each prompt arrives on its own schedule rather than waiting for the
+  // previous one to be answered, so the storm does not depend on how much the
+  // reader engages. Overlays stack; dismissing the top one reveals the rest.
+  setTimeout(showNotifications, 2500);
+  setTimeout(showOffer, 6000);
 </script>
 </body>
 </html>

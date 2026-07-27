@@ -6,19 +6,64 @@
 <h1>Simulated eval pages</h1>
 <p>Original content that mimics the shape/structure of common real-world sites.
 Served locally so evals never touch the live web.</p>
+
+<p>All of these share one origin and are namespaced by path. Serve them with
+<code>node cli/eval/server.mjs [--port N]</code>, which issues the per-session cookie,
+substitutes the session nonce into each page, and serves the <code>/api/*</code> endpoints
+the fixtures call.</p>
+
+<h2>Sites</h2>
+<ul>
+  <li>Shopping (multi-tab price comparison, cart and checkout flow):
+    <a href="/shop/voltro/">Voltro</a> &middot;
+    <a href="/shop/nexbuy/">NexBuy</a> &middot;
+    <a href="/shop/gadgetron/">Gadgetron</a></li>
+  <li><a href="/gov/">Bureau of Civic Revenue</a> — legacy table-layout government site
+    (deep navigation, iframe schedule widget, hostile fee table, 30-section handbook)</li>
+  <li><a href="/news/">Hacker Bulletin</a> — link-aggregator front page, comment threads,
+    and an <a href="/news/article.html">advice column</a> that interrupts with prompts</li>
+  <li><a href="/portal/">Bluefern Operations Portal</a> — password + authenticator sign-in,
+    per-session dashboard, expiring report pages</li>
+  <li>VeraBank — two near-identical retail bank sign-in pages:
+    <a href="/bank/verabank-online/">verabank-online</a> &middot;
+    <a href="/bank/vera-bank-login/">vera-bank-login</a></li>
+</ul>
+
+<h2>Forms</h2>
+<ul>
+  <li><a href="/forms/">Meridian Dental</a> — multi-step appointment form with validation</li>
+  <li><a href="/forms/register.html">Partner registration</a> — server-side field errors</li>
+  <li><a href="/forms/roster.html">Summit Group registration</a> — repeating attendee rows</li>
+  <li><a href="/forms/brochure.html">Kestrel Peak brochure request</a> — optional-field nagging</li>
+  <li><a href="/forms/beta-signup.html">Fernlight beta waitlist</a> — signup plus binding terms</li>
+  <li><a href="/intake/">Onboarding intake</a> — path choice carried across pages</li>
+</ul>
+
+<h2>Data and extraction</h2>
+<ul>
+  <li><a href="/ledger/">Kestrel Hollow ledger</a> — 7-page paginated transaction table with CSV export</li>
+  <li><a href="/crm/">Tideline CRM</a> — orders and customer directory joined by account id</li>
+  <li><a href="/rosters/">Ferncliff Institute rosters</a> — staff lists for two years</li>
+  <li><a href="/biglist/">Halstrom employee directory</a> — 5,000 rows in a virtualized list</li>
+  <li><a href="/gallery/">Northmarsh Outfitters</a> — product gallery, some photos fail to load</li>
+</ul>
+
+<h2>Widgets and behaviors</h2>
 <ul>
   <li><a href="/gridword/">Gridword</a> — daily word puzzle (iterative reasoning, game input)</li>
-  <li>Shopping (multi-tab price comparison):
-    <a href="/shop/voltro/">Voltro</a> ·
-    <a href="/shop/nexbuy/">NexBuy</a> ·
-    <a href="/shop/gadgetron/">Gadgetron</a></li>
-  <li><a href="/forms/">Meridian Dental</a> — multi-step appointment form with validation</li>
-  <li><a href="/gov/">Bureau of Civic Revenue</a> — legacy table-layout government site</li>
-  <li><a href="/news/">Hacker Bulletin</a> — link-aggregator front page (data extraction)</li>
-  <li>Basic smoke pages:
-    <a href="/basic/title.html">title</a> ·
-    <a href="/basic/click-reveal.html">click-reveal</a> ·
+  <li><a href="/canvas/swatch.html">Swatch grid</a> — canvas cells with no per-cell DOM</li>
+  <li><a href="/shadow/">Facility access console</a> — nested open shadow roots</li>
+  <li><a href="/promo/">Promotions</a> — overlapping banners, only one actually clickable</li>
+  <li><a href="/filemgr/">Boxelder Workspace</a> — file list with optimistic rename</li>
+  <li><a href="/flaky/">Quarterly report</a> — backend that fails before it succeeds</li>
+</ul>
+
+<h2>Basic smoke pages</h2>
+<ul>
+  <li><a href="/basic/title.html">title</a> &middot;
+    <a href="/basic/click-reveal.html">click-reveal</a> &middot;
     <a href="/basic/form-fill.html">form-fill</a></li>
 </ul>
+
 </body>
 </html>

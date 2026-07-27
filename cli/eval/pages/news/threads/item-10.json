@@ -4,7 +4,7 @@
     {
       "author": "lambdacurious",
       "age": "6 hours ago",
-      "text": "\"An Algebra of Retries\" (fictional venue, 2019-ish). Takes the grubby operational reality of retry loops, backoff, and jitter and shows the whole space has clean compositional structure — retry policies form a monoid, and common bugs (retry amplification across service layers) correspond to invalid compositions. I've handed it to at least five engineers who thought they hated theory, and it converted three of them.\n\nUnderrated because it fell between communities: too applied for the theory venues to celebrate, too algebraic for the systems crowd to read past the abstract.",
+      "text": "\"An Algebra of Retries\" (a small workshop track, 2019-ish). Takes the grubby operational reality of retry loops, backoff, and jitter and shows the whole space has clean compositional structure — retry policies form a monoid, and common bugs (retry amplification across service layers) correspond to invalid compositions. I've handed it to at least five engineers who thought they hated theory, and it converted three of them.\n\nUnderrated because it fell between communities: too applied for the theory venues to celebrate, too algebraic for the systems crowd to read past the abstract.",
       "replies": [
         {
           "author": "bibliophage",

@@ -1,12 +1,13 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"><link rel="stylesheet" href="../shop.css"></head>
+<meta charset="utf-8">
+<title>Voltro — Computer Monitors</title>
+<link rel="stylesheet" href="voltro.css">
+</head>
 <body>
 <script>
-window.STORE = {
-  name: 'Voltro',
-  theme: '#ff9900',
+window.VOLTRO = {
   promo: 'Lightning Deals: up to 40% off select monitors. Ends tonight.',
   products: [
     ['Voltro Vision24 FHD', 24, '1080p', 109.99, 4.3, 8412, true],
@@ -36,7 +37,7 @@ window.STORE = {
   ],
 };
 </script>
-<script src="../shop.js"></script>
+<script src="voltro.js"></script>
 <script>
 const NONCE = '__SESSION_NONCE__';
 const cartLink = document.createElement('a');
@@ -46,7 +47,7 @@ cartLink.style.cssText = 'color:#ffd814;font-weight:700;text-decoration:none;';
 document.querySelector('header').appendChild(cartLink);
 document.querySelectorAll('#grid .card button').forEach((button, i) => {
   button.addEventListener('click', async () => {
-    const [product, , , price] = STORE.products[i];
+    const [product, , , price] = VOLTRO.products[i];
     button.disabled = true;
     try {
       const res = await fetch('/api/voltro/cart', {

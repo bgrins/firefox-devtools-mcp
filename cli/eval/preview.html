@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eval fixtures — contact sheet</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #f5f5f4; color: #1c1c1a; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .intro { color: #57534e; margin: 0 0 12px; font-size: 13px; max-width: 70ch; }
+  .controls { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr)); gap: 16px; }
+  figure { margin: 0; background: #fff; border: 1px solid #d6d3d1; border-radius: 4px; overflow: hidden; }
+  figcaption { padding: 6px 8px; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e7e5e4; }
+  figcaption b { font-weight: 600; }
+  figcaption a { color: #0369a1; text-decoration: none; white-space: nowrap; }
+  .shot { position: relative; height: var(--shotHeight); overflow: hidden; background: #fff; }
+  .shot iframe { position: absolute; top: 0; left: 0; width: var(--vw); height: var(--vh); border: 0; transform: scale(var(--scale)); transform-origin: top left; }
+  .note { font-size: 12px; color: #57534e; margin-top: 24px; }
+</style>
+</head>
+<body>
+<h1>Eval fixtures — contact sheet</h1>
+<p class="intro">Every fixture entry point, live in an iframe on this server's origin.
+Interactions run for real, so loading this page fires the fixtures' own beacons and seeds
+their sessions. It is served only when the server is started with <code>--preview</code>,
+so it is never reachable during an eval run.</p>
+
+<div class="controls">
+  <label>Width <input id="vw" type="number" value="1200" min="320" max="2000" step="20"></label>
+  <label>Zoom <input id="zoom" type="range" min="20" max="100" value="34"> <span id="zoomOut">34%</span></label>
+  <label><input id="reload" type="button" value="Reload all"></label>
+</div>
+
+<div class="grid" id="grid"></div>
+<p class="note" id="note"></p>
+
+<script>
+const PAGES = [
+  ['Voltro', '/shop/voltro/'],
+  ['NexBuy', '/shop/nexbuy/'],
+  ['Gadgetron', '/shop/gadgetron/'],
+  ['Bureau of Civic Revenue', '/gov/'],
+  ['Gov fee schedule', '/gov/fee-schedule.html'],
+  ['Gov handbook', '/gov/handbook.html'],
+  ['Gov offices (iframe widget)', '/gov/offices.html'],
+  ['Hacker Bulletin', '/news/'],
+  ['News article (prompts)', '/news/article.html'],
+  ['Bluefern portal', '/portal/'],
+  ['VeraBank (verabank-online)', '/bank/verabank-online/'],
+  ['VeraBank (vera-bank-login)', '/bank/vera-bank-login/'],
+  ['Meridian Dental form', '/forms/'],
+  ['Partner registration', '/forms/register.html'],
+  ['Summit roster', '/forms/roster.html'],
+  ['Brochure request', '/forms/brochure.html'],
+  ['Beta waitlist', '/forms/beta-signup.html'],
+  ['Beta terms', '/forms/beta-terms.html'],
+  ['Onboarding intake', '/intake/'],
+  ['Ledger', '/ledger/'],
+  ['Tideline CRM', '/crm/'],
+  ['CRM orders', '/crm/orders.html'],
+  ['Ferncliff rosters', '/rosters/'],
+  ['Roster 2026', '/rosters/2026.html'],
+  ['Employee directory', '/biglist/'],
+  ['Northmarsh gallery', '/gallery/'],
+  ['Gridword', '/gridword/'],
+  ['Canvas swatch', '/canvas/swatch.html'],
+  ['Shadow console', '/shadow/'],
+  ['Promotions', '/promo/'],
+  ['File manager', '/filemgr/'],
+  ['Flaky report', '/flaky/'],
+  ['basic/title', '/basic/title.html'],
+  ['basic/click-reveal', '/basic/click-reveal.html'],
+  ['basic/form-fill', '/basic/form-fill.html'],
+];
+
+const grid = document.getElementById('grid');
+const vw = document.getElementById('vw');
+const zoom = document.getElementById('zoom');
+const zoomOut = document.getElementById('zoomOut');
+
+for (const [label, path] of PAGES) {
+  const fig = document.createElement('figure');
+  const cap = document.createElement('figcaption');
+  const name = document.createElement('b');
+  name.textContent = label;
+  const link = document.createElement('a');
+  link.href = path;
+  link.target = '_blank';
+  link.textContent = path;
+  cap.append(name, link);
+  const shot = document.createElement('div');
+  shot.className = 'shot';
+  const frame = document.createElement('iframe');
+  frame.src = path;
+  frame.title = label;
+  shot.append(frame);
+  fig.append(cap, shot);
+  grid.append(fig);
+}
+
+function apply() {
+  const width = Number(vw.value) || 1200;
+  const scale = Number(zoom.value) / 100;
+  const height = Math.round(width * 0.75);
+  const root = document.documentElement.style;
+  root.setProperty('--vw', width + 'px');
+  root.setProperty('--vh', height + 'px');
+  root.setProperty('--scale', scale);
+  root.setProperty('--cell', Math.round(width * scale) + 'px');
+  root.setProperty('--shotHeight', Math.round(height * scale) + 'px');
+  zoomOut.textContent = zoom.value + '%';
+}
+
+vw.addEventListener('input', apply);
+zoom.addEventListener('input', apply);
+document.getElementById('reload').addEventListener('click', () => {
+  for (const frame of document.querySelectorAll('iframe')) {
+    frame.src = frame.src;
+  }
+});
+apply();
+document.getElementById('note').textContent = PAGES.length + ' fixture pages.';
+</script>
+</body>
+</html>

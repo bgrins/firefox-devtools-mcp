@@ -3,49 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Employee Directory — Halstrom Group</title>
-<style>
-  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f5f7; color: #24292e; margin: 0; }
-  header { background: #22333b; color: #eae0d5; padding: 18px 32px; }
-  header h1 { margin: 0; font-size: 20px; font-weight: normal; }
-  main { max-width: 760px; margin: 28px auto; padding: 0 20px; }
-  .lede { font-size: 14px; color: #4a5560; }
-  .toolbar { display: flex; align-items: center; gap: 14px; margin: 14px 0 4px; }
-  #filter { flex: 1; padding: 8px 10px; font-size: 14px; border: 1px solid #c3ccd4; border-radius: 3px; }
-  #status { font-size: 13px; color: #5c6770; white-space: nowrap; }
-  .note { font-size: 12px; color: #7a8590; margin: 4px 0 14px; }
-  #filter-results { background: #fff; border: 1px solid #d6dde3; border-radius: 3px; margin-bottom: 14px; max-height: 220px; overflow-y: auto; }
-  #filter-results .hit, #filter-results .none { padding: 7px 12px; font-size: 13px; border-bottom: 1px solid #eef1f4; }
-  #filter-results .none { color: #7a8590; }
-  .listhead, .row { display: grid; grid-template-columns: 110px 1fr 150px 70px; gap: 10px; padding: 0 12px; font-size: 13px; }
-  .listhead { font-weight: 700; padding-top: 8px; padding-bottom: 8px; background: #e6eaee; border: 1px solid #d6dde3; border-bottom: 0; }
-  #viewport { height: 480px; overflow-y: auto; position: relative; background: #fff; border: 1px solid #d6dde3; }
-  .row { position: absolute; left: 0; right: 0; height: 32px; line-height: 32px; box-sizing: border-box; border-bottom: 1px solid #f0f2f5; white-space: nowrap; overflow: hidden; }
-  .row .badge { font-family: "Courier New", monospace; }
-  .row.pending { color: #9aa4ae; font-style: italic; }
-  .fine { color: #8b95a0; font-size: 12px; margin-top: 32px; }
-</style>
+<title>People Hub — Directory — Halstrom Group</title>
+<link rel="stylesheet" href="directory.css">
 </head>
-<body>
-<header><h1>Halstrom Group — Employee Directory</h1></header>
-<main>
-  <p class="lede">All 5,000 Halstrom Group employees, sorted by hire record. Rows are
-  loaded from the directory service in batches of 250 as you scroll.</p>
-  <div class="toolbar">
-    <input id="filter" type="search" placeholder="Filter by name, badge, or department" autocomplete="off">
-    <span id="status" role="status"></span>
+<body class="shell">
+<aside class="rail">
+  <div class="mark">Halstrom</div>
+  <div class="group">People Hub 4.2</div>
+  <nav>
+    <a href="#">Overview</a>
+    <a href="#" class="on">Directory</a>
+    <a href="#">Teams</a>
+    <a href="#">Onboarding</a>
+    <a href="#">Badge records</a>
+  </nav>
+  <p class="rail-foot">Directory service: connected</p>
+</aside>
+<div class="pane">
+  <div class="topbar">
+    <span class="crumbs">Workspace / People / Directory</span>
+    <span class="who">S. Okonkwo, HR Operations</span>
   </div>
-  <p class="note">The filter searches only rows that have already been loaded from the
-  server. Scroll the list to load more batches.</p>
-  <div id="filter-results" hidden></div>
-  <div class="listhead"><span>Badge</span><span>Name</span><span>Department</span><span>Floor</span></div>
-  <div id="viewport">
-    <div id="spacer"></div>
-    <div id="rows"></div>
-  </div>
-  <p class="fine">Halstrom Group is a fictional company used for local browser testing.
-  Directory rows are generated server-side per session.</p>
-</main>
+  <h1>Directory</h1>
+  <p class="lede">Every one of the 5,000 people on the Halstrom Group roster, ordered by hire
+  record. The directory service streams rows in batches of 250 as you scroll, so the list
+  stays light no matter how far down you go.</p>
+  <section class="card">
+    <div class="searchbar">
+      <input id="filter" type="search" placeholder="Search name, badge, or department" autocomplete="off">
+      <span id="status" role="status"></span>
+    </div>
+    <p class="scope">Search covers only the batches already streamed to this browser. Keep
+    scrolling to pull in more of the roster, then search again.</p>
+    <div id="filter-results" hidden></div>
+    <div class="listhead"><span>Person</span><span>Badge</span><span>Department</span><span>Floor</span></div>
+    <div id="viewport">
+      <div id="spacer"></div>
+      <div id="rows"></div>
+    </div>
+  </section>
+  <p class="fine">Halstrom Group internal directory &middot; sourced from the HR record
+  and refreshed nightly. Badge numbers are not access credentials and floor assignments
+  change without notice. Report an incorrect entry to the people team.</p>
+</div>
 <script>window.EVAL_NONCE = '__SESSION_NONCE__';</script>
 <script src="app.js"></script>
 </body>

@@ -2,29 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bluefern Operations Portal — Sign in</title>
 <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-<header><h1>Bluefern Operations Portal</h1></header>
-<main>
+<div class="sysbar">
+  <span><span class="brand">Bluefern Ops</span> / access control</span>
+  <span>node 4 &middot; <span class="link-ok">link ok</span></span>
+</div>
+<div class="auth">
+  <div class="auth-brand">Operations Portal &mdash; restricted</div>
   <div id="banner" class="banner" role="alert" hidden></div>
-  <div class="card">
-    <h2>Sign in</h2>
-    <p>Use your Bluefern operations account. Sessions are validated
-    server-side on every request.</p>
+  <div class="panel">
+    <h2>Operator sign-in</h2>
+    <p>Credentials are checked against the Bluefern identity service on every
+    request. There is no local session cache.</p>
     <form id="login" novalidate>
-      <label for="email">Email</label>
+      <label for="email">Operator email</label>
       <input id="email" autocomplete="off">
-      <label for="password">Password</label>
+      <label for="password">Passphrase</label>
       <input id="password" type="password" autocomplete="off">
-      <button type="submit" id="submitBtn">Sign in</button>
+      <button type="submit" id="submitBtn">Authenticate</button>
       <div id="status" role="alert"></div>
     </form>
   </div>
-  <p class="fine">Bluefern Logistics is a fictional company used for local
-  browser testing.</p>
-</main>
+  <p class="fine">Bluefern Logistics Group &middot; internal systems. Access is
+  granted by the operations desk only. Unauthorised access attempts are logged to node 4.</p>
+</div>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const params = new URLSearchParams(location.search);

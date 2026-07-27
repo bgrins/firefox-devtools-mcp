@@ -48,8 +48,9 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-export async function startPagesServer({ port = 0 } = {}) {
-  const root = join(dirname(fileURLToPath(import.meta.url)), 'pages');
+export async function startPagesServer({ port = 0, preview = false } = {}) {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const root = join(here, 'pages');
 
   const state = {
     // sid -> { nonce, createdAt, ...per-task fields (e.g. reportAttempts) }
@@ -98,6 +99,15 @@ export async function startPagesServer({ port = 0 } = {}) {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const pathname0 = url.pathname;
+
+    // Dev-only contact sheet of every fixture in an iframe grid. Off during
+    // eval runs so its page loads can never seed sessions or fire beacons.
+    if (preview && req.method === 'GET' && pathname0 === '/_preview') {
+      const html = await readFile(join(here, 'preview.html'));
+      res.writeHead(200, { 'Content-Type': TYPES['.html'] });
+      res.end(html);
+      return;
+    }
 
     if (req.method === 'POST' && pathname0 === '/api/beacon') {
       let payload;
@@ -923,6 +933,10 @@ export async function startPagesServer({ port = 0 } = {}) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const portIdx = process.argv.indexOf('--port');
   const port = portIdx !== -1 ? Number(process.argv[portIdx + 1]) : 8907;
-  const { url } = await startPagesServer({ port });
+  const preview = !process.argv.includes('--no-preview');
+  const { url } = await startPagesServer({ port, preview });
   console.log(`eval pages served at ${url}/`);
+  if (preview) {
+    console.log(`fixture contact sheet at ${url}/_preview`);
+  }
 }

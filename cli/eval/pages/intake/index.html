@@ -4,47 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cobalt Ridge Consulting — Onboarding Intake</title>
-<style>
-  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f6f8; color: #24313f; margin: 0; }
-  header { background: #1d4e6b; color: #eef4f8; padding: 18px 32px; }
-  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
-  main { max-width: 720px; margin: 32px auto; padding: 0 20px; }
-  .paths { display: flex; gap: 16px; margin-top: 20px; }
-  .card { flex: 1; background: #fff; border: 1px solid #d4dde4; border-radius: 6px; padding: 20px; }
-  .card h2 { margin-top: 0; font-size: 17px; }
-  .card p { font-size: 14px; color: #4a5a68; min-height: 56px; }
-  button { font: inherit; padding: 9px 18px; background: #1d4e6b; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
-  button:hover { background: #163d55; }
-  #status { margin-top: 18px; min-height: 22px; font-size: 15px; }
-  #next { font-size: 15px; }
-  footer { margin-top: 48px; padding: 16px 20px; font-size: 12px; color: #7b8792; text-align: center; }
-</style>
+<link rel="stylesheet" href="intake.css">
 </head>
 <body>
-<header><h1>Cobalt Ridge Consulting — Onboarding Intake</h1></header>
-<main>
-  <h2>Welcome to day-one intake</h2>
-  <p>Select the engagement path that matches your offer or engagement letter.
-  Your selection is stored for this intake session and determines which
-  documents you must bring on your first day.</p>
+<div class="masthead">
+  <span class="org">Cobalt Ridge Consulting &mdash; People Operations</span>
+  <h1>Day-one onboarding intake</h1>
+</div>
+<div class="wrap">
+  <ol class="steps">
+    <li aria-current="step"><span class="num">1</span> Choose your path</li>
+    <li><span class="num">2</span> Document requirements</li>
+    <li><span class="num">3</span> First-day check-in</li>
+  </ol>
+  <div class="progress"><span style="width:33%"></span></div>
+
+  <h2>Which path matches your paperwork?</h2>
+  <p class="lead">Pick the engagement path named on your offer letter or
+  engagement letter. We keep your selection for this intake session and use it
+  to build your document checklist on the next step.</p>
+  <div class="callout">Not sure which one applies? Your hiring coordinator wrote
+  the path name in the first paragraph of your welcome email.</div>
+
   <div class="paths">
-    <div class="card">
-      <h2>Employee</h2>
-      <p>Salaried or hourly staff joining under a standard employment offer
-      from Cobalt Ridge Consulting.</p>
-      <button id="pick-employee">Choose Employee path</button>
-    </div>
-    <div class="card">
-      <h2>Contractor</h2>
-      <p>Independent contractors engaged under a signed scope of work or
-      master services agreement.</p>
-      <button id="pick-contractor">Choose Contractor path</button>
-    </div>
+    <section class="choice">
+      <span class="tag">Path A</span>
+      <h3>Employee</h3>
+      <p>Salaried or hourly staff joining under a standard employment offer from
+      Cobalt Ridge Consulting, with payroll run through our internal system.</p>
+      <button id="pick-employee" type="button">Choose Employee path</button>
+    </section>
+    <section class="choice">
+      <span class="tag">Path B</span>
+      <h3>Contractor</h3>
+      <p>Independent contractors engaged under a signed scope of work or master
+      services agreement, invoicing us directly each month.</p>
+      <button id="pick-contractor" type="button">Choose Contractor path</button>
+    </section>
   </div>
+
   <div id="status" role="status"></div>
-  <p id="next" hidden><a href="requirements.html">Continue to document requirements</a></p>
-</main>
-<footer>Cobalt Ridge Consulting is a fictional firm used for local browser testing.</footer>
+  <p id="next" hidden><a class="continue" href="requirements.html">Continue to step 2: document requirements</a></p>
+
+  <div class="helpline">Need help with intake? Call People Operations on
+  extension 4120, weekdays 8am to 4pm. Intake sessions stay open for 30 days
+  from your start date.</div>
+</div>
+<footer>Cobalt Ridge Consulting &middot; People Operations, 15 Weatherby Court &middot;
+information you enter here is held under the firm's candidate privacy notice.</footer>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const status = document.getElementById('status');

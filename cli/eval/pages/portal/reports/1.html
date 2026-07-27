@@ -2,32 +2,51 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Report 1 — Bluefern Operations Portal</title>
 <link rel="stylesheet" href="../portal.css">
 </head>
 <body>
-<header><h1>Bluefern Operations Portal — Reports</h1></header>
-<main>
-  <nav class="reports-nav">
+<div class="sysbar">
+  <span><span class="brand">Bluefern Ops</span> / reports</span>
+  <span>node 4 &middot; series 26-Q3</span>
+</div>
+<div class="app">
+  <nav class="rail">
+    <div class="rail-head">Report series</div>
     <a href="1.html" aria-current="page">Report 1</a>
     <a href="2.html">Report 2</a>
     <a href="3.html">Report 3</a>
     <a href="4.html">Report 4</a>
     <a href="5.html">Report 5</a>
+    <div class="rail-note">Each report is fetched live. Figures are not cached
+    between views.</div>
   </nav>
-  <div class="card">
-    <h2>Report 1</h2>
+  <main class="work">
+    <div class="crumb">Reports / Series 26-Q3 / Report 1</div>
+    <h1>Report 1</h1>
     <div id="status" role="status">Loading report…</div>
     <div id="report" hidden>
-      <p id="label"></p>
-      <p class="figure">Total: <span id="total"></span></p>
+      <div class="panel">
+        <h2>Outbound volume</h2>
+        <p id="label"></p>
+        <p class="figure">Total<span id="total"></span></p>
+      </div>
+      <div class="panel">
+        <h2>Collection notes</h2>
+        <p>Counts are drawn from the district poller at close of the reporting
+        window. Manifest corrections filed after close appear in the next
+        series.</p>
+      </div>
     </div>
     <div id="expired" class="banner" role="alert" hidden>
       <span id="expiredMsg"></span>
       <a href="/portal/?area=reports&amp;expired=1">Log in again</a>
     </div>
-  </div>
-</main>
+    <p class="fine">Bluefern Logistics Group &middot; internal systems.
+    Report series are retained for six quarters; corrections go to the reporting desk.</p>
+  </main>
+</div>
 <script>
   const NONCE = '__SESSION_NONCE__';
   const N = 1;

@@ -4,24 +4,88 @@
 <meta charset="utf-8">
 <title>Atlas 3 Private Beta — Programme Terms</title>
 <style>
-  body { font-family: Georgia, serif; max-width: 700px; margin: 24px auto; color: #1f2733; padding: 0 16px; }
-  h1 { font-size: 24px; margin-bottom: 4px; }
-  .tagline { color: #5a6675; margin-top: 0; font-size: 14px; }
-  .meta { font-size: 13px; color: #5a6675; border-top: 1px solid #b6c2d1; border-bottom: 1px solid #b6c2d1; padding: 8px 0; }
-  nav ol { columns: 2; font-size: 13px; }
-  h2 { font-size: 16px; margin-top: 30px; color: #2b4a63; }
-  p { line-height: 1.6; font-size: 15px; }
-  .backlink { font-size: 12px; }
-  footer { margin-top: 40px; border-top: 1px solid #b6c2d1; padding-top: 12px; font-size: 12px; color: #5a6675; }
+  :root {
+    --ink: #16161a;
+    --dim: #6c6c78;
+    --hair: #dedbd4;
+    --paper: #fbfbf9;
+    --accent: #5b4bd6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  a { color: var(--accent); }
+  header.bar {
+    border-bottom: 1px solid var(--hair); background: #fff;
+    display: flex; align-items: center; gap: 18px; padding: 10px 22px; font-size: 13px;
+  }
+  header.bar .brand { font-weight: 700; letter-spacing: -0.3px; }
+  header.bar .ver { border: 1px solid var(--hair); padding: 0 6px; color: var(--dim); font-size: 11px; }
+  header.bar nav.links { margin-left: auto; display: flex; gap: 16px; }
+  header.bar nav.links a { text-decoration: none; color: var(--dim); }
+  header.bar nav.links a[aria-current] { color: var(--ink); border-bottom: 2px solid var(--accent); }
+  .layout {
+    display: grid; grid-template-columns: 236px minmax(0, 78ch); gap: 40px;
+    max-width: 1120px; margin: 0 auto; padding: 26px 22px 70px; align-items: start;
+  }
+  nav.toc { position: sticky; top: 18px; font-size: 12.5px; }
+  nav.toc .sect { text-transform: uppercase; letter-spacing: 2px; color: var(--dim); font-size: 11px; margin-bottom: 8px; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--hair); }
+  nav.toc li { counter-increment: cl; }
+  nav.toc ol { counter-reset: cl; }
+  nav.toc a {
+    display: block; text-decoration: none; color: var(--dim);
+    padding: 2px 0 2px 12px; border-left: 2px solid transparent; margin-left: -1px;
+  }
+  nav.toc a::before { content: counter(cl) ". "; color: #a8a4b8; }
+  nav.toc a:hover { color: var(--ink); border-left-color: var(--accent); background: #fff; }
+  .crumbs { color: var(--dim); font-size: 12px; margin: 0 0 14px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.5px; }
+  h1::before { content: "# "; color: var(--accent); }
+  .tagline { color: var(--dim); margin: 0 0 14px; font-size: 13px; }
+  .meta {
+    font-size: 12.5px; color: var(--dim); background: #fff;
+    border: 1px solid var(--hair); border-left: 3px solid var(--accent);
+    padding: 10px 13px; margin: 0 0 30px;
+  }
+  h2 {
+    font-size: 14px; font-weight: 700; margin: 34px 0 8px;
+    padding-bottom: 5px; border-bottom: 1px solid var(--hair);
+  }
+  h2::before { content: "## "; color: var(--accent); font-weight: 400; }
+  p { margin: 0 0 14px; }
+  .backlink { font-size: 12px; color: var(--dim); border-top: 1px solid var(--hair); padding-top: 14px; }
+  footer {
+    border-top: 1px solid var(--hair); padding: 16px 22px; font-size: 12px; color: var(--dim);
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+  }
 </style>
 </head>
 <body id="top">
-<p><a href="beta-signup.html">&lt; Back to the waitlist form</a></p>
-<h1>Atlas 3 Private Beta — Programme Terms</h1>
-<p class="tagline">Fernlight Software · Terms of participation for the Atlas 3 private beta</p>
-<p class="meta">Version 3.4 · Fourteen clauses · Applies to every waitlist request and to every seat issued from the waitlist. Read the whole document before you submit a request; each clause is binding on applicants as well as on participants.</p>
+<header class="bar">
+  <span class="brand">fernlight/atlas</span>
+  <span class="ver">terms v3.4</span>
+  <nav class="links">
+    <a href="#">docs</a>
+    <a href="#">changelog</a>
+    <a href="#" aria-current="page">terms</a>
+    <a href="beta-signup.html">waitlist</a>
+  </nav>
+</header>
 
-<nav><ol>
+<div class="layout">
+<nav class="toc">
+<p class="sect">Clauses</p>
+<ol>
 <li><a href="#clause-1">Definitions</a></li>
 <li><a href="#clause-2">Eligibility</a></li>
 <li><a href="#clause-3">Programme term and batches</a></li>
@@ -36,7 +100,14 @@
 <li><a href="#clause-12">Credits and promotional balances</a></li>
 <li><a href="#clause-13">Suspension and withdrawal</a></li>
 <li><a href="#clause-14">Changes and notices</a></li>
-</ol></nav>
+</ol>
+</nav>
+
+<article>
+<p class="crumbs">docs / programme / terms</p>
+<h1>Atlas 3 Private Beta — Programme Terms</h1>
+<p class="tagline">Fernlight Software · Terms of participation for the Atlas 3 private beta</p>
+<p class="meta">Version 3.4 · Fourteen clauses · Applies to every waitlist request and to every seat issued from the waitlist. Read the whole document before you submit a request; each clause is binding on applicants as well as on participants.</p>
 
 <h2 id="clause-1">1. Definitions</h2>
 <p>In this document, "programme" means the Atlas 3 private beta operated by Fernlight Software; "applicant" means a person who has submitted a waitlist request and has not yet been issued a seat; and "participant" means a person to whom a seat has been issued and who has not withdrawn or been withdrawn.</p>
@@ -96,11 +167,13 @@
 <p>Notices to us should go to the beta address; notices to you go to the email address in your most recent request. These terms are governed by the law of the jurisdiction in which Fernlight Software is incorporated, and the version number above identifies the text in force.</p>
 
 <p class="backlink"><a href="#top">Back to top</a> · <a href="beta-signup.html">Back to the waitlist form</a></p>
+</article>
+</div>
 
 <footer>
   Fernlight Software — 42 Alder Row, Suite 5 · beta@fernlight.example ·
-  Fernlight Software and Atlas are fictional and exist only for local browser
-  testing. This document is sample boilerplate and is not legal advice.
+  These terms supersede all earlier beta terms. Questions about a clause should go to
+  legal@fernlight.example before you accept.
 </footer>
 </body>
 </html>

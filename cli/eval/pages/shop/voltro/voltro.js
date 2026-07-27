@@ -1,20 +1,16 @@
-// Renders a retailer-style monitor listing from window.STORE.
-// Each product: [name, sizeInches, resolution, price, rating, reviews, inStock]
+// Voltro marketplace listing: a card grid built from VOLTRO.products, where
+// each product is [name, sizeInches, resolution, price, rating, reviews, inStock].
 
-document.title = STORE.name + ' — Computer Monitors';
-document.documentElement.lang = 'en';
-if (STORE.theme) {
-  document.documentElement.style.setProperty('--accent', STORE.theme);
-}
+document.title = 'Voltro — Computer Monitors';
 
-const BRANDS = [...new Set(STORE.products.map((p) => p[0].split(' ')[0]))].slice(0, 6);
+const BRANDS = [...new Set(VOLTRO.products.map((p) => p[0].split(' ')[0]))].slice(0, 6);
 
 document.body.insertAdjacentHTML(
   'afterbegin',
   `
   <header>
-    <b>${STORE.name}</b>
-    <input placeholder="Search ${STORE.name}" aria-label="Search">
+    <b>Voltro</b>
+    <input placeholder="Search Voltro" aria-label="Search">
     <span>Hello, sign in</span>
     <span>Orders</span>
     <span>Cart (0)</span>
@@ -23,7 +19,7 @@ document.body.insertAdjacentHTML(
     <span>All</span><span>Today's Deals</span><span>Electronics</span>
     <span>Computers</span><span>Monitors</span><span>Gift Cards</span><span>Customer Service</span>
   </nav>
-  <div class="promo">${STORE.promo}</div>
+  <div class="promo">${VOLTRO.promo}</div>
   <main>
     <aside>
       <h4>Department</h4>
@@ -44,7 +40,7 @@ document.body.insertAdjacentHTML(
     <section style="flex:1">
       <div id="toolbar">
         <h1>Computer Monitors</h1>
-        <span>1–${STORE.products.length} of ${STORE.products.length} results</span>
+        <span>1–${VOLTRO.products.length} of ${VOLTRO.products.length} results</span>
         <label>Sort by:
           <select aria-label="Sort by">
             <option>Featured</option>
@@ -59,12 +55,12 @@ document.body.insertAdjacentHTML(
     </section>
   </main>
   <footer>
-    ${STORE.name} is a fictional retailer used for local browser-automation testing.
-    Nothing on this page is a real product or offer. · Conditions of Use · Privacy Notice ·
-    Interest-Based Ads
+    &copy; 2026 Voltro Marketplace, Inc. Prices and availability are subject to change.
+    · Conditions of Use · Privacy Notice · Interest-Based Ads · Sell on Voltro ·
+    Careers
   </footer>
   <div id="cookie-banner" role="dialog" aria-label="Cookie consent">
-    <span>We use cookies to enhance your ${STORE.name} experience and for measurement.
+    <span>We use cookies to enhance your Voltro experience and for measurement.
       See our Cookie Notice. <a href="#" style="color:#9dc4ff">Manage preferences</a></span>
     <button onclick="document.getElementById('cookie-banner').remove()">Accept all cookies</button>
     <button onclick="document.getElementById('cookie-banner').remove()">Decline non-essential</button>
@@ -77,11 +73,9 @@ const RES_LABEL = {
   '1440p': 'QHD 2560x1440',
   '4K': '4K UHD 3840x2160',
 };
-const IN_STOCK_LABEL = STORE.stockLabels?.in ?? 'In stock';
-const OUT_STOCK_LABEL = STORE.stockLabels?.out ?? 'Out of stock';
 
 const grid = document.getElementById('grid');
-STORE.products.forEach(([name, size, res, price, rating, reviews, inStock], i) => {
+VOLTRO.products.forEach(([name, size, res, price, rating, reviews, inStock], i) => {
   const card = document.createElement('li');
   card.className = 'card';
   const hue = (name.length * 37 + name.charCodeAt(0) * 11) % 360;
@@ -104,7 +98,11 @@ STORE.products.forEach(([name, size, res, price, rating, reviews, inStock], i) =
     </div>
     <div class="permo">or $${(price / 12).toFixed(2)}/mo for 12 mo</div>
     <div class="fulfill">${i % 3 ? 'FREE shipping — get it Fri, Jul 31' : 'Pickup today at Downtown'}</div>
-    <div class="${inStock ? 'stock-in' : 'stock-out'}">${inStock ? IN_STOCK_LABEL : OUT_STOCK_LABEL}</div>
+    <div class="${inStock ? 'stock-in' : 'stock-out'}">${
+      inStock
+        ? 'In stock — ships within 24 hours.'
+        : 'Temporarily out of stock. No restock date available.'
+    }</div>
     <button>Add to Cart</button>
   `;
   grid.appendChild(card);
