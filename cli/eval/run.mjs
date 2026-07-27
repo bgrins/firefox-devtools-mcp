@@ -1575,6 +1575,12 @@ function markdownReport({ meta, results, totals }) {
     `- backend: ${meta.backend} · models: ${models} · effort: ${meta.effort} · suite: ${meta.suite}` +
       (meta.repeat ? ` · repeat: ${meta.repeat}` : ''),
     `- tasks are simulated local pages (no live web); harness: cli/eval/run.mjs`,
+    ...(meta.backend.includes('codex')
+      ? [
+          `- cost: anthropic is SDK-reported; codex is computed from token counts ` +
+            `against genai-prices' bundled table, so the two are not measured the same way`,
+        ]
+      : []),
     '',
     '## Totals per condition',
     '',

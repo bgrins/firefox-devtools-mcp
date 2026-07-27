@@ -16,15 +16,54 @@
 //   MCP tool calls bypass the command sandbox, so read-only is enough.
 //
 // maxTurns is not enforced — the SDK has no equivalent option.
-// cost_usd / api_duration_ms are not reported by codex.
+// api_duration_ms is not reported by codex; cost_usd is computed locally from
+// the reported token counts (codex reports no price of its own).
 
 import { Codex } from '@openai/codex-sdk';
 import { tmpdir } from 'node:os';
+import { calcPrice } from '@pydantic/genai-prices';
 
 // Pinned explicitly (rather than deferring to ~/.codex/config.toml) so runs
 // are reproducible and the model is recorded in results. terra is the
 // sonnet-4-6-equivalent tier.
 export const DEFAULT_MODEL = 'gpt-5.6-terra';
+
+// Warn once per model id whose price entry was resolved by approximate match,
+// so a silently mispriced model is visible instead of quietly wrong.
+const pricingWarned = new Set();
+
+// The anthropic backend gets an authoritative price from its SDK; codex reports
+// none, so price the reported tokens against genai-prices' bundled table (no
+// network call). Codex uses OpenAI's convention where input_tokens ALREADY
+// includes the cached portion, which is what calcPrice expects — it subtracts
+// the cached tokens itself and rejects a negative remainder. Best-effort by
+// design: an unknown model must never fail a run.
+function priceRun(modelId, usage) {
+  if (!usage || !modelId) return null;
+  const cacheRead = usage.cached_input_tokens ?? 0;
+  const cacheWrite = usage.cache_write_input_tokens ?? 0;
+  try {
+    const priced = calcPrice(
+      {
+        input_tokens: Math.max(usage.input_tokens ?? 0, cacheRead + cacheWrite),
+        cache_read_tokens: cacheRead,
+        cache_write_tokens: cacheWrite,
+        output_tokens: usage.output_tokens ?? 0,
+      },
+      modelId
+    );
+    // Unknown models come back as null rather than throwing.
+    if (!priced) return null;
+    const matched = priced.model?.id;
+    if (matched && matched !== modelId && !pricingWarned.has(modelId)) {
+      pricingWarned.add(modelId);
+      console.log(`[codex] pricing "${modelId}" using the "${matched}" price entry`);
+    }
+    return priced.total_price ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function run({ prompt, model, effort, condition, env, endpoint, cwd, onMessage, mcpStdio }) {
   const codexOptions = {
@@ -112,7 +151,7 @@ export async function run({ prompt, model, effort, condition, env, endpoint, cwd
     cache_creation: usage?.cache_write_input_tokens ?? 0,
     cache_read: usage?.cached_input_tokens ?? 0,
     output_tokens: usage?.output_tokens ?? 0,
-    cost_usd: null,
+    cost_usd: priceRun(model ?? DEFAULT_MODEL, usage),
     duration_ms: Date.now() - started,
     api_duration_ms: null,
   };
