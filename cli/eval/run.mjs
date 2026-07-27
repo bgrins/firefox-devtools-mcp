@@ -6,15 +6,20 @@
 //
 // Suites: 'basic' = tiny smoke pages, 'web' = simulated sites; both are
 // served locally from eval/pages/ (no live web). --headed shows Firefox.
+// Default conditions are the two MCP servers — firefox-devtools-mcp ('mcp') vs
+// the vendored @playwright/mcp ('playwright') — since the point is mining
+// improvements for our own server. The firefox-cli shell ('cli') is opt-in.
 // Results land in eval/results/ (gitignored) as JSON plus a shareable
 // markdown report.
 //
 // Common runs:
 //   node eval/run.mjs
-//     quick smoke: basic suite, cli+mcp, sequential
-//   node eval/run.mjs --suite web --conditions cli,mcp,playwright --parallel --parallel-tasks 2
-//     fast 3-condition iteration sweep (headless)
-//   node eval/run.mjs --suite web --backend all --conditions cli,mcp,playwright --parallel --parallel-tasks 4 --headed
+//     quick smoke: basic suite, us vs playwright-mcp, sequential
+//   node eval/run.mjs --suite web --parallel --parallel-tasks 2
+//     the default sweep: us vs playwright-mcp (headless)
+//   node eval/run.mjs --suite web --conditions mcp,playwright,cli --parallel --parallel-tasks 2
+//     add the firefox-cli shell as a third column
+//   node eval/run.mjs --suite web --backend all --conditions mcp,playwright,cli --parallel --parallel-tasks 4 --headed
 //     full demo matrix, both backends, tiled windows
 //   node eval/run.mjs --suite web --repeat 3
 //     sequential + repeats: use this for numbers you plan to share
@@ -166,9 +171,12 @@ Usage: node eval/run.mjs [options]
                           on macOS, else 1920x1080)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
                           client configs do) or http (shared instance endpoint)
-  --conditions <list>     comma list of cli, mcp, playwright (default: cli,mcp);
-                          playwright = vendored @playwright/mcp over stdio
-                          driving Playwright Firefox
+  --conditions <list>     comma list of mcp, playwright, cli
+                          (default: mcp,playwright — the comparison this suite
+                          exists for: firefox-devtools-mcp vs the vendored
+                          @playwright/mcp, both over stdio driving their own
+                          Firefox). 'cli' drives the firefox-cli shell and is
+                          opt-in; it will eventually live outside this eval
   --mcp-command "<cmd>"   custom stdio MCP server for the mcp condition, e.g.
                           "npx @playwright/mcp@latest --browser firefox";
                           replaces the built-in firefox-devtools-mcp server
@@ -209,8 +217,8 @@ const CUSTOM_MCP = MCP_COMMAND ? MCP_COMMAND.trim().split(/\s+/) : null;
 // Named conditions. 'playwright' spawns the vendored @playwright/mcp over
 // stdio (registered under the same 'firefox' server name) driving Playwright's
 // own Firefox build.
-const KNOWN_CONDITIONS = ['cli', 'mcp', 'playwright'];
-const CONDITIONS = flag('conditions', 'cli,mcp')
+const KNOWN_CONDITIONS = ['mcp', 'playwright', 'cli'];
+const CONDITIONS = flag('conditions', 'mcp,playwright')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -2023,7 +2031,7 @@ or adjust its arguments instead of managing instances.
 
   firefox-cli open <url>            open a new tab at url
   firefox-cli find "text"           search the page, returns matching elements with uids like 3_7
-  firefox-cli snapshot              full page snapshot with uids (large; prefer find)
+  firefox-cli snapshot              full page snapshot with uids
   firefox-cli click <uid>
   firefox-cli fill <uid> <value>    fill an editable element
   firefox-cli eval '() => document.title'   run a JS function in the page
@@ -2035,13 +2043,15 @@ Uids are only valid from your most recent find/snapshot output.`;
 const SHELL_NOTE = `You also have a shell (Bash) for anything else you find useful.
 It has no browser-automation command in it — the MCP tools are how you drive the page.`;
 
+// Identical for every MCP-driven condition: the comparison of interest is
+// firefox-devtools-mcp vs playwright-mcp, so the prompt must not differ by so
+// much as a word between them. It also carries no strategy advice, since the
+// cli cheatsheet must not be the only condition coached on efficiency.
+const MCP_INTRO = `You control a web browser via the connected "firefox" MCP tools.
+${SHELL_NOTE}`;
+
 function taskPrompt(condition, task) {
-  const intro =
-    condition === 'cli'
-      ? CLI_CHEATSHEET
-      : condition === 'playwright' || CUSTOM_MCP
-        ? `You control a web browser via the connected "firefox" MCP tools.\n${SHELL_NOTE}`
-        : `You control a running Firefox via the connected "firefox" MCP tools.\n${SHELL_NOTE}`;
+  const intro = condition === 'cli' ? CLI_CHEATSHEET : MCP_INTRO;
   return `${intro}\n\nTask: ${task.ask}\nAnswer concisely with the requested information.`;
 }
 
