@@ -113,6 +113,9 @@ const TASK_PATTERNS = RERUN_IDS
     ? ONLY_TASK.split(',').map((s) => s.trim()).filter(Boolean)
     : null;
 const LIST_TASKS = args.includes('--list-tasks');
+// Re-render report.md from a finished run's results.json, so a reporting change
+// can be applied to runs that already cost money to produce.
+const REPORT_FROM = flag('report-from', null);
 // API/infrastructure hiccups (dropped connections, overload, 5xx) otherwise land
 // as ERROR rows that look like task failures and poison a whole run's numbers.
 // Retries re-run the task from scratch against freshly reset server state.
@@ -154,6 +157,8 @@ Usage: node eval/run.mjs [options]
                           --suite/--task to preview a subset)
   --rerun-failed <dir>    re-run only the tasks that failed or errored in an
                           earlier run directory (overrides --task)
+  --report-from <dir>     rewrite report.md from a finished run's results.json
+                          (no agents run; applies reporting changes retroactively)
   --retries <n>           retry a task on transient API/infra errors
                           (default: 2; an --max-output stop is never retried)
   --max-wall <s>          kill a task after s seconds of wall time
@@ -2231,6 +2236,18 @@ function median(values) {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 }
 
+// "12 (11-33)" — median plus the observed range, so an unstable task is visible
+// at a glance instead of hiding behind its median. spread = max/min on output
+// tokens, the metric least polluted by machine contention.
+function spanOf(values, digits = 0) {
+  const v = values.filter((x) => x != null).sort((a, b) => a - b);
+  if (!v.length) return '';
+  const fmt = (x) => (digits ? x.toFixed(digits) : String(Math.round(x)));
+  const med = median(v);
+  if (v.length === 1 || v[0] === v.at(-1)) return fmt(med);
+  return `${fmt(med)} (${fmt(v[0])}-${fmt(v.at(-1))})`;
+}
+
 function medianLines(results) {
   const groups = new Map();
   for (const r of results) {
@@ -2242,19 +2259,34 @@ function medianLines(results) {
     '',
     '## Per-task medians across repeats',
     '',
-    '| condition | task | pass | med turns | med input | med cache write | med cache read | med output | med cost (USD) | med api (s) | med wall (s) |',
-    '|---|---|---|---|---|---|---|---|---|---|---|',
+    'Each cell is `median (min-max)`. `spread` is max/min output tokens: >2 means',
+    'a single sample of that task is not trustworthy.',
+    '',
+    '| condition | task | pass | turns | output | cost (USD) | wall (s) | api (s) | spread |',
+    '|---|---|---|---|---|---|---|---|---|',
   ];
   for (const [key, rs] of groups) {
     const [condition, task] = key.split('|');
     const passed = rs.filter((r) => r.success).length;
-    const cost = median(rs.map((r) => r.cost_usd));
+    const outs = rs.map((r) => r.output_tokens).filter((x) => x != null);
+    const lo = Math.min(...outs);
+    const spread = outs.length > 1 && lo > 0 ? (Math.max(...outs) / lo).toFixed(1) + 'x' : '';
     lines.push(
-      `| ${condition} | ${task} | ${passed}/${rs.length} | ${median(rs.map((r) => r.turns)) ?? ''} | ` +
-        `${median(rs.map((r) => r.input_tokens)) ?? ''} | ${median(rs.map((r) => r.cache_creation)) ?? ''} | ` +
-        `${median(rs.map((r) => r.cache_read)) ?? ''} | ${median(rs.map((r) => r.output_tokens)) ?? ''} | ` +
-        `${cost != null ? cost.toFixed(4) : ''} | ${median(rs.map((r) => r.api_s)) ?? ''} | ` +
-        `${median(rs.map((r) => r.wall_s)) ?? ''} |`
+      `| ${condition} | ${task} | ${passed}/${rs.length} | ` +
+        `${spanOf(rs.map((r) => r.turns))} | ${spanOf(outs)} | ` +
+        `${spanOf(rs.map((r) => r.cost_usd), 4)} | ${spanOf(rs.map((r) => r.wall_s), 1)} | ` +
+        `${spanOf(rs.map((r) => r.api_s), 1)} | ${spread} |`
+    );
+  }
+  const unstable = [...groups.entries()].filter(([, rs]) => {
+    const o = rs.map((r) => r.output_tokens).filter((x) => x != null);
+    return o.length > 1 && Math.min(...o) > 0 && Math.max(...o) / Math.min(...o) > 2;
+  });
+  if (unstable.length) {
+    lines.push(
+      '',
+      `Unstable (>2x output-token spread), treat single samples as unreliable: ` +
+        unstable.map(([k]) => k.replace('|', '/')).join(', ')
     );
   }
   return lines;
@@ -2563,6 +2595,15 @@ async function runCondition(backendName, condition, shared) {
 }
 
 async function main() {
+  if (REPORT_FROM) {
+    const dir = REPORT_FROM.replace(/\/results\.json$/, '');
+    const prior = JSON.parse(readFileSync(join(dir, 'results.json'), 'utf8'));
+    const totals = totalsByCondition(prior.results);
+    const path = join(dir, 'report.md');
+    writeFileSync(path, markdownReport({ ...prior, totals }));
+    console.log(`rewrote ${path} (${prior.results.length} rows)`);
+    return;
+  }
   const selected = await buildTasks('http://placeholder');
   if (!selected.length) {
     throw new Error(`no tasks selected (suite=${SUITE}, task=${ONLY_TASK})`);
