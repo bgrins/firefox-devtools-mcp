@@ -1362,6 +1362,349 @@ async function webTasks(base) {
         };
       },
     },
+    {
+      id: 'office-finder',
+      maxTurns: 25,
+      ask:
+        `Open ${base}/forms/office-finder.html — a freight company's branch ` +
+        `directory. Use the cascading dropdowns to locate the branch office for ` +
+        `Veltania, Korrin Province, Harbor East, then confirm the branch on the ` +
+        `form and report the office code.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const want = ANSWERS.officeFinder;
+        const isGood = (s) =>
+          s.ok === true &&
+          s.resolved === want.code &&
+          s.country === want.country &&
+          s.province === want.province &&
+          s.office === want.office;
+        // Grade the session that confirmed the right branch; a stray curl
+        // session must not shadow the real run.
+        const candidates = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.officeSubmissions ?? []).length || (s.officeFetches ?? []).length
+        );
+        const session =
+          candidates.find((s) => (s.officeSubmissions ?? []).some(isGood)) ??
+          candidates.find((s) => (s.officeSubmissions ?? []).length) ??
+          candidates[0];
+        const submitted = (session?.officeSubmissions ?? []).some(isGood);
+        const fetches = session?.officeFetches ?? [];
+        const at = (level, parent) => (f) =>
+          f.level === level && (parent === null || f.parent === parent);
+        const iCountry = fetches.findIndex(at('country', null));
+        const iProvince = fetches.findIndex(at('province', want.country));
+        // Last office fetch, not the first: an agent may peek at the option list
+        // with a script before driving the selects, and picking the province in
+        // the UI re-fetches the branch list anyway.
+        const iOffice = fetches.findLastIndex(at('office', want.province));
+        const cascaded = iCountry !== -1 && iProvince !== -1 && iOffice > iProvince;
+        const reported = new RegExp(want.code.replace(/-/g, '[\\s-]?'), 'i').test(text);
+        return {
+          pass: submitted && cascaded && reported,
+          detail:
+            `sessions=${candidates.length} submitted=${submitted} ` +
+            `cascade=${iCountry}/${iProvince}/${iOffice} reported=${reported}`,
+        };
+      },
+    },
+    {
+      id: 'draft-resume',
+      maxTurns: 30,
+      ask:
+        `Open ${base}/forms/draft.html — a grant application form that autosaves. ` +
+        `Fill in the first three sections (principal applicant: Rosa Lindqvist, ` +
+        `host organization: Tidewater Labs, project title: Kelp Survey). Then ` +
+        `reload the page and confirm your entries survived, fill in the remaining ` +
+        `sections (requested budget: 4800, project duration: 6 months) and ` +
+        `continue to review. Report the reference code.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '').toUpperCase();
+        const sessions = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.draftEvents ?? []).length > 0
+        );
+        // Sequence-only, by index order and never by timestamp: at least three
+        // saves of three distinct sections, THEN a document load, THEN more
+        // saving, THEN the completion. Every `pageload` is tried, so an extra
+        // reload cannot invalidate an otherwise correct run.
+        const sequenced = (s) => {
+          const events = s.draftEvents ?? [];
+          const done = events.findIndex((e) => e.type === 'complete');
+          if (done < 0) return false;
+          for (let i = 0; i < done; i++) {
+            if (events[i].type !== 'pageload') continue;
+            const before = events.slice(0, i).filter((e) => e.type === 'save');
+            if (before.length < 3 || new Set(before.map((e) => e.field)).size < 3) continue;
+            if (events.slice(i + 1, done).some((e) => e.type === 'save')) return true;
+          }
+          return false;
+        };
+        // Grade the session that actually completed the flow, so a stray curl
+        // probe or a re-minted cookie cannot shadow the real run.
+        const winner =
+          sessions.find((s) => s.draftRefCode && text.includes(s.draftRefCode) && sequenced(s)) ??
+          sessions.find((s) => sequenced(s)) ??
+          sessions.find((s) => s.draftRefCode) ??
+          sessions[0];
+        const events = winner?.draftEvents ?? [];
+        const order = events
+          .map((e) => (e.type === 'save' ? 's' : e.type === 'pageload' ? 'p' : 'c'))
+          .join('');
+        const resumed = winner ? sequenced(winner) : false;
+        const code = winner?.draftRefCode ?? null;
+        const reported = !!code && text.includes(code);
+        const draft = winner?.draft ?? {};
+        const filled = Object.entries(ANSWERS.draftResume.fields).filter(
+          ([field, value]) =>
+            String(draft[field] ?? '').toLowerCase().includes(value.toLowerCase())
+        ).length;
+        // Only the three free-text sections are graded: 4800 and 6 months have
+        // formatting variants (4,800 / six months) that must not fail a real run.
+        const stored = ['applicant', 'organization', 'project'].every((field) =>
+          String(draft[field] ?? '')
+            .toLowerCase()
+            .includes(ANSWERS.draftResume.fields[field].toLowerCase())
+        );
+        return {
+          pass: resumed && reported && stored,
+          detail:
+            `sessions=${sessions.length} order=${order} resumed=${resumed} ` +
+            `code=${code} reported=${reported} stored=${stored} fields=${filled}/5`,
+        };
+      },
+    },
+    {
+      id: 'abstract-length',
+      maxTurns: 30,
+      ask:
+        `Open ${base}/forms/abstract.html — the abstract desk of a marine science ` +
+        `symposium. Read the field summary filed for study NS-118 and lodge a capsule ` +
+        `describing it that is between 140 and 160 characters long (the desk counts ` +
+        `spaces and punctuation, and the page counts as you type) and that mentions ` +
+        `both "kelp" and "harvest". Wording and style are not graded — only the ` +
+        `length and those two words — but it must be a real sentence: padding a ` +
+        `short phrase out to length with runs of spaces does not count. Report the ` +
+        `confirmation id the desk gives you.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const { min, max, minWords, keywords } = ANSWERS.abstract;
+        // Grade the session that actually lodged an accepted capsule, preferring
+        // the one whose id the answer names; a stray curl probe (even one the
+        // desk accepted) or a re-minted cookie must not shadow the real run.
+        const withAttempts = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.abstractAttempts ?? []).length > 0
+        );
+        const lodgers = withAttempts.filter((s) =>
+          s.abstractAttempts.some((a) => a.accepted)
+        );
+        const session =
+          lodgers.find((s) => s.abstractId && text.toUpperCase().includes(s.abstractId)) ??
+          lodgers[0] ??
+          withAttempts[0];
+        const attempts = session?.abstractAttempts ?? [];
+        const lodged = [...attempts].reverse().find((a) => a.accepted) ?? null;
+        const summary = lodged ? lodged.summary : '';
+        // Re-measure the stored string rather than trusting the stored length.
+        const length = lodged ? summary.length : null;
+        const inRange = length !== null && length >= min && length <= max;
+        const words = keywords.map((re) => re.test(summary));
+        // Cheap non-degeneracy floor: the desk gates on length alone, so block a
+        // stub spaced out to 140-160 rather than composed to it.
+        const wordCount = summary.trim() ? summary.trim().split(/\s+/).length : 0;
+        const prose = !/\s{3,}/.test(summary) && wordCount >= minWords;
+        const id = session?.abstractId ?? null;
+        const reported = !!id && text.toUpperCase().includes(id);
+        return {
+          pass: inRange && words.every(Boolean) && prose && reported,
+          detail:
+            `sessions=${withAttempts.length}/${lodgers.length} ` +
+            `attempts=${attempts.length} length=${length ?? 'none'} inRange=${inRange} ` +
+            `words=${wordCount} prose=${prose} kelp=${words[0]} harvest=${words[1]} ` +
+            `id=${id} reported=${reported}`,
+        };
+      },
+    },
+    {
+      id: 'grid-edit',
+      maxTurns: 35,
+      ask:
+        `Open ${base}/grid-edit/ — a warehouse cycle-count sheet. Per the corrections ` +
+        `memo shown on the page, fix the three wrong quantities in the count grid ` +
+        `(double-click a quantity cell, or use that row's Edit button). Leave every ` +
+        `other line untouched. When you are finished, say 'done' and list the three ` +
+        `SKUs you corrected.`,
+      validate: (rawText, ctx) => {
+        // Markdown emphasis must not break the SKU / completion regexes.
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const target = ANSWERS.gridEdit.corrected;
+        const wanted = ANSWERS.gridEdit.corrections.map((c) => c.sku).sort();
+        const gridOk = (s) =>
+          Array.isArray(s.grid) &&
+          s.grid.length === target.length &&
+          target.every((row, i) => s.grid[i]?.sku === row.sku && s.grid[i]?.qty === row.qty);
+        // Only value-changing saves count, so opening an editor and saving an
+        // unchanged cell is not punished; touching any other row is.
+        const valueEdits = (s) => (s.gridEdits ?? []).filter((e) => e.from !== e.to);
+        const lastEditAt = (s) =>
+          (s.gridEdits ?? []).reduce((max, e) => Math.max(max, e.at ?? 0), 0);
+        // Grade the session that did the most work on the sheet, not the first
+        // one that happens to look clean: a botched browser session must not be
+        // masked by a stray curl probe that applied the corrections correctly.
+        const withEdits = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.gridEdits ?? []).length > 0
+        );
+        const session = withEdits
+          .slice()
+          .sort(
+            (a, b) =>
+              valueEdits(b).length - valueEdits(a).length || lastEditAt(b) - lastEditAt(a)
+          )[0];
+        const finalOk = session ? gridOk(session) : false;
+        const touched = [...new Set(valueEdits(session ?? {}).map((e) => e.sku))].sort();
+        const onlyWanted =
+          touched.length === wanted.length && touched.every((sku, i) => sku === wanted[i]);
+        const reported = wanted.filter((sku) =>
+          new RegExp(sku.replace('-', '[- ]?'), 'i').test(text)
+        ).length;
+        const finished =
+          /\b(done|finished|complete|completed|corrected|fixed|updated|applied)\b/i.test(text);
+        return {
+          pass: finalOk && onlyWanted && reported === wanted.length && finished,
+          detail:
+            `sessions=${withEdits.length} finalGrid=${finalOk} touched=[${touched.join(',')}] ` +
+            `onlyWanted=${onlyWanted} skusReported=${reported}/${wanted.length} finished=${finished}`,
+        };
+      },
+    },
+    {
+      id: 'unit-quote',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/forms/shipping-quote.html — a parcel rate estimator. Get a ` +
+        `quote for a single parcel that measures 24 in long, 18 in wide and 12 in ` +
+        `high and weighs 9 lb. Report the quoted price.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const t = ANSWERS.shippingQuote;
+        const entries = [...ctx.pages.state.sessions.values()].flatMap(
+          (s) => s.shippingQuotes ?? []
+        );
+        // Optional $, optional space, guarded against longer numbers.
+        const quotedIn = (entry) => {
+          const amount = String(entry.quote).replace(/^\$/, '');
+          return new RegExp(
+            `(?<![\\d.,])\\$?\\s?${amount.replace('.', '\\.')}(?![\\d])`
+          ).test(text);
+        };
+        // Order-insensitive: a permuted L/W/H yields the same parcel and the
+        // same price, so only the multiset of dimensions is graded.
+        const want = [...t.cm].sort((a, b) => b - a);
+        const dimsOkOf = (entry) =>
+          [entry.l, entry.w, entry.h]
+            .sort((a, b) => b - a)
+            .every((v, i) => Math.abs(v - want[i]) <= t.cmTolerance);
+        const kgOkOf = (entry) => Math.abs(entry.kg - t.kg) <= t.kgTolerance;
+        // Grade a submission whose server-issued price the agent reported, so
+        // a stray curl session or an abandoned attempt cannot shadow the real
+        // run; among reported submissions prefer a correctly measured one, so
+        // citing a deliberate wrong-unit contrast probe alongside the answer
+        // is not punished. Fall back to the most recent submission overall.
+        const reported = entries.filter(quotedIn);
+        const graded =
+          [...reported].reverse().find((e) => dimsOkOf(e) && kgOkOf(e)) ??
+          reported.at(-1) ??
+          entries.at(-1);
+        const dimsOk = !!graded && dimsOkOf(graded);
+        const kgOk = !!graded && kgOkOf(graded);
+        const priceOk = !!graded && quotedIn(graded);
+        return {
+          pass: dimsOk && kgOk && priceOk,
+          detail:
+            `quotes=${entries.length} ` +
+            `graded=${graded ? [graded.l, graded.w, graded.h].join('x') : 'none'} ` +
+            `kg=${graded?.kg ?? 'none'} quote=${graded?.quote ?? 'none'} ` +
+            `dimsOk=${dimsOk} kgOk=${kgOk} priceOk=${priceOk}`,
+        };
+      },
+    },
+    {
+      id: 'modal-escape',
+      maxTurns: 20,
+      ask:
+        `Open ${base}/news/?promo=1 — a link-aggregator front page that puts a ` +
+        `newsletter prompt over the content on load. Dismiss the prompt using the ` +
+        `page's own controls: its close (x) button, or the Escape key. Getting rid of ` +
+        `it by scripted DOM surgery instead — deleting the node, wiping the body, ` +
+        `hiding it with CSS — scores a FAIL for this task, so use the control. Once ` +
+        `it is dismissed, report the title of the #1 top post.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const modals = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.promoModal)
+          .filter(Boolean);
+        // Any detachment observed anywhere in the run fails the task, so a
+        // second (curl) session cannot shadow a DOM-surgery browser session.
+        const removed = modals.some((m) => m.removed);
+        // Only `button`/`esc` ever reach `dismissals` (the server routes
+        // `overlay` and `removed` to their own fields), so a non-empty list is
+        // the gate. `graded` is picked for the detail string.
+        const graded =
+          modals.find((m) => m.dismissals.length > 0) ?? modals[modals.length - 1] ?? null;
+        const methods = (graded?.dismissals ?? []).map((d) => d.method);
+        const dismissedOk = methods.length > 0;
+        // Snapshot text truncates at 27 chars + ellipsis, so the title is
+        // checked as two nearby tokens rather than one long phrase.
+        const titleOk =
+          text.includes(newsItems[0].title) || /show\s*hb[^\n]{0,25}spreadsh/i.test(text);
+        return {
+          pass: dismissedOk && !removed && titleOk,
+          detail:
+            `modals=${modals.length} methods=${methods.join(',') || 'none'} ` +
+            `removed=${removed} overlayClicks=${graded?.overlayClicks ?? 0} ` +
+            `titleOk=${titleOk}`,
+        };
+      },
+    },
+    {
+      id: 'unsub-dark-patterns',
+      maxTurns: 45,
+      ask:
+        `Open ${base}/unsub/. Fully unsubscribe morgan@tealwave.example from the ` +
+        `Tealwave newsletter — read each screen carefully, since the flow is ` +
+        `designed to keep you subscribed. Report the confirmation phrase shown ` +
+        `at the end.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.unsub);
+        // Tolerate reflowed separators: spaces, en/em dashes, non-breaking hyphens.
+        const matches = (phrase) =>
+          !!phrase &&
+          new RegExp(phrase.replace('-', '[\\s\\u2010-\\u2015-]*'), 'i').test(text);
+        // Grade the session that actually finished the flow, so a stray curl
+        // session or a re-minted cookie cannot shadow the real run.
+        const finished = sessions.filter((s) => s.unsub.phrase);
+        const session =
+          finished.find((s) => matches(s.unsub.phrase)) ??
+          finished[0] ??
+          sessions.find((s) => (s.unsub.steps ?? []).length > 0) ??
+          sessions[0];
+        const unsub = session?.unsub ?? {};
+        const steps = unsub.steps ?? [];
+        const stepsOk = [1, 2, 3].every((n) => steps.includes(n));
+        // Every stay-subscribed control in EVERY session counts: the flow is
+        // only beaten if none of them was ever hit.
+        const stays = sessions.flatMap((s) =>
+          (s.unsub.stays ?? []).map((h) => h.control)
+        );
+        const phraseOk = matches(unsub.phrase);
+        return {
+          pass: stepsOk && stays.length === 0 && unsub.digest === false && phraseOk,
+          detail:
+            `sessions=${sessions.length} steps=[${steps}] digestOff=${unsub.digest === false} ` +
+            `stays=[${stays}] phrase=${unsub.phrase ?? 'none'} reported=${phraseOk}`,
+        };
+      },
+    },
   ];
 }
 

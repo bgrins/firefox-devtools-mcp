@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ironvale Freight Lines — Parcel rate estimator</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #f6f1e7;
+    color: #241b18;
+    font-family: "Trebuchet MS", "Franklin Gothic Medium", "Liberation Sans Narrow", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  a { color: #6d1f2c; }
+  .masthead {
+    background: #6d1f2c;
+    border-bottom: 4px solid #c9a227;
+    color: #f6f1e7;
+    padding: 14px 26px 10px;
+  }
+  .masthead .mark {
+    font-size: 22px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;
+  }
+  .masthead .mark span { color: #c9a227; }
+  .masthead .strap {
+    font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase; color: #e2c9b6;
+  }
+  .tabs {
+    background: #4c141e; display: flex; padding: 0 18px;
+  }
+  .tabs a {
+    color: #e8d9c6; text-decoration: none; padding: 8px 16px;
+    font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+    border-right: 1px solid #6d1f2c;
+  }
+  .tabs a.here { background: #f6f1e7; color: #4c141e; font-weight: bold; }
+  .sheet { max-width: 900px; margin: 0 auto; padding: 22px 26px 60px; }
+  .trail { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #7a6a5c; margin: 0 0 14px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.2px; }
+  .lede { margin: 0 0 20px; color: #4a3b34; max-width: 66ch; }
+  .card {
+    background: #fffdf8; border: 3px solid #241b18; box-shadow: 6px 6px 0 #e0d4c2;
+    padding: 0 0 18px; margin: 0 0 26px;
+  }
+  .card > h2 {
+    margin: 0; background: #241b18; color: #f6f1e7; padding: 7px 16px;
+    font-size: 12px; letter-spacing: 2.4px; text-transform: uppercase;
+  }
+  .card .inner { padding: 16px 18px 0; }
+  .unitbar {
+    background: #f3e7cf; border: 1px solid #d8c295; padding: 8px 12px;
+    font-size: 13px; margin: 0 0 16px;
+  }
+  .grid { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 4px; }
+  .cell { width: 150px; }
+  .cell label {
+    display: block; font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase;
+    color: #5c4a41; margin: 0 0 3px;
+  }
+  .entry { display: flex; align-items: stretch; }
+  .entry input {
+    width: 100%; font: inherit; padding: 6px 8px; border: 2px solid #241b18;
+    border-right: 0; background: #fff; color: #241b18;
+  }
+  .entry .suffix {
+    border: 2px solid #241b18; background: #241b18; color: #f6f1e7;
+    padding: 6px 10px; font-size: 13px; letter-spacing: 1px;
+  }
+  .rule { font-size: 12px; color: #6b5a50; margin: 5px 0 0; }
+  .rowhint {
+    font-size: 13px; color: #4a3b34; margin: 10px 0 0; border-left: 3px solid #c9a227;
+    padding: 0 0 0 10px;
+  }
+  .actions { padding: 18px 18px 0; display: flex; align-items: center; gap: 14px; }
+  button {
+    font: inherit; font-weight: bold; letter-spacing: 1.6px; text-transform: uppercase;
+    font-size: 13px; padding: 9px 22px; border: 3px solid #241b18; background: #c9a227;
+    color: #241b18; cursor: pointer;
+  }
+  button:hover { background: #dbb63d; }
+  .alert { color: #8c2116; font-size: 13px; min-height: 18px; }
+  .quote { border-top: 3px solid #241b18; margin: 18px 0 0; padding: 14px 18px 0; }
+  .quote .price { font-size: 30px; font-weight: bold; letter-spacing: -0.5px; margin: 0 0 2px; }
+  .quote dl { display: grid; grid-template-columns: 190px auto; gap: 2px 12px; margin: 10px 0 0; font-size: 13px; }
+  .quote dt { color: #6b5a50; text-transform: uppercase; letter-spacing: 1.2px; font-size: 11px; padding-top: 2px; }
+  .quote dd { margin: 0; }
+  .aside { font-size: 13px; color: #4a3b34; max-width: 68ch; }
+  .aside h3 { font-size: 13px; letter-spacing: 1.8px; text-transform: uppercase; margin: 0 0 6px; }
+  footer {
+    border-top: 1px solid #d6c8b4; margin-top: 34px; padding: 14px 26px 30px;
+    font-size: 12px; color: #6b5a50;
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="mark">Ironvale<span>/</span>Freight Lines</div>
+  <div class="strap">Regional carriage and next-day parcel since 1958</div>
+</header>
+<nav class="tabs">
+  <a href="#">Track a shipment</a>
+  <a href="#" class="here">Rate estimator</a>
+  <a href="#">Book a pickup</a>
+  <a href="#">Depots</a>
+  <a href="#">Account</a>
+</nav>
+
+<div class="sheet">
+<p class="trail">Rates &middot; Parcel &middot; Estimator</p>
+<h1>Parcel rate estimator</h1>
+<p class="lede">Enter the measurements of a single packed parcel to see the
+counter rate for standard ground carriage between Ironvale depots. Rates for
+pallets, hazardous goods and multi-piece consignments are quoted by the freight
+desk.</p>
+
+<div class="card">
+  <h2>Parcel measurements</h2>
+  <div class="inner">
+    <p class="unitbar">Metric entry only — this counter form does not accept
+    inches or pounds. Our tariff is filed in metric.</p>
+
+    <form id="quoteform" novalidate>
+      <div class="grid">
+        <div class="cell">
+          <label for="len">Length (cm)</label>
+          <div class="entry"><input id="len" autocomplete="off" inputmode="decimal"><span class="suffix">cm</span></div>
+        </div>
+        <div class="cell">
+          <label for="wid">Width (cm)</label>
+          <div class="entry"><input id="wid" autocomplete="off" inputmode="decimal"><span class="suffix">cm</span></div>
+        </div>
+        <div class="cell">
+          <label for="hgt">Height (cm)</label>
+          <div class="entry"><input id="hgt" autocomplete="off" inputmode="decimal"><span class="suffix">cm</span></div>
+        </div>
+      </div>
+      <p class="rowhint">1 in = 2.54 cm. Dimensions in whole centimetres —
+      round each converted dimension to the nearest whole cm.</p>
+
+      <div class="grid" style="margin-top:16px">
+        <div class="cell">
+          <label for="wgt">Gross weight (kg)</label>
+          <div class="entry"><input id="wgt" autocomplete="off" inputmode="decimal"><span class="suffix">kg</span></div>
+        </div>
+      </div>
+      <p class="rowhint">1 lb = 0.4536 kg. Weight in kilograms to one decimal
+      place — round the converted weight to the nearest 0.1 kg.</p>
+
+      <div class="actions">
+        <button type="submit" id="calcbtn">Calculate rate</button>
+        <span class="alert" id="alert" role="alert"></span>
+      </div>
+    </form>
+
+    <div class="quote" id="quote" hidden>
+      <p class="price" id="price"></p>
+      <dl>
+        <dt>Service</dt><dd>Standard ground, depot to depot</dd>
+        <dt>Chargeable weight</dt><dd><span id="chargeable"></span> kg</dd>
+        <dt>Volumetric weight</dt><dd><span id="volumetric"></span> kg</dd>
+        <dt>Validity</dt><dd>Counter rate, valid 14 days from issue</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<div class="aside">
+  <h3>What the counter rate covers</h3>
+  <p>The estimate includes depot handling, line-haul between any two Ironvale
+  depots on the same regional loop, and one delivery attempt. Residential
+  delivery, timed windows, and remote-area surcharges are added at booking.
+  Parcels over 32 kg or with any dimension over 200 cm must be tendered as
+  freight.</p>
+</div>
+</div>
+
+<footer>
+  Ironvale Freight Lines &middot; 1400 Kiln Road, Ironvale &middot; Freight desk
+  (weekdays) freight@ironvale.example &middot; Tariff IVL-7 filed with the
+  regional carriage board &middot; Privacy &middot; Terms of carriage &middot;
+  &copy; 1958-2026 Ironvale Freight Lines
+</footer>
+
+<script>
+  const NONCE = '__SESSION_NONCE__';
+  const num = (id) => document.getElementById(id).value.trim();
+
+  document.getElementById('quoteform').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const alert = document.getElementById('alert');
+    const values = { l: num('len'), w: num('wid'), h: num('hgt'), kg: num('wgt') };
+    const bad = Object.values(values).some((v) => !(Number(v) > 0));
+    if (bad) {
+      alert.textContent = 'Enter all three dimensions and the weight as positive numbers.';
+      return;
+    }
+    alert.textContent = '';
+    const response = await fetch('/api/shipping-quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, ...values }),
+    });
+    if (!response.ok) {
+      alert.textContent = 'The rate service did not respond. Please try again.';
+      return;
+    }
+    const result = await response.json();
+    document.getElementById('price').textContent = 'Rate ' + result.quote;
+    document.getElementById('chargeable').textContent = result.chargeableKg;
+    document.getElementById('volumetric').textContent = result.volumetricKg;
+    document.getElementById('quote').hidden = false;
+  });
+</script>
+</body>
+</html>

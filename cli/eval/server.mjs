@@ -28,7 +28,124 @@ const TYPES = {
   '.gif': 'image/gif',
 };
 
+// pages/grid-edit/ — cycle-count sheet. Rows and the corrections memo are
+// served per session so neither the planted errors nor the corrected
+// quantities appear in fixture source on disk.
+const GRID_EDIT_SHEET = 'CS-2214';
+const GRID_EDIT_ROWS = [
+  { sku: 'GR-1101', item: 'Joist hanger, galvanised', bin: 'A-04', uom: 'EA', qty: 26 },
+  { sku: 'GR-1102', item: 'Angle bracket 90mm', bin: 'A-11', uom: 'EA', qty: 4 },
+  { sku: 'GR-1104', item: 'Hex bolt M10 x 80', bin: 'B-02', uom: 'EA', qty: 81 },
+  { sku: 'GR-1106', item: 'Threaded rod 1m', bin: 'B-07', uom: 'EA', qty: 81 },
+  { sku: 'GR-1109', item: 'Anchor plate, heavy', bin: 'C-01', uom: 'EA', qty: 70 },
+  { sku: 'GR-1112', item: 'Coach screw 8 x 120', bin: 'C-06', uom: 'BOX', qty: 40 },
+  { sku: 'GR-1117', item: 'Washer, penny, M10', bin: 'D-02', uom: 'BOX', qty: 12 },
+  { sku: 'GR-1123', item: 'Timber connector plate', bin: 'D-09', uom: 'EA', qty: 205 },
+  { sku: 'GR-1140', item: 'Masonry bolt M12', bin: 'E-03', uom: 'EA', qty: 18 },
+  { sku: 'GR-1190', item: 'Strap tie, 600mm', bin: 'E-08', uom: 'EA', qty: 7 },
+];
+const GRID_EDIT_MEMO = [
+  'GR-1104 qty is 18 not 81 - recount 07-24, aisle B.',
+  'GR-1109 qty is 7 not 70 - pallet was double-scanned at receipt.',
+  'GR-1102 qty is 40 not 4 - counted cartons, eaches were posted.',
+];
+
 const BODY_CAP = 65536;
+
+// pages/forms/office-finder.html — the branch tree is served only through the
+// session-gated /api/offices endpoint, so no branch code ever appears in
+// fixture source on disk or in client JS.
+const OFFICE_TREE = {
+  veltania: {
+    label: 'Veltania',
+    provinces: {
+      korrin: {
+        label: 'Korrin Province',
+        offices: {
+          'harbor-east': { label: 'Harbor East', code: 'VK-HE-042' },
+          'harbor-west': { label: 'Harbor West', code: 'VK-HW-118' },
+          'korrin-central': { label: 'Korrin Central', code: 'VK-KC-207' },
+        },
+      },
+      delth: {
+        label: 'Delth Province',
+        offices: {
+          'delth-interchange': { label: 'Delth Interchange', code: 'VD-DI-311' },
+          'marrow-quay': { label: 'Marrow Quay', code: 'VD-MQ-076' },
+          sedgeley: { label: 'Sedgeley', code: 'VD-SG-149' },
+        },
+      },
+      sarrow: {
+        label: 'Sarrow Province',
+        offices: {
+          'sarrow-north': { label: 'Sarrow North', code: 'VS-SN-085' },
+          'pell-junction': { label: 'Pell Junction', code: 'VS-PJ-232' },
+          ivenholt: { label: 'Ivenholt', code: 'VS-IV-058' },
+        },
+      },
+    },
+  },
+  ostrey: {
+    label: 'Ostrey',
+    provinces: {
+      fennmark: {
+        label: 'Fennmark Province',
+        offices: {
+          // Same branch name as the Veltanian target, different code: an agent
+          // that picks the wrong country reports OF-HE-042 and fails.
+          'harbor-east': { label: 'Harbor East', code: 'OF-HE-042' },
+          'fennmark-port': { label: 'Fennmark Port', code: 'OF-FP-014' },
+          'kelby-crossing': { label: 'Kelby Crossing', code: 'OF-KC-190' },
+        },
+      },
+      brant: {
+        label: 'Brant Province',
+        offices: {
+          'brant-central': { label: 'Brant Central', code: 'OB-BC-121' },
+          whitlow: { label: 'Whitlow', code: 'OB-WH-263' },
+          ardsey: { label: 'Ardsey', code: 'OB-AR-039' },
+        },
+      },
+      vale: {
+        label: 'Vale Province',
+        offices: {
+          'vale-terminal': { label: 'Vale Terminal', code: 'OV-VT-172' },
+          'corrin-bay': { label: 'Corrin Bay', code: 'OV-CB-088' },
+          nethercott: { label: 'Nethercott', code: 'OV-NC-244' },
+        },
+      },
+    },
+  },
+  marnhold: {
+    label: 'Marnhold',
+    provinces: {
+      estrey: {
+        label: 'Estrey Province',
+        offices: {
+          'estrey-docks': { label: 'Estrey Docks', code: 'ME-ED-129' },
+          'marnhold-gate': { label: 'Marnhold Gate', code: 'ME-MG-057' },
+          'silloth-row': { label: 'Silloth Row', code: 'ME-SR-198' },
+        },
+      },
+      halmere: {
+        label: 'Halmere Province',
+        offices: {
+          'halmere-west': { label: 'Halmere West', code: 'MH-HW-023' },
+          portquay: { label: 'Portquay', code: 'MH-PQ-165' },
+          ganton: { label: 'Ganton', code: 'MH-GA-271' },
+        },
+      },
+      tarn: {
+        label: 'Tarn Province',
+        offices: {
+          'tarn-bridge': { label: 'Tarn Bridge', code: 'MT-TB-093' },
+          loscombe: { label: 'Loscombe', code: 'MT-LC-136' },
+          ferrand: { label: 'Ferrand', code: 'MT-FR-208' },
+        },
+      },
+    },
+  },
+};
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -510,6 +627,58 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       return json(res, 200, { ok: true });
     }
 
+    if (req.method === 'POST' && pathname0 === '/api/modal-shown') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const modal = (found.session.promoModal ??= {
+        shownCount: 0,
+        dismissals: [],
+        overlayClicks: 0,
+        removed: false,
+      });
+      modal.shownCount += 1;
+      modal.lastShownAt = Date.now();
+      return json(res, 200, { ok: true });
+    }
+
+    // Records every outcome of the news digest modal: a real dismissal
+    // (button/esc), an ignored backdrop click, or the MutationObserver's report
+    // that the node was detached without being dismissed.
+    if (req.method === 'POST' && pathname0 === '/api/modal-dismiss') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const modal = found.session.promoModal;
+      if (!modal) {
+        return json(res, 409, { error: 'no modal shown for this session' });
+      }
+      const method = String(payload.method ?? '');
+      const at = Date.now();
+      if (method === 'button' || method === 'esc') {
+        modal.dismissals.push({ method, at });
+      } else if (method === 'overlay') {
+        modal.overlayClicks += 1;
+      } else if (method === 'removed') {
+        modal.removed = true;
+        modal.removedAt = at;
+      } else {
+        return json(res, 400, { error: 'unknown method' });
+      }
+      state.beacons.push({ sid: found.sid, kind: 'modal-dismiss', data: { method }, at });
+      return json(res, 200, { ok: true });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/subscribe') {
       let payload;
       try {
@@ -609,6 +778,46 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
               documents: ['Form I-12', 'Direct Deposit Form', 'Badge Photo'],
             }
       );
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/shipping-quote') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const measure = (value) => {
+        const n = Number(String(value ?? '').trim());
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+      const l = measure(payload.l);
+      const w = measure(payload.w);
+      const h = measure(payload.h);
+      const kg = measure(payload.kg);
+      if (l === null || w === null || h === null || kg === null) {
+        return json(res, 422, {
+          ok: false,
+          error: 'Enter all three dimensions and the weight as positive numbers.',
+        });
+      }
+      // Tariff IVL-7 lives here only, never in fixture source: chargeable
+      // weight is the greater of gross and volumetric (L*W*H / 5000), billed
+      // at $2.40/kg on top of a $12.50 handling base, plus a $1.20/kg fuel
+      // levy assessed on gross weight so both entries move the price.
+      const volumetric = (l * w * h) / 5000;
+      const chargeable = Math.max(kg, volumetric);
+      const quote = '$' + (12.5 + 2.4 * chargeable + 1.2 * kg).toFixed(2);
+      (found.session.shippingQuotes ??= []).push({ l, w, h, kg, quote, at: Date.now() });
+      found.session.lastShippingQuote = quote;
+      return json(res, 200, {
+        ok: true,
+        quote,
+        volumetricKg: volumetric.toFixed(1),
+        chargeableKg: chargeable.toFixed(1),
+      });
     }
 
     if (req.method === 'POST' && pathname0 === '/api/register') {
@@ -852,6 +1061,377 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
       });
     }
 
+    if (req.method === 'GET' && pathname0 === '/api/offices') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const level = String(url.searchParams.get('level') ?? '');
+      const parent = String(url.searchParams.get('parent') ?? '');
+      let options;
+      if (level === 'country') {
+        options = Object.entries(OFFICE_TREE).map(([value, country]) => ({
+          value,
+          label: country.label,
+        }));
+      } else if (level === 'province') {
+        const country = Object.hasOwn(OFFICE_TREE, parent) ? OFFICE_TREE[parent] : null;
+        if (!country) return json(res, 404, { error: 'unknown country' });
+        options = Object.entries(country.provinces).map(([value, province]) => ({
+          value,
+          label: province.label,
+        }));
+      } else if (level === 'office') {
+        const province = Object.values(OFFICE_TREE)
+          .map((country) =>
+            Object.hasOwn(country.provinces, parent) ? country.provinces[parent] : null
+          )
+          .find(Boolean);
+        if (!province) return json(res, 404, { error: 'unknown province' });
+        // The code rides in the option label so the branch code is readable
+        // only after the cascade has been driven.
+        options = Object.entries(province.offices).map(([value, office]) => ({
+          value,
+          label: `${office.label} (${office.code})`,
+        }));
+      } else {
+        return json(res, 400, { error: 'unknown level' });
+      }
+      // Per-session (unlike a beacon, not forgeable through /api/beacon).
+      (found.session.officeFetches ??= []).push({ level, parent, at: Date.now() });
+      return json(res, 200, { level, parent, options });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/office-finder') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const country = String(payload.country ?? '');
+      const province = String(payload.province ?? '');
+      const office = String(payload.office ?? '');
+      const code = String(payload.code ?? '');
+      const branch =
+        Object.hasOwn(OFFICE_TREE, country) &&
+        Object.hasOwn(OFFICE_TREE[country].provinces, province) &&
+        Object.hasOwn(OFFICE_TREE[country].provinces[province].offices, office)
+          ? OFFICE_TREE[country].provinces[province].offices[office]
+          : null;
+      const ok = !!branch && branch.code === code;
+      (found.session.officeSubmissions ??= []).push({
+        country,
+        province,
+        office,
+        code,
+        resolved: branch?.code ?? null,
+        ok,
+        at: Date.now(),
+      });
+      if (!ok) {
+        return json(res, 400, {
+          ok: false,
+          error:
+            'That selection is not in the registry. Reselect the country, province and branch office.',
+        });
+      }
+      // Directory reference is server-issued per session so it never appears
+      // in fixture source on disk.
+      found.session.officeReference ??=
+        'BDR-' + randomBytes(3).toString('hex').toUpperCase();
+      return json(res, 200, {
+        ok: true,
+        reference: found.session.officeReference,
+        code: branch.code,
+        office: branch.label,
+        province: OFFICE_TREE[country].provinces[province].label,
+        country: OFFICE_TREE[country].label,
+      });
+    }
+
+    // T055 draft-resume: the grant application autosaves section by section,
+    // restores on load, and is queued for review by /api/draft-complete.
+    // Every step is appended in order to the session's draftEvents log, which
+    // is what the validator grades — unlike a beacon kind, that log cannot be
+    // faked through the generic /api/beacon endpoint. It hangs off the session
+    // object, so state.reset() clears it between tasks. The `pageload` half of
+    // the log is NOT written here; see the static-HTML hunk below.
+    if (req.method === 'GET' && pathname0 === '/api/draft') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const session = found.session;
+      session.draft ??= {};
+      return json(res, 200, { fields: session.draft });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/draft-save') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const DRAFT_FIELDS = ['applicant', 'organization', 'project', 'budget', 'duration'];
+      const field = String(payload.field ?? '');
+      if (!DRAFT_FIELDS.includes(field)) {
+        return json(res, 400, { error: 'unknown section' });
+      }
+      const session = found.session;
+      const draft = (session.draft ??= {});
+      draft[field] = String(payload.value ?? '').trim().slice(0, 200);
+      (session.draftEvents ??= []).push({ type: 'save', field, at: Date.now() });
+      return json(res, 200, {
+        ok: true,
+        saved: field,
+        completed: DRAFT_FIELDS.filter((f) => draft[f]).length,
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/draft-complete') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const DRAFT_FIELDS = ['applicant', 'organization', 'project', 'budget', 'duration'];
+      const session = found.session;
+      const draft = (session.draft ??= {});
+      const missing = DRAFT_FIELDS.filter((f) => !draft[f]);
+      if (missing.length) {
+        return json(res, 422, { error: 'Sections are still empty.', missing });
+      }
+      // Minted from randomBytes, not from the page nonce, so nothing the page
+      // exposes lets an agent derive the reference code.
+      session.draftRefCode ??= 'DR-' + randomBytes(2).toString('hex').toUpperCase();
+      (session.draftEvents ??= []).push({ type: 'complete', at: Date.now() });
+      return json(res, 200, { reference: session.draftRefCode });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/abstract') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      // Length is measured here, on the string the desk received; the page
+      // counter is a convenience and is never trusted.
+      const summary = String(payload.summary ?? '');
+      const length = summary.length;
+      const accepted = length >= 140 && length <= 160;
+      (found.session.abstractAttempts ??= []).push({
+        summary,
+        length,
+        accepted,
+        at: Date.now(),
+      });
+      if (!accepted) {
+        return json(res, 422, {
+          ok: false,
+          length,
+          message:
+            `The desk measured ${length} characters. Capsules must be 140 to 160 ` +
+            `characters, counted including spaces and punctuation.`,
+        });
+      }
+      // Confirmation id is server-issued per session so it never appears in
+      // fixture source on disk.
+      found.session.abstractId ??= 'ABS-' + randomBytes(2).toString('hex').toUpperCase();
+      return json(res, 200, { ok: true, length, id: found.session.abstractId });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/grid-edit') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      found.session.grid ??= GRID_EDIT_ROWS.map((row) => ({ ...row }));
+      return json(res, 200, {
+        sheet: GRID_EDIT_SHEET,
+        memo: GRID_EDIT_MEMO,
+        rows: found.session.grid,
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/grid-edit') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      found.session.grid ??= GRID_EDIT_ROWS.map((row) => ({ ...row }));
+      const sku = String(payload.sku ?? '');
+      const qty = Number(payload.qty);
+      const row = found.session.grid.find((r) => r.sku === sku);
+      if (!row || !Number.isInteger(qty) || qty < 0 || qty > 99999) {
+        return json(res, 400, { error: 'unknown line or bad quantity' });
+      }
+      (found.session.gridEdits ??= []).push({
+        sku,
+        from: row.qty,
+        to: qty,
+        at: Date.now(),
+      });
+      row.qty = qty;
+      return json(res, 200, { ok: true, rows: found.session.grid, saved: { sku, qty } });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/unsub/state') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const unsub = (found.session.unsub ??= {
+        steps: [],
+        stays: [],
+        digest: null,
+        phrase: null,
+      });
+      return json(res, 200, {
+        email: 'morgan@tealwave.example',
+        steps: unsub.steps,
+        subscribed: !unsub.phrase,
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/unsub/step') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const unsub = (found.session.unsub ??= {
+        steps: [],
+        stays: [],
+        digest: null,
+        phrase: null,
+      });
+      const step = Number(payload.step);
+      if (step !== 1 && step !== 2) {
+        return json(res, 400, { error: 'unknown step' });
+      }
+      if (step === 2 && !unsub.steps.includes(1)) {
+        return json(res, 409, {
+          error:
+            'This removal request has no earlier step on file. Start again from email preferences.',
+        });
+      }
+      if (!unsub.steps.includes(step)) {
+        unsub.steps.push(step);
+      }
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'unsub-step',
+        data: { step },
+        at: Date.now(),
+      });
+      return json(res, 200, {
+        ok: true,
+        next: step === 1 ? '/unsub/step2.html' : '/unsub/step3.html',
+      });
+    }
+
+    // Every "stay subscribed" control on the three unsubscribe screens lands
+    // here; a correct run records none of them.
+    if (req.method === 'POST' && pathname0 === '/api/unsub/stay') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const unsub = (found.session.unsub ??= {
+        steps: [],
+        stays: [],
+        digest: null,
+        phrase: null,
+      });
+      const control = String(payload.control ?? '');
+      unsub.stays.push({ control, at: Date.now() });
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'unsub-stay',
+        data: { control },
+        at: Date.now(),
+      });
+      return json(res, 200, {
+        ok: true,
+        message: 'Nothing was cancelled. Your Tealwave subscription is unchanged.',
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/unsub/finish') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const unsub = (found.session.unsub ??= {
+        steps: [],
+        stays: [],
+        digest: null,
+        phrase: null,
+      });
+      if (!unsub.steps.includes(1) || !unsub.steps.includes(2)) {
+        return json(res, 409, {
+          error:
+            'Earlier steps are missing from this removal request. Start again from email preferences.',
+        });
+      }
+      // Explicit boolean required so a blind `finish {}` cannot win the flow
+      // without reading the digest control off the page.
+      if (typeof payload.digest !== 'boolean') {
+        return json(res, 400, {
+          error:
+            'A digest preference is required: send digest true or false with the finish request.',
+        });
+      }
+      if (!unsub.steps.includes(3)) {
+        unsub.steps.push(3);
+      }
+      const digest = payload.digest;
+      unsub.digest = digest;
+      unsub.reason = String(payload.reason ?? '');
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'unsub-finish',
+        data: { digest },
+        at: Date.now(),
+      });
+      // Finishing with the pre-checked digest box still on re-subscribes the
+      // address, so no removal phrase is issued.
+      if (digest) {
+        return json(res, 200, {
+          ok: true,
+          message:
+            'Preferences saved. The Tealwave Weekly Digest keeps arriving every Thursday.',
+        });
+      }
+      // Phrase is server-issued from randomBytes so it never appears in
+      // fixture source on disk and cannot be derived from the page nonce.
+      unsub.phrase ??= 'UNSUB-' + randomBytes(2).toString('hex').toUpperCase();
+      return json(res, 200, {
+        ok: true,
+        phrase: unsub.phrase,
+        message: 'This address was removed from every Tealwave mailing.',
+      });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/roster-submit') {
       let payload;
       try {
@@ -907,6 +1487,16 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
         const text = data.toString('utf8');
         if (text.includes('__SESSION_NONCE__')) {
           data = Buffer.from(text.replaceAll('__SESSION_NONCE__', found.session.nonce));
+        }
+        // T055 draft-resume: the graded `pageload` event is minted here, on a
+        // real document navigation, and nowhere else. Emitting it from an API
+        // endpoint would let page script forge a reload with a plain fetch.
+        if (
+          pathname === '/forms/draft.html' &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          req.headers['sec-fetch-dest'] === 'document'
+        ) {
+          (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
         }
       }
       res.writeHead(200, headers);

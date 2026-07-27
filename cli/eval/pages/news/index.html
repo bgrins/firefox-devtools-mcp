@@ -22,6 +22,25 @@
   .subtext a { color: #828282; }
   #footer { text-align: center; color: #828282; font-size: 8pt; border-top: 2px solid #4a7023;
             padding: 8px; margin-top: 8px; }
+  #digestveil { position: fixed; inset: 0; background: rgba(40, 44, 32, 0.72);
+                z-index: 90; }
+  #digestbox { position: fixed; top: 16%; left: 50%; transform: translateX(-50%);
+               width: 400px; max-width: 88%; background: #f6f6ef; z-index: 91;
+               border: 1px solid #4a7023; border-top: 5px solid #4a7023;
+               padding: 14px 18px 16px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+  #digestbox h2 { font-size: 11pt; margin: 0 0 6px; color: #3b5a1c; }
+  #digestbox p { font-size: 9pt; line-height: 1.5; color: #3a3a30; margin: 0 0 10px; }
+  #digestbox .fine { font-size: 7pt; color: #828282; margin: 8px 0 0; }
+  #digestbox input { font-family: inherit; font-size: 9pt; padding: 4px 5px;
+                     border: 1px solid #b9b9a8; background: #fff; width: 58%; }
+  #digestbox button.join { font-family: inherit; font-size: 9pt; padding: 4px 12px;
+                           margin-left: 5px; border: 1px solid #4a7023; background: #4a7023;
+                           color: #fff; cursor: pointer; }
+  #digestclose { position: absolute; top: 4px; right: 5px; width: 20px; height: 20px;
+                 line-height: 18px; font-family: inherit; font-size: 11pt; padding: 0;
+                 border: 1px solid #c4c4b4; background: #ecece1; color: #5a5a4a;
+                 cursor: pointer; }
+  #digestbox .note { font-size: 8pt; color: #3b5a1c; margin: 0; }
 </style>
 </head>
 <body>
@@ -81,6 +100,162 @@
         '<tr><td colspan="2"></td><td class="title"><a href="/news/">More</a></td></tr>'
       );
     });
+</script>
+<script>
+  (function () {
+    if (new URLSearchParams(location.search).get('promo') !== '1') return;
+
+    const NONCE = '__SESSION_NONCE__';
+    let closed = false;
+
+    function announce() {
+      return fetch('/api/modal-shown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE }),
+      });
+    }
+
+    // Announced before the modal exists, so a dismissal can never reach the
+    // server before the server knows the modal was shown.
+    let announceSettled = false;
+    const announced = announce()
+      .catch(() => {})
+      .finally(() => {
+        announceSettled = true;
+      });
+
+    function post(method) {
+      const opts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: NONCE, method }),
+        keepalive: true,
+      };
+      return fetch('/api/modal-dismiss', opts).then((res) =>
+        res.status === 409 ? announce().then(() => fetch('/api/modal-dismiss', opts)) : res
+      );
+    }
+
+    function send(method, viaBeacon) {
+      if (viaBeacon && navigator.sendBeacon) {
+        // Sent synchronously: it has to survive a same-turn navigation. If the
+        // announce is still in flight it may arrive too early, so fall through
+        // to the ordered retry in that case only.
+        navigator.sendBeacon(
+          '/api/modal-dismiss',
+          new Blob([JSON.stringify({ nonce: NONCE, method })], {
+            type: 'application/json',
+          })
+        );
+        if (announceSettled) return;
+      }
+      announced.then(() => post(method)).catch(() => {});
+    }
+
+    const veil = document.createElement('div');
+    veil.id = 'digestveil';
+
+    const box = document.createElement('div');
+    box.id = 'digestbox';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'digesttitle');
+    box.innerHTML =
+      '<button id="digestclose" type="button" aria-label="Close" title="Close">&times;</button>' +
+      '<h2 id="digesttitle">The Bulletin Digest</h2>' +
+      '<p>One email each Friday with the ten highest-ranked posts of the week, the ' +
+      'best comment thread we saw, and nothing else. Free while it stays small.</p>' +
+      '<div><input id="digestemail" type="email" autocomplete="email" ' +
+      'placeholder="you@example.com" aria-label="Email address">' +
+      '<button class="join" id="digestjoin" type="button">Join</button></div>' +
+      '<p class="fine" id="digestfine">We send one message a week and never share the ' +
+      'list. Unsubscribe from the footer of any issue.</p>';
+
+    const wrap = document.getElementById('wrap');
+
+    function focusables() {
+      return Array.from(
+        box.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.disabled && el.offsetParent !== null);
+    }
+
+    function onKeydown(e) {
+      if (closed) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismiss('esc');
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !box.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !box.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    function onFocusIn(e) {
+      if (closed || box.contains(e.target)) return;
+      const list = focusables();
+      if (list.length) list[0].focus();
+    }
+
+    function teardown() {
+      document.removeEventListener('keydown', onKeydown, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      veil.remove();
+      box.remove();
+      if (wrap) wrap.removeAttribute('aria-hidden');
+    }
+
+    const observer = new MutationObserver(() => {
+      if (closed || (box.isConnected && veil.isConnected)) return;
+      closed = true;
+      observer.disconnect();
+      send('removed', true);
+      teardown();
+    });
+
+    function dismiss(method) {
+      if (closed) return;
+      closed = true;
+      observer.disconnect();
+      send(method);
+      teardown();
+    }
+
+    veil.addEventListener('click', () => {
+      if (!closed) send('overlay');
+    });
+    box.addEventListener('click', (e) => {
+      if (e.target.id === 'digestclose') dismiss('button');
+      if (e.target.id !== 'digestjoin') return;
+      const email = box.querySelector('#digestemail');
+      const fine = box.querySelector('#digestfine');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value.trim())) {
+        fine.textContent = 'Enter a valid email address to join the digest.';
+        return;
+      }
+      fine.className = 'note';
+      fine.textContent = 'Almost there: confirm the link we just emailed you.';
+    });
+
+    document.addEventListener('keydown', onKeydown, true);
+    document.addEventListener('focusin', onFocusIn, true);
+
+    if (wrap) wrap.setAttribute('aria-hidden', 'true');
+    document.body.prepend(veil, box);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    box.querySelector('#digestclose').focus();
+  })();
 </script>
 </body>
 </html>
