@@ -170,6 +170,82 @@ export const ANSWERS = {
     recommendations: [/wednesday/i, /\bmemos?\b/i, /interrupt/i],
   },
 
+  // pages/shop/voltro/desk-setup.html + basket.html — the accessory listing,
+  // its prices, the per-customer caps and the 8% tax all live in server.mjs and
+  // reach the page only through the session-gated /api/shop/* endpoints, so no
+  // figure below appears in fixture source. `subtotal`/`total` are
+  // documentation only: the validator grades the total the server last served
+  // that session (sessions[sid].shopTotalsSeen.voltro.total, written by
+  // shopTotals() for every response that carries totals, not just basket reads).
+  cartMath: {
+    store: 'voltro',
+    items: { 'HueBeam 27': 2, 'Voltro ArmMount Pro': 1 },
+    subtotal: 357.89,
+    total: 386.52,
+  },
+
+  // pages/shop/voltro/desk-setup.html — CableSnake Pro carries
+  // maxPerCustomer: 3 in server.mjs's SHOP_CATALOG. The number 3 appears
+  // nowhere on disk: it reaches the agent only in the 409 error banner
+  // ("Limit 3 per customer for CableSnake Pro."), and the graded fact is the
+  // server-side cart line being clamped to 3.
+  qtyLimit: { store: 'voltro', name: 'CableSnake Pro', limit: 3 },
+
+  // pages/shop/nexbuy/promos.html + basket.html — four published codes, one
+  // valid for a single ClaritySee CS27-4K: SAVE30 expired 2026-06-30,
+  // MONITOR15 excludes the ClaritySee brand, FIVEOFF is valid but worse.
+  // The IIFE is a build-time assertion that NEX10 is the UNIQUE optimum with a
+  // margin of more than $5 over the runner-up; it throws at import time if a
+  // future price or rule edit breaks that. `finalTotal` is documentation only
+  // (274.50 - 27.45 discount = 247.05, + 19.76 tax + 4.50 recycling levy):
+  // the validator grades the figure the server issued for that session.
+  couponStack: (() => {
+    const price = 274.5;
+    const candidates = { NEX10: Math.round(price * 10) / 100, FIVEOFF: 5 };
+    const ranked = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+    if (ranked[0][0] !== 'NEX10' || ranked[0][1] - ranked[1][1] <= 5) {
+      throw new Error(
+        'coupon-stack: NEX10 must be the unique optimum by more than $5 over the runner-up'
+      );
+    }
+    return {
+      store: 'nexbuy',
+      code: 'NEX10',
+      product: 'ClaritySee CS27-4K',
+      invalid: ['SAVE30', 'MONITOR15'],
+      runnerUp: ranked[1][0],
+      margin: ranked[0][1] - ranked[1][1],
+      finalTotal: 271.31,
+    };
+  })(),
+
+  // pages/shop/nexbuy/aerodesk.html — the 9-combo price/stock matrix lives in
+  // server.mjs (AERODESK_VARIANTS) and is reachable only through the
+  // session-gated /api/shop/variant endpoint, one fetch per combination.
+  // Cheapest IN STOCK is M/Sand 39.50 (runner-up in stock 41.00); the two
+  // cheapest combos overall, S/Moss 34.00 and M/Moss 37.00, are out of stock,
+  // so an agent that ignores stock reports decoyPrice and fails.
+  variantMatrix: { size: 'M', color: 'Sand', price: 39.5, decoyPrice: 34.0 },
+
+  // pages/shop/gadgetron/substitutions.html — PF-27 is sold out online
+  // (server-side inStock: false, so the add is refused 409 and logged to
+  // sessions[sid].shopOosAttempts) and the policy table names BP-27U as its
+  // one approved alternate. `decoy` is the alternate the policy page
+  // explicitly rejects. Truth is server-observed: the gadgetron order list
+  // holds exactly one BrightPanel BP-27U. `approved` is the catalog name (the
+  // graded cart line); `approvedSku`/`approvedBrand` are the two halves the
+  // answer text is graded on independently, because the only rendering of the
+  // alternate outside a snapshot-invisible table is the bare part number.
+  oosSubstitute: {
+    store: 'gadgetron',
+    requestedSku: 'PF-27',
+    requested: 'PixelForge PF-27',
+    approved: 'BrightPanel BP-27U',
+    approvedSku: 'BP-27U',
+    approvedBrand: 'BrightPanel',
+    decoy: 'ScreenCraft SC-27U HDR',
+  },
+
   // pages/shop/voltro/ checkout — the order summary hash is server-issued
   // per session (server.mjs); truth is server-observed: review reached with
   // the right item in the cart, zero purchases, zero upgrade claims.

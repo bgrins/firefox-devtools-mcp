@@ -1739,6 +1739,279 @@ async function webTasks(base) {
         };
       },
     },
+    {
+      id: 'cart-math',
+      ask:
+        `Open ${base}/shop/voltro/desk-setup.html and add 2 of the HueBeam 27 monitor ` +
+        `and 1 Voltro ArmMount Pro desk mount to the basket. Then open the basket page ` +
+        `and report the order total including the 8% sales tax.`,
+      validate: (text, ctx) => {
+      // Money compared numerically: optional $, optional thousands separators,
+      // and float noise ("386.5200000000001") all match; "1,386.52" does not.
+      const money = (haystack, value) => {
+        const target = Number(value);
+        for (const m of String(haystack).matchAll(
+          /(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?/g
+        )) {
+          const n = Number(m[1].replace(/,/g, '') + '.' + (m[2] ?? '0'));
+          if (Math.abs(n - target) < 0.005) return true;
+        }
+        return false;
+      };
+        const want = ANSWERS.cartMath.items;
+        const asMap = (cart) =>
+          Object.fromEntries((cart ?? []).map((l) => [l.name, l.qty]));
+        const exact = (session) => {
+          const got = asMap(session.shopCarts?.voltro);
+          const keys = Object.keys(got);
+          return (
+            keys.length === Object.keys(want).length &&
+            keys.every((k) => got[k] === want[k])
+          );
+        };
+        const sessions = [...ctx.pages.state.sessions.values()];
+        // Grade the session that built the requested basket; a stray curl
+        // session with a different basket must not shadow the real run.
+        const session =
+          sessions.find((s) => exact(s) && s.shopTotalsSeen?.voltro) ??
+          sessions.find(exact) ??
+          sessions.find((s) => (s.shopCarts?.voltro ?? []).length) ??
+          null;
+        const cartOk = !!session && exact(session);
+        // The total the server LAST served this session, not a recompute. Every
+        // response carrying totals is recorded (add/remove/coupon as well as the
+        // basket read), so reading the basket midway and then adding the last
+        // line still grades against the final figure.
+        const seen = session?.shopTotalsSeen?.voltro ?? null;
+        const served = session?.shopTotalsLog?.voltro ?? [];
+        const totalOk = !!seen && money(text, seen.total);
+        return {
+          pass: cartOk && totalOk,
+          detail:
+            `sessions=${sessions.length} cartOk=${cartOk} ` +
+            `cart=${JSON.stringify(asMap(session?.shopCarts?.voltro))} ` +
+            `serverTotal=${seen?.total ?? 'never served'} ` +
+            `served=[${served.map((s) => s.total).join(',')}] totalOk=${totalOk}`,
+        };
+      },
+    },
+    {
+      id: 'qty-limit',
+      ask:
+        `Open ${base}/shop/voltro/desk-setup.html and try to buy 5 CableSnake Pro cable ` +
+        `organizers. The store enforces a per-customer limit, so end up with the maximum ` +
+        `quantity the store allows in your basket. Report both the limit and your final ` +
+        `basket quantity.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const name = ANSWERS.qtyLimit.name;
+        const limit = ANSWERS.qtyLimit.limit;
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const lineOf = (s) =>
+          (s.shopCarts?.voltro ?? []).find((l) => l.name === name) ?? null;
+        // Grade the session that was actually capped; a stray curl session
+        // holding a different quantity must not shadow the real run.
+        const session =
+          sessions.find(
+            (s) => lineOf(s)?.qty === limit && (s.shopLimitRejections ?? []).length
+          ) ??
+          sessions.find((s) => lineOf(s)?.qty === limit) ??
+          sessions.find((s) => lineOf(s)) ??
+          null;
+        const line = session ? lineOf(session) : null;
+        const cartOk = line?.qty === limit;
+        const rejected = (session?.shopLimitRejections ?? []).some(
+          (r) => r.capped === limit && r.requested > limit
+        );
+        // Direction-agnostic and vocabulary-tolerant: the cap may be stated as a
+        // limit, a maximum, a restriction, "at most", "no more than", "only 3",
+        // or "3 per customer", in either order. The exact-cart gate carries the
+        // weight, so this conjunct only has to recognise that a cap was reported.
+        const limitWord =
+          /\b(limit\w*|maximum|max|cap|capped|caps|allow\w*|restrict\w*|ceiling|threshold|quota|only|at most|no more than|more than|up to|per\s+(customer|shopper|person|household|account|order))\b/i.test(
+            text
+          );
+        const limitNumber = new RegExp(
+          `(?<![\\d.,])${limit}(?!\\d|[.,]\\d)|\\b(?:three)\\b`,
+          'i'
+        ).test(text);
+        const limitStated = limitWord && limitNumber;
+        return {
+          pass: cartOk && limitStated,
+          detail:
+            `sessions=${sessions.length} cartQty=${line?.qty ?? 'none'} ` +
+            `cartOk=${cartOk} rejected=${rejected} limitStated=${limitStated}`,
+        };
+      },
+    },
+    {
+      id: 'coupon-stack',
+      ask:
+        `Buy the ClaritySee CS27-4K from NexBuy: open ${base}/shop/nexbuy/cs27-4k.html ` +
+        `and add it to the basket, read the offers page at ` +
+        `${base}/shop/nexbuy/promos.html, then apply the best promotion code that is ` +
+        `actually valid for this order. Report the code you used and the final order ` +
+        `total shown in the basket.`,
+      validate: (rawText, ctx) => {
+      // Money compared numerically: optional $, optional thousands separators,
+      // and float noise ("386.5200000000001") all match; "1,386.52" does not.
+      const money = (haystack, value) => {
+        const target = Number(value);
+        for (const m of String(haystack).matchAll(
+          /(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?/g
+        )) {
+          const n = Number(m[1].replace(/,/g, '') + '.' + (m[2] ?? '0'));
+          if (Math.abs(n - target) < 0.005) return true;
+        }
+        return false;
+      };
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const code = ANSWERS.couponStack.code;
+        // Grade the session that got a code accepted; prefer the one holding
+        // the optimum so a stray curl session cannot shadow the real run.
+        const withCoupon = [...ctx.pages.state.sessions.values()].filter(
+          (s) => s.shopCoupons?.nexbuy?.accepted
+        );
+        const session =
+          withCoupon.find((s) => s.shopCoupons.nexbuy.code === code) ??
+          withCoupon[0] ??
+          null;
+        const applied = session?.shopCoupons?.nexbuy;
+        const codeAccepted = applied?.code === code;
+        const cartOk = (session?.shopCarts?.nexbuy ?? []).some(
+          (l) => l.name === ANSWERS.couponStack.product
+        );
+        const codeReported = new RegExp(`\\b${code}\\b`, 'i').test(text);
+        const totalReported =
+          typeof applied?.finalTotal === 'number' && money(text, applied.finalTotal);
+        return {
+          pass: codeAccepted && cartOk && codeReported && totalReported,
+          detail:
+            `couponSessions=${withCoupon.length} code=${applied?.code ?? 'none'} ` +
+            `codeAccepted=${codeAccepted} cartOk=${cartOk} ` +
+            `codeReported=${codeReported} ` +
+            `finalTotal=${applied?.finalTotal ?? 'none'} totalReported=${totalReported}`,
+        };
+      },
+    },
+    {
+      id: 'variant-matrix',
+      ask:
+        `Open ${base}/shop/nexbuy/aerodesk.html. Using the size and colour selectors, ` +
+        `find the cheapest combination of the AeroDesk mat that is in stock. Report the ` +
+        `size, the colour and the price.`,
+      validate: (rawText, ctx) => {
+      // Money compared numerically: optional $, optional thousands separators,
+      // and float noise ("386.5200000000001") all match; "1,386.52" does not.
+      const money = (haystack, value) => {
+        const target = Number(value);
+        for (const m of String(haystack).matchAll(
+          /(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?/g
+        )) {
+          const n = Number(m[1].replace(/,/g, '') + '.' + (m[2] ?? '0'));
+          if (Math.abs(n - target) < 0.005) return true;
+        }
+        return false;
+      };
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const { size, color, price, decoyPrice } = ANSWERS.variantMatrix;
+        const combo = `${size}/${color}`;
+        const sessions = [...ctx.pages.state.sessions.values()];
+        // Grade the session that probed the winning combination in the browser;
+        // prefer one that probed more than a single combo.
+        const probed = (s) =>
+          (s.shopVariantFetches ?? []).some((f) => f.combo === combo);
+        const session =
+          sessions.find((s) => probed(s) && (s.shopVariantFetches ?? []).length > 1) ??
+          sessions.find(probed) ??
+          null;
+        const fetches = session?.shopVariantFetches ?? [];
+        const probedWinner = fetches.some((f) => f.combo === combo);
+        const sizeOk = /\b(m|medium)\b/i.test(text);
+        const colorOk = new RegExp(color, 'i').test(text);
+        const priceOk = money(text, price);
+        // Naming the cheaper out-of-stock decoy is fine as long as the answer
+        // says somewhere that it could not be bought, in any of the wordings the
+        // page and a paraphrase of it produce (the Add button is disabled, so
+        // "disabled" and "cannot be purchased" are as likely as "out of stock").
+        const outOfStockNoted =
+          /out[\s-]?of[\s-]?stock|sold out|unavailable|not available|no longer available|not in stock|no stock|back[\s-]?order|restock|disabled|greyed|grayed|cannot|can[']?t|not purchasable|not orderable|not buyable/i.test(
+            text
+          );
+        const decoySold = money(text, decoyPrice) && !outOfStockNoted;
+        return {
+          pass: probedWinner && sizeOk && colorOk && priceOk && !decoySold,
+          detail:
+            `sessions=${sessions.length} fetches=${fetches.length} ` +
+            `probedWinner=${probedWinner} sizeOk=${sizeOk} colorOk=${colorOk} ` +
+            `priceOk=${priceOk} decoySold=${decoySold}`,
+        };
+      },
+    },
+    {
+      id: 'oos-substitute',
+      ask:
+        `Open ${base}/shop/gadgetron/ and order one PixelForge PF-27 monitor. If it is ` +
+        `unavailable, follow the store's substitution policy and order the approved ` +
+        `alternate instead. Report exactly what ended up on your order list.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const approved = ANSWERS.oosSubstitute.approved;
+        const approvedSku = ANSWERS.oosSubstitute.approvedSku;
+        const approvedBrand = ANSWERS.oosSubstitute.approvedBrand;
+        const requested = ANSWERS.oosSubstitute.requestedSku;
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const asMap = (cart) =>
+          Object.fromEntries((cart ?? []).map((l) => [l.name, l.qty]));
+        const exact = (cart) => {
+          const got = asMap(cart);
+          return Object.keys(got).length === 1 && got[approved] === 1;
+        };
+        // Grade the session whose order list holds exactly the alternate; fall
+        // back to any session that touched the gadgetron order list.
+        const session =
+          sessions.find((s) => exact(s.shopCarts?.gadgetron)) ??
+          sessions.find((s) => (s.shopCarts?.gadgetron ?? []).length) ??
+          sessions.find((s) => (s.shopOosAttempts ?? []).length) ??
+          null;
+        const cart = session?.shopCarts?.gadgetron ?? [];
+        const cartOk = exact(cart);
+        const oosSeen = (session?.shopOosAttempts ?? []).some(
+          (a) => a.sku === requested
+        );
+        // The part number is what the browser surface actually shows (the
+        // banner "Added BP-27U x1", the Remove button's aria-label); the brand +
+        // model string only exists inside snapshot-invisible tables, so either
+        // half identifies the alternate. No contiguous phrase is required.
+        const namesApproved =
+          new RegExp(`\\b${approvedSku.replace(/-/g, '[-\\s]?')}\\b`, 'i').test(text) ||
+          new RegExp(`\\b${approvedBrand}\\b`, 'i').test(text);
+        // Judged per clause (commas and dashes split too, so a comma-joined
+        // "X is excluded, so I ordered Y" is two clauses) and negation-aware:
+        // naming the unapproved alternate in order to rule it out is exemplary
+        // and must not fail.
+        const decoyRe = /SC-27U\s*HDR/i;
+        const orderVerb =
+          /\b(order(?:ed|ing)?|add(?:ed|ing)?|queued?|cart(?:ed)?|chose|choose|selected|picked|substituted?)\b/i;
+        const ruledOut =
+          /\bnot\b|n't|instead of|rather than|reject\w*|exclud\w*|skip\w*|rule[sd]? out|ruling out|avoid\w*|refus\w*|unapproved|ineligible|disallow\w*|prohibit\w*|forbid\w*|declin\w*|cannot|won't|sold out|out of stock|unavailable/i;
+        const namesDecoyAsChoice = text
+          .split(/[.!?\n;,–—]+|\s-\s/)
+          .some(
+            (sentence) =>
+              decoyRe.test(sentence) &&
+              orderVerb.test(sentence) &&
+              !ruledOut.test(sentence)
+          );
+        return {
+          pass: cartOk && namesApproved && !namesDecoyAsChoice,
+          detail:
+            `sessions=${sessions.length} cart=${JSON.stringify(asMap(cart))} ` +
+            `cartOk=${cartOk} oosSeen=${oosSeen} namesApproved=${namesApproved} ` +
+            `namesDecoyAsChoice=${namesDecoyAsChoice}`,
+        };
+      },
+    },
   ];
 }
 

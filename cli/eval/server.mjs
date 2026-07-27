@@ -165,6 +165,219 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// pages/shop/ — the multi-store basket shared by cart-math, qty-limit,
+// coupon-stack, variant-matrix and oos-substitute. Prices, the tax rate, the
+// per-customer caps, the coupon rules and the AeroDesk variant matrix exist
+// only here: no fixture page and no client script carries them. The older
+// /api/voltro/* checkout (checkout-stop) keeps its own separate cart, so the
+// two never share state.
+const SHOP_TAX_RATE = 0.08;
+const SHOP_LEVY_PER_MONITOR = 4.5;
+
+const SHOP_CATALOG = {
+  voltro: [
+    { sku: 'HB-27Q', name: 'HueBeam 27', price: 161.45, inStock: true,
+      blurb: '27 inch QHD 2560x1440 IPS, 144 Hz, HDMI and DP' },
+    { sku: 'VAM-PRO', name: 'Voltro ArmMount Pro', price: 34.99, inStock: true,
+      blurb: 'Single monitor desk mount, gas spring, C-clamp, to 9 kg' },
+    { sku: 'CSN-PRO', name: 'CableSnake Pro', price: 12.99, inStock: true,
+      maxPerCustomer: 3,
+      blurb: 'Braided cable organiser sleeve, 1.5 m, self-closing',
+      note: 'Quantity limits apply to this item.' },
+    { sku: 'HB-27QS', name: 'HueBeam 27 Stand-Free', price: 178.0, inStock: true,
+      blurb: '27 inch QHD 2560x1440 IPS, VESA only, no stand included' },
+    { sku: 'VAM-FLX', name: 'Voltro ArmMount Flex', price: 27.5, inStock: true,
+      blurb: 'Single monitor desk mount, friction hinge, to 6 kg' },
+    { sku: 'VKL-SLM', name: 'Voltro KeyLight Slim', price: 44.5, inStock: true,
+      blurb: 'Clip-on LED monitor light bar, dimmable, USB-C' },
+  ],
+  nexbuy: [
+    { sku: '6428193', name: 'ClaritySee CS27-4K', price: 274.5, inStock: true,
+      brand: 'ClaritySee', monitor: true,
+      blurb: '27 inch 4K Ultra HD 3840 x 2160, IPS, 60 Hz, HDMI 2.0 and DP 1.4' },
+    { sku: '6428194', name: 'ClaritySee CS27-4K Refurbished', price: 239.99,
+      inStock: false, brand: 'ClaritySee', monitor: true,
+      blurb: 'Open-box 27 inch 4K Ultra HD, 90-day limited warranty' },
+    { sku: '6419055', name: 'ScreenCraft SC-27U', price: 329.99, inStock: true,
+      brand: 'ScreenCraft', monitor: true,
+      blurb: '27 inch 4K Ultra HD 3840 x 2160, IPS, 60 Hz, USB-C 65 W' },
+  ],
+  gadgetron: [
+    { sku: 'PF-27', name: 'PixelForge PF-27', price: 296.0, inStock: false,
+      substitute: 'BP-27U', blurb: 'UHD-4K 3840x2160, 27 in, IPS, 60 Hz' },
+    { sku: 'BP-27U', name: 'BrightPanel BP-27U', price: 311.5, inStock: true,
+      blurb: 'UHD-4K 3840x2160, 27 in, IPS, 60 Hz, 400 nit' },
+    { sku: 'CS27-OB', name: 'ClaritySee CS27-4K Open-Box', price: 249.99,
+      inStock: false, substitute: 'CS27-Q',
+      blurb: 'UHD-4K 3840x2160, 27 in, open-box return' },
+    { sku: 'CS27-Q', name: 'ClaritySee CS27-Q', price: 194.99, inStock: true,
+      blurb: 'QHD 2560x1440, 27 in, IPS, 144 Hz' },
+    { sku: 'PP27U-V', name: 'PixelPeak P27U Value', price: 302.99, inStock: true,
+      blurb: 'UHD-4K 3840x2160, 27 in, IPS, 60 Hz' },
+    { sku: 'SC27U-H', name: 'ScreenCraft SC-27U HDR', price: 349.99, inStock: true,
+      blurb: 'UHD-4K 3840x2160, 27 in, IPS, 60 Hz, HDR600' },
+    { sku: 'GDX-HUB', name: 'GadgetDock DX Hub', price: 79.0, inStock: false,
+      substitute: 'GDX-HUB2', blurb: '11-port USB-C dock, 85 W passthrough' },
+    { sku: 'GDX-HUB2', name: 'GadgetDock DX2 Hub', price: 88.5, inStock: true,
+      blurb: '12-port USB-C dock, 100 W passthrough' },
+  ],
+};
+
+// pages/shop/nexbuy/promos.html states the fine print; the arithmetic and the
+// eligibility checks run only here. Exactly one code (NEX10) is valid for a
+// single ClaritySee CS27-4K order, and it beats the runner-up (FIVEOFF) by
+// $22.45 — asserted in answers.mjs at load time.
+const SHOP_COUPONS = {
+  SAVE30: { store: 'nexbuy', flat: 30, monitorsOnly: true, expired: true,
+    expiresOn: '2026-06-30' },
+  MONITOR15: { store: 'nexbuy', percent: 15, monitorsOnly: true,
+    excludeBrand: 'ClaritySee' },
+  NEX10: { store: 'nexbuy', percent: 10, minSubtotal: 200 },
+  FIVEOFF: { store: 'nexbuy', flat: 5 },
+};
+
+// pages/shop/nexbuy/aerodesk.html — the 9-combo price/stock matrix. Cheapest
+// in stock is M/Sand at 39.50 (runner-up in stock 41.00); the two cheapest
+// combos overall, S/Moss 34.00 and M/Moss 37.00, are out of stock.
+const AERODESK_VARIANTS = {
+  'S/Graphite': { price: 41.0, inStock: true },
+  'S/Sand': { price: 43.5, inStock: true },
+  'S/Moss': { price: 34.0, inStock: false },
+  'M/Graphite': { price: 44.0, inStock: true },
+  'M/Sand': { price: 39.5, inStock: true },
+  'M/Moss': { price: 37.0, inStock: false },
+  'L/Graphite': { price: 47.5, inStock: true },
+  'L/Sand': { price: 45.0, inStock: true },
+  'L/Moss': { price: 52.0, inStock: true },
+};
+
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// A part-number box accepts free text, so resolution is exact-sku, then
+// exact-name, then a unique substring; anything matching two parts is an
+// ambiguity error rather than a silent pick.
+function shopResolveItem(store, key) {
+  const raw = String(key ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!raw) return null;
+  const variant = /^ad-([sml])-(graphite|sand|moss)$/.exec(raw);
+  if (store === 'nexbuy' && variant) {
+    const size = variant[1].toUpperCase();
+    const color = variant[2][0].toUpperCase() + variant[2].slice(1);
+    const combo = AERODESK_VARIANTS[`${size}/${color}`];
+    if (combo) {
+      return {
+        sku: `AD-${size}-${color}`,
+        name: `AeroDesk mat, ${size} ${color}`,
+        price: combo.price,
+        inStock: combo.inStock,
+      };
+    }
+  }
+  const list = SHOP_CATALOG[store] ?? [];
+  const exact =
+    list.find((item) => item.sku.toLowerCase() === raw) ??
+    list.find((item) => item.name.toLowerCase() === raw);
+  if (exact) return exact;
+  if (raw.length < 4) return null;
+  const loose = list.filter(
+    (item) => item.sku.toLowerCase().includes(raw) || item.name.toLowerCase().includes(raw)
+  );
+  if (loose.length > 1) {
+    return { ambiguous: true, candidates: loose.map((item) => item.sku) };
+  }
+  return loose[0] ?? null;
+}
+
+function shopCart(session, store) {
+  const carts = (session.shopCarts ??= {});
+  return (carts[store] ??= []);
+}
+
+function shopEvaluateCoupon(session, store, code) {
+  const rule = SHOP_COUPONS[code];
+  if (!rule || rule.store !== store) {
+    return { ok: false, error: 'That code is not recognised for this basket.' };
+  }
+  const lines = shopCart(session, store);
+  if (!lines.length) {
+    return { ok: false, error: 'Your basket is empty, so no offer can be applied.' };
+  }
+  if (rule.expired) {
+    return { ok: false, error: `Offer ${code} ended on ${rule.expiresOn}.` };
+  }
+  const subtotal = round2(lines.reduce((sum, l) => sum + l.price * l.qty, 0));
+  if (rule.excludeBrand && lines.some((l) => l.brand === rule.excludeBrand)) {
+    return { ok: false, error: `${code} excludes ${rule.excludeBrand} products.` };
+  }
+  if (rule.minSubtotal && subtotal < rule.minSubtotal) {
+    return {
+      ok: false,
+      error: `${code} needs a basket subtotal of $${rule.minSubtotal.toFixed(2)} or more.`,
+    };
+  }
+  const eligible = rule.monitorsOnly
+    ? round2(lines.filter((l) => l.monitor).reduce((sum, l) => sum + l.price * l.qty, 0))
+    : subtotal;
+  const discount = rule.percent
+    ? round2((eligible * rule.percent) / 100)
+    : round2(Math.min(rule.flat, eligible));
+  if (discount <= 0) {
+    return { ok: false, error: `${code} does not apply to anything in your basket.` };
+  }
+  return { ok: true, discount };
+}
+
+// Recomputed on every read so a stored code that stops qualifying (line
+// removed, basket emptied) silently stops discounting instead of going stale.
+function shopTotals(session, store) {
+  const cart = shopCart(session, store);
+  const lines = cart.map((line) => ({
+    sku: line.sku,
+    name: line.name,
+    unitPrice: line.price,
+    qty: line.qty,
+    lineTotal: round2(line.price * line.qty),
+  }));
+  const subtotal = round2(lines.reduce((sum, l) => sum + l.lineTotal, 0));
+  const stored = (session.shopCoupons ??= {})[store];
+  let discount = 0;
+  let coupon = null;
+  if (stored?.accepted) {
+    const check = shopEvaluateCoupon(session, store, stored.code);
+    if (check.ok) {
+      discount = check.discount;
+      coupon = { code: stored.code, discount };
+    }
+  }
+  const monitorUnits = cart.reduce((n, l) => n + (l.monitor ? l.qty : 0), 0);
+  const levy = store === 'nexbuy' ? round2(SHOP_LEVY_PER_MONITOR * monitorUnits) : 0;
+  const taxable = round2(subtotal - discount);
+  const tax = round2(taxable * SHOP_TAX_RATE);
+  const total = round2(taxable + tax + levy);
+  if (stored?.accepted) {
+    stored.discount = discount;
+    stored.finalTotal = total;
+  }
+  // Every response that carries totals records what it served, so a validator
+  // grades the figure this session was last shown instead of recomputing it,
+  // and a solve that reads the total off a cart/add response without reopening
+  // the basket page is still gradeable.
+  const served = { subtotal, discount, levy, tax, total, at: Date.now() };
+  (session.shopTotalsSeen ??= {})[store] = served;
+  ((session.shopTotalsLog ??= {})[store] ??= []).push(served);
+  return {
+    lines,
+    count: lines.reduce((n, l) => n + l.qty, 0),
+    subtotal,
+    discount,
+    levy,
+    taxRate: SHOP_TAX_RATE,
+    tax,
+    total,
+    coupon,
+  };
+}
+
 export async function startPagesServer({ port = 0, preview = false } = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const root = join(here, 'pages');
@@ -1437,6 +1650,182 @@ export async function startPagesServer({ port = 0, preview = false } = {}) {
         ok: true,
         phrase: unsub.phrase,
         message: 'This address was removed from every Tealwave mailing.',
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/shop/catalog') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const store = String(url.searchParams.get('store') ?? '');
+      const list = SHOP_CATALOG[store];
+      if (!list) return json(res, 404, { error: 'unknown store' });
+      return json(res, 200, {
+        store,
+        items: list.map((item) => ({
+          sku: item.sku,
+          name: item.name,
+          blurb: item.blurb ?? '',
+          price: item.price,
+          inStock: item.inStock !== false,
+          note: item.note ?? '',
+        })),
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/shop/cart/add') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const store = String(payload.store ?? '');
+      if (!SHOP_CATALOG[store]) return json(res, 404, { error: 'unknown store' });
+      const qty = Math.trunc(Number(payload.qty ?? 1));
+      if (!Number.isFinite(qty) || qty < 1 || qty > 99) {
+        return json(res, 400, { error: 'Enter a quantity between 1 and 99.' });
+      }
+      const key = String(payload.sku ?? '').trim();
+      const match = shopResolveItem(store, key);
+      if (match?.ambiguous) {
+        return json(res, 409, {
+          error: `More than one part matches "${key}". Use a full part number.`,
+          candidates: match.candidates,
+        });
+      }
+      if (!match) {
+        return json(res, 404, { error: `No part matching "${key}" in this catalog.` });
+      }
+      if (!match.inStock) {
+        (found.session.shopOosAttempts ??= []).push({
+          store,
+          sku: match.sku,
+          qty,
+          at: Date.now(),
+        });
+        return json(res, 409, {
+          error: `${match.sku} is out of stock and cannot be ordered online.`,
+          sku: match.sku,
+          policy: 'substitutions.html',
+          hint: 'Approved alternates are published in the substitution list.',
+        });
+      }
+      const cart = shopCart(found.session, store);
+      let line = cart.find((l) => l.sku === match.sku);
+      if (!line) {
+        line = {
+          sku: match.sku,
+          name: match.name,
+          price: match.price,
+          qty: 0,
+          brand: match.brand ?? null,
+          monitor: match.monitor === true,
+        };
+        cart.push(line);
+      }
+      const cap = match.maxPerCustomer ?? 0;
+      const wanted = line.qty + qty;
+      if (cap && wanted > cap) {
+        line.qty = cap;
+        (found.session.shopLimitRejections ??= []).push({
+          store,
+          sku: match.sku,
+          requested: wanted,
+          capped: cap,
+          at: Date.now(),
+        });
+        return json(res, 409, {
+          error: `Limit ${cap} per customer for ${match.name}.`,
+          capped: cap,
+          sku: match.sku,
+          ...shopTotals(found.session, store),
+        });
+      }
+      line.qty = wanted;
+      return json(res, 200, {
+        ok: true,
+        added: { sku: match.sku, name: match.name, qty },
+        ...shopTotals(found.session, store),
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/shop/cart/remove') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const store = String(payload.store ?? '');
+      if (!SHOP_CATALOG[store]) return json(res, 404, { error: 'unknown store' });
+      const sku = String(payload.sku ?? '').trim().toLowerCase();
+      const cart = shopCart(found.session, store);
+      const idx = cart.findIndex((l) => l.sku.toLowerCase() === sku);
+      if (idx === -1) return json(res, 404, { error: 'That line is not in your basket.' });
+      cart.splice(idx, 1);
+      return json(res, 200, { ok: true, ...shopTotals(found.session, store) });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/shop/cart') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const store = String(url.searchParams.get('store') ?? '');
+      if (!SHOP_CATALOG[store]) return json(res, 404, { error: 'unknown store' });
+      // shopTotals() records what it served on the session, so the basket read
+      // and every mutating response are logged the same way.
+      return json(res, 200, { store, ...shopTotals(found.session, store) });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/shop/coupon') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const store = String(payload.store ?? '');
+      if (!SHOP_CATALOG[store]) return json(res, 404, { error: 'unknown store' });
+      const code = String(payload.code ?? '').trim().toUpperCase();
+      const result = shopEvaluateCoupon(found.session, store, code);
+      const attempts = ((found.session.shopCouponAttempts ??= {})[store] ??= []);
+      attempts.push({ code, accepted: result.ok, at: Date.now() });
+      if (!result.ok) {
+        return json(res, 409, { error: result.error, code });
+      }
+      (found.session.shopCoupons ??= {})[store] = { code, accepted: true };
+      return json(res, 200, { ok: true, code, ...shopTotals(found.session, store) });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/shop/variant') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      if (String(url.searchParams.get('product') ?? '') !== 'aerodesk') {
+        return json(res, 404, { error: 'unknown product' });
+      }
+      const size = String(url.searchParams.get('size') ?? '').trim().toUpperCase();
+      const raw = String(url.searchParams.get('color') ?? '').trim().toLowerCase();
+      const color = raw ? raw[0].toUpperCase() + raw.slice(1) : '';
+      const combo = AERODESK_VARIANTS[`${size}/${color}`];
+      if (!combo) {
+        return json(res, 404, { error: 'That size and colour is not made.' });
+      }
+      (found.session.shopVariantFetches ??= []).push({
+        combo: `${size}/${color}`,
+        at: Date.now(),
+      });
+      return json(res, 200, {
+        sku: `AD-${size}-${color}`,
+        size,
+        color,
+        price: combo.price,
+        inStock: combo.inStock,
+        lead: combo.inStock ? 'Ships in 1 business day' : 'No restock date available',
       });
     }
 
