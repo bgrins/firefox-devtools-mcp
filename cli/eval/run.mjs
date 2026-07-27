@@ -21,9 +21,14 @@
 //     add the firefox-cli shell as a third column
 //   node eval/run.mjs --suite web --backend all --conditions mcp,playwright,cli --parallel --parallel-tasks 4 --headed
 //     full demo matrix, both backends, tiled windows
+//   node eval/run.mjs --suite web --task <wave ids> --repeat 3 --parallel --parallel-tasks 4
+//     routine wave closeout: repeats give medians and an instability flag, and
+//     parallelism keeps it to minutes. Output tokens are contention-free, so the
+//     primary metric is unaffected; read the wall column as indicative only
 //   node eval/run.mjs --suite web --repeat 3
-//     sequential + repeats: use this for numbers you plan to share
-//     (parallel wall timings carry machine-contention noise)
+//     fully sequential: only for numbers you plan to publish. Even then wall is
+//     noisy (a task has been seen at 94.9s vs 27.9s across repeats with an
+//     identical turn count), so sequential de-noises it rather than fixing it
 //   node eval/run.mjs --suite web --task cart-math,coupon-stack --parallel
 //     just the tasks you care about (comma list, * wildcards, --list-tasks
 //     to preview the selection)
