@@ -28,7 +28,7 @@ import { join } from 'node:path';
 import { launch, listInstances, stop } from '../lib/instances.mjs';
 import { callTool } from '../lib/mcp.mjs';
 import { startPagesServer } from './server.mjs';
-import { DRIVERS } from './verify-drivers.mjs';
+import { DRIVERS } from './verify-drivers/index.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
