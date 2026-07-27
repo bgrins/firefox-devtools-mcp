@@ -106,6 +106,36 @@
 > server-side cart, built as ONE workflow entry because parallel agents would each invent an
 > incompatible contract. NOT YET MEASURED: no recorded run exists for these five.
 >
+> **Wave 7 acceptance (2026-07-27): 48/48, and the first result that favours us.**
+> 8 tasks x (our mcp vs playwright-mcp) x 3 repeats, sequential. Zero failures, zero
+> errors. Output-token medians, us vs playwright-mcp: total 15,933 vs 16,747 (**4.9%
+> fewer for us**) — but the per-task split matters more than the total, and the
+> instability flag is what makes it readable:
+> STABLE tasks (output spread <=1.5x across repeats) — we win or tie on all five:
+> `role-panels` -33%, `rate-limited-lookups` -21%, `password-reset` -15%,
+> `portal-login` -5%, `logout-hygiene` +2%.
+> UNSTABLE tasks (>2x spread, so NOT conclusions): `gridword-hard` +72% (3.8x/2.8x
+> spread), `embargo-wait` +189% (3.1x/2.6x), `maze-escape` -38% (3.3x/2.0x).
+> The two headline "losses" are both in the unstable set; quoting either as a finding
+> would be quoting noise. This is the concrete payoff of reporting median with range
+> plus a spread flag rather than a bare median.
+> Contrast with wave 6, where the only real separation went the other way
+> (`oos-substitute`, 57% MORE tokens for us, on a task whose answer sits in a
+> `<table>` our walker drops). Read together: we are not uniformly behind — we are
+> behind specifically where the snapshot loses information, and ahead on multi-step
+> auth flows. See `findings.md` A2/A4.
+>
+> **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
+> deterministically through our own MCP and asserts each validator accepts a correct
+> answer and rejects a plausible wrong one: 77 seconds, no API spend, 51/51 green
+> twice. It is the regression gate for fixture and validator changes, and writing it
+> produced most of `findings.md` — including that `register-errors` is UNWINNABLE from
+> the snapshot alone (the server's corrections truncate exactly where the corrected
+> value starts) and that checkbox state never reaches the snapshot at all, so an agent
+> cannot see the trap `unsub-dark-patterns` grades. Only one driver cheats
+> (`gridword-hard`, server-held word) and says so; `maze-escape` implements real
+> fog-of-war search and solved five different random layouts.
+>
 > **Harness changes (2026-07-27) — earlier recorded runs describe a harness that no longer exists:**
 > default conditions are now `mcp,playwright` (the comparison this suite exists for: our server vs
 > playwright-mcp, for mining improvements to ours); `cli` is opt-in and destined to move out.
