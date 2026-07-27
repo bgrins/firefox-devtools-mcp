@@ -24,6 +24,19 @@ in a recorded agent run under `results/`.
 
 # Part A — upstream `firefox-devtools-mcp`
 
+## A0. `take_snapshot` CRASHES on a page whose inline SVG contains an `<a>`
+An `<svg>` containing `<a href="#x">` makes `take_snapshot` fail for the WHOLE
+page with `Failed to take snapshot: str.substring is not a function`. An SVG
+anchor's `href` is an `SVGAnimatedString`, not a string, and the formatter calls
+`.substring()` on it while truncating.
+
+This is the only finding here that takes the entire tool surface down rather than
+degrading it: one such element anywhere on the page and the agent cannot snapshot
+at all. Severity aside, it is also the cheapest to fix — coerce before truncating.
+
+Confidence: high (reproduced while building the floorplan fixture; the fixture
+now avoids SVG anchors specifically to route around it).
+
 ## A1. Snapshot text is capped twice; only 27 characters survive
 `src/firefox/snapshot/injected/attributeCollector.ts` caps at
 `MAX_TEXT_LENGTH = 100`, then `src/firefox/snapshot/formatter.ts` applies
@@ -60,6 +73,17 @@ driving it at the same URL (10,635 chars of ARIA YAML containing the cell values
 Confidence: high. Reproduced independently by three agents, including on a
 pre-existing fixture. **Highest-value change in this document.**
 
+## A2b. Whole containers vanish when they hold a non-relevant inline tag
+Worse than the tag-drop in A2: a `<font>` (or any tag missing from the relevance
+lists) **inside** a `<p>` deletes the entire paragraph from the snapshot — not
+truncated, not bubbled up, gone. `isRelevant()` sees the parent's child list and
+discards the lot. Confirmed on `gov/rv7a-instructions.html`, where
+`<p><b>Where to file Form RV-7A</b></p>` leaves a uid gap. `<dl>/<dt>/<dd>` are
+dropped exactly like tables.
+
+Practical effect: on a legacy page that uses `<font>` or `<b>` inline — which is
+most of the `gov/` site — prose disappears wholesale rather than degrading.
+
 ## A3. Controls lose their accessible names
 - `<label><input type=radio> Yes</label>` emits `input value="Yes"` with no
   accessible name; a consent checkbox is findable only as the unique
@@ -75,11 +99,18 @@ Confidence: high (golden paths for `form-gauntlet`, `roster`, `office-finder`,
 `unsub-dark-patterns` all had to work around it). Likely why playwright-mcp is
 cheaper on form-heavy tasks.
 
-## A4. Checkbox and ARIA state are absent from the snapshot
+## A4. Checkbox and ARIA state are absent from the DEFAULT snapshot
 A pre-checked box renders as `input "Yes, keep sending me the Te..." value="on"`
-— no `checked` marker, no `checkbox` role. `"on"` is the HTML attribute, not the
-state. `aria-expanded` and `aria-disabled` are in the DOM but emit no token
-either (`aria-label` does come through, as `name`).
+— no `checked` marker, no `checkbox` role. `"on"` is the HTML default attribute,
+not the state.
+
+**Refined by wave 8: this is a DEFAULTS problem, not a missing capability.**
+`take_snapshot` defaults to `includeAttributes: false`, so `checked`, `expanded`
+and `disabled` never appear unless the caller knows to ask. An agent taking a
+plain snapshot therefore cannot see the state, and nothing in the tool
+description signals that a flag would reveal it. Flipping the default (or
+surfacing state regardless of the flag) is a much smaller change than it looked
+when this was first written.
 
 **Consequence: an agent driving `unsub-dark-patterns` through the snapshot alone
 cannot see the thing the task grades** — whether the trap box is ticked, or
@@ -135,16 +166,32 @@ the snapshot cannot tell them apart. Reporting a URL requires `location.href` vi
 `args` accepts only `{uid}` objects, not plain values, so passing a number into
 the page means string-interpolating the function source.
 
+## A10. SVG is effectively unusable through the tool surface
+- A shape is emitted only if the author gave it `role` or `aria-label`; a bare
+  `<rect class="room" data-room="A-1">` is dropped, as are `<text>` nodes.
+- A `<g role="button" aria-label="...">` IS emitted, but `click_by_uid` on it
+  fails with `could not be scrolled into view` — so it is visible and unclickable.
+- No geometry is carried at all (no x/y/width/height, no bounding box, no
+  ordering guarantee), so spatial reasoning over a diagram is impossible from the
+  snapshot even when the shapes are named.
+Combined with A0, any SVG-based interface is `evaluate`-only today.
+
 ## Suggested order for Part A
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
 every change has a measured before/after.
 
-1. **A5** (silent `fill_by_uid` failures) — behaves like a plain bug; small blast radius.
-2. **A2** (table content) — the one measured cost, highest value.
-3. **A3 + A4** (accessible names, checkbox/ARIA state) — likely the next largest, on forms.
-4. **A1** (27-char cap) — biggest blast radius; changes every snapshot's size.
-5. **A8** (missing tools) — additive, unblocks planned tasks.
-6. **A6, A7, A9** — cheap and independent.
+1. **A0** (SVG anchor crashes the snapshot) — a one-line coercion, and it is the
+   only finding that disables the tool surface outright rather than degrading it.
+2. **A4** (state behind a non-default flag) — now known to be a defaults change,
+   not new capability, and it decides `unsub-dark-patterns`.
+3. **A5** (silent `fill_by_uid` failures) — behaves like a plain bug; small blast radius.
+4. **A2 + A2b** (table content, and containers vanishing around inline tags) —
+   the one measured cost (57% on `oos-substitute`), plus wholesale prose loss on
+   any legacy page.
+5. **A3** (accessible names) — likely the next largest, on forms.
+6. **A1** (27-char cap) — biggest blast radius; changes every snapshot's size.
+7. **A8 + A10** (missing tools; SVG unusable) — additive, unblocks planned tasks.
+8. **A6, A7, A9** — cheap and independent.
 
 ---
 
