@@ -1,6 +1,6 @@
 // Anthropic backend: drives tasks through the Claude Agent SDK.
 // Backend interface (shared with backends/codex.mjs):
-//   run({ prompt, model, maxTurns, condition, env, endpoint, cwd, onMessage,
+//   run({ prompt, model, condition, env, endpoint, cwd, onMessage,
 //         mcpStdio }) ->
 //     { text, turns, input_tokens, cache_creation, cache_read, output_tokens,
 //       cost_usd, duration_ms, api_duration_ms }
@@ -24,16 +24,14 @@ function stripWrapperDir(path) {
     .join(':');
 }
 
-export async function run({ prompt, model, effort, maxTurns, condition, env, endpoint, cwd, onMessage, mcpStdio, abortController }) {
+export async function run({ prompt, model, effort, condition, env, endpoint, cwd, onMessage, mcpStdio, abortController }) {
   const options = {
     model,
-    maxTurns,
     permissionMode: 'dontAsk',
     cwd,
     settingSources: [],
     ...(effort ? { effort } : {}),
-    // Lets run.mjs stop a task on its backend-agnostic token/wall ceilings;
-    // maxTurns alone is anthropic-only and turns are not comparable anyway.
+    // Lets run.mjs stop a task on its backend-agnostic token/wall ceilings.
     ...(abortController ? { abortController } : {}),
   };
   if (condition === 'cli') {

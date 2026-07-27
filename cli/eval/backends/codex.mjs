@@ -18,7 +18,6 @@
 //   shell env drops the firefox-cli wrapper from PATH, so it cannot drive the
 //   browser through the CLI and collapse the comparison.
 //
-// maxTurns is not enforced — the SDK has no equivalent option.
 // api_duration_ms is not reported by codex; cost_usd is computed locally from
 // the reported token counts (codex reports no price of its own).
 
