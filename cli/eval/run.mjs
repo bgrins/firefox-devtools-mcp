@@ -66,7 +66,7 @@ const flag = (name, fallback) => {
   }
   return value;
 };
-const BACKEND_ARG = flag('backend', 'anthropic');
+const BACKEND_ARG = flag('backend', args.includes('--compare') && flag('compare', null) === 'backends' ? 'all' : 'anthropic');
 const BACKEND_NAMES =
   BACKEND_ARG === 'all' ? ['anthropic', 'codex'] : BACKEND_ARG.split(',');
 const BACKENDS = Object.fromEntries(
@@ -210,6 +210,13 @@ Conditions and models:
                           on macOS, else 1920x1080)
   --mcp-transport <t>     stdio (default; agent spawns the MCP server, as real
                           client configs do) or http (shared instance endpoint)
+  --compare surfaces|backends
+                          pin one axis so results are attributable.
+                          'surfaces' (default): one agent harness, mcp vs
+                          playwright — which browser tool surface is better.
+                          'backends': one tool surface (mcp), every harness —
+                          which agent harness drives a browser better.
+                          Warns if you vary both axes at once.
   --conditions <list>     comma list of mcp, playwright, cli
                           (default: mcp,playwright — the comparison this suite
                           exists for: firefox-devtools-mcp vs the vendored
@@ -262,8 +269,16 @@ const CUSTOM_MCP = MCP_COMMAND ? MCP_COMMAND.trim().split(/\s+/) : null;
 // Named conditions. 'playwright' spawns the vendored @playwright/mcp over
 // stdio (registered under the same 'firefox' server name) driving Playwright's
 // own Firefox build.
+// --compare pins one axis so a run is attributable. Varying the browser tool
+// surface AND the agent harness at once yields a 2x2 whose differences cannot be
+// assigned to either, which is the easiest mistake to make here.
+const COMPARE = flag('compare', null);
+if (COMPARE && !['surfaces', 'backends'].includes(COMPARE)) {
+  throw new Error(`--compare must be surfaces or backends, got "${COMPARE}"`);
+}
+
 const KNOWN_CONDITIONS = ['mcp', 'playwright', 'cli'];
-const CONDITIONS = flag('conditions', 'mcp,playwright')
+const CONDITIONS = flag('conditions', COMPARE === 'backends' ? 'mcp' : 'mcp,playwright')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -272,6 +287,14 @@ for (const c of CONDITIONS) {
     throw new Error(`unknown condition "${c}" (known: ${KNOWN_CONDITIONS.join(', ')})`);
   }
 }
+if (BACKEND_NAMES.length > 1 && CONDITIONS.length > 1) {
+  console.log(
+    `warning: this run varies BOTH axes (${BACKEND_NAMES.length} harnesses x ` +
+      `${CONDITIONS.length} tool surfaces). Differences cannot be attributed to ` +
+      `either. Use --compare surfaces or --compare backends to pin one.\n`
+  );
+}
+
 const PLAYWRIGHT_MCP_CLI = join(here, '..', 'node_modules', '@playwright', 'mcp', 'cli.js');
 
 function basicTasks(base) {
