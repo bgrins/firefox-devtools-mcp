@@ -14,8 +14,25 @@ risk:
   eval, so these are separable from Part A.
 - **Part C — the eval harness itself (`cli/eval/`).** Ours to change freely. Lists
   what has already been fixed and what is still outstanding.
+- **Part D — the devtools surface (`src/`, `D1`-`D8`).** Upstream like Part A, but
+  a separate series because it is a distinct subsystem (console, network,
+  debugger, profiler) that **no shipped task measures**. Found by probing, not by
+  a task, so these carry no measured token cost.
 
-How things were found: **golden path** means `node eval/verify.mjs`, 65
+Prefixes say which surface a finding is about, not how bad it is: `A*` the
+snapshot and interaction tools, `B*` the CLI, `C` the harness, `D*` the devtools
+surface. Within a prefix the numbers are just document order — read the
+"Suggested order" sections for priority.
+
+Numbering was normalised once, on 2026-07-28: the devtools findings had been
+filed inside the A-series as A15-A22, which wrongly implied they were the same
+class as the snapshot findings, and the A-series was renumbered contiguously at
+the same time. **Anything citing an A-number from before that date is stale** —
+including earlier entries in `task-ideas.md`'s status block and commit messages,
+which were rewritten where they are documentation and left alone where they are
+history.
+
+How things were found: **golden path** means `node eval/verify.mjs`, 74
 deterministic drivers that solve every task through our own MCP — so any finding
 there is reproducible on demand for nothing. **measured** means it moved a number
 in a recorded agent run under `results/`.
@@ -46,7 +63,7 @@ is not meaningful unless it says whether a snapshot-only path existed.**
 
 # Part A — upstream `firefox-devtools-mcp`
 
-## A0. `take_snapshot` CRASHES on a page whose inline SVG contains an `<a>`
+## A1. `take_snapshot` CRASHES on a page whose inline SVG contains an `<a>`
 An `<svg>` containing `<a href="#x">` makes `take_snapshot` fail for the WHOLE
 page with `Failed to take snapshot: str.substring is not a function`. An SVG
 anchor's `href` is an `SVGAnimatedString`, not a string, and the formatter calls
@@ -59,7 +76,7 @@ at all. Severity aside, it is also the cheapest to fix — coerce before truncat
 Confidence: high (reproduced while building the floorplan fixture; the fixture
 now avoids SVG anchors specifically to route around it).
 
-## A1. Snapshot text is capped twice; only 27 characters survive
+## A2. Snapshot text is capped twice; only 27 characters survive
 `src/firefox/snapshot/injected/attributeCollector.ts` caps at
 `MAX_TEXT_LENGTH = 100`, then `src/firefox/snapshot/formatter.ts` applies
 `MAX_ATTR_LENGTH = 30` through a `truncate()` that returns
@@ -77,7 +94,7 @@ starts. Also hides the graded datum in `beta-terms`, `unit-quote`,
 Confidence: high (source-verified, reproduced by golden paths).
 Blast radius if changed: every snapshot's size. Measure carefully.
 
-## A2. Table content never reaches the snapshot
+## A3. Table content never reaches the snapshot
 `isRelevant()` in `src/firefox/snapshot/injected/elementCollector.ts` whitelists
 interactive/semantic/container tags but not `table`, `thead`, `tbody`, `tr`,
 `td`, `th`, `caption`, nor `font`. Table pages are invisible through the uid
@@ -95,8 +112,8 @@ driving it at the same URL (10,635 chars of ARIA YAML containing the cell values
 Confidence: high. Reproduced independently by three agents, including on a
 pre-existing fixture. **Highest-value change in this document.**
 
-## A2b. Whole containers vanish when they hold a non-relevant inline tag
-Worse than the tag-drop in A2: a `<font>` (or any tag missing from the relevance
+## A4. Whole containers vanish when they hold a non-relevant inline tag
+Worse than the tag-drop in A3: a `<font>` (or any tag missing from the relevance
 lists) **inside** a `<p>` deletes the entire paragraph from the snapshot — not
 truncated, not bubbled up, gone. `isRelevant()` sees the parent's child list and
 discards the lot. Confirmed on `gov/rv7a-instructions.html`, where
@@ -112,7 +129,7 @@ and a `<b>`-wrapped breadcrumb became `div text="Attestations ›  ›"`. So a
 constraint a page emphasises typographically is exactly the content most likely
 to vanish.
 
-## A3. Controls lose their accessible names
+## A5. Controls lose their accessible names
 - `<label><input type=radio> Yes</label>` emits `input value="Yes"` with no
   accessible name; a consent checkbox is findable only as the unique
   `input value="on"`.
@@ -127,7 +144,7 @@ Confidence: high (golden paths for `form-gauntlet`, `roster`, `office-finder`,
 `unsub-dark-patterns` all had to work around it). Likely why playwright-mcp is
 cheaper on form-heavy tasks.
 
-## A4. Checkbox and ARIA state are absent from the DEFAULT snapshot
+## A6. Checkbox and ARIA state are absent from the DEFAULT snapshot
 A pre-checked box renders as `input "Yes, keep sending me the Te..." value="on"`
 — no `checked` marker, no `checkbox` role. `"on"` is the HTML default attribute,
 not the state.
@@ -145,9 +162,9 @@ cannot see the thing the task grades** — whether the trap box is ticked, or
 whether clicking it cleared it. Any task grading on expanded/disabled state is
 likewise unwinnable.
 
-Confidence: high (golden path). This is the most consequential gap after A2.
+Confidence: high (golden path). This is the most consequential gap after A3.
 
-## A5. `fill_by_uid` fails silently in three ways
+## A7. `fill_by_uid` fails silently in three ways
 `src/tools/input.ts`.
 - **Non-editable target**: reports success, does nothing. `<h2>Promotion code</h2>`
   above `<input aria-label="Promotion code">` matches first, so filling the
@@ -160,7 +177,7 @@ Confidence: high (golden path). This is the most consequential gap after A2.
 Confidence: high — each cost real debugging time while authoring golden paths.
 An error on a non-editable target would turn a hunt into a one-line diagnosis.
 
-## A6. `take_snapshot` defaults to 100 lines, which truncates realistic pages
+## A8. `take_snapshot` defaults to 100 lines, which truncates realistic pages
 Concrete margin: the `news/` front page fits 7 story entries into the default
 snapshot, the last ending at line 96 of ~100. `injection-bait` needs entry 6, so
 it clears by a single entry — any future line added above it pushes the task's
@@ -172,14 +189,14 @@ snapshot of a realistic catalogue sees roughly the first two cards. `find`
 searches only the returned text, so a node past the cap is invisible to `find`
 even though it exists.
 
-## A7. `href` and `src` are absolutized, then truncated to 27 chars
+## A9. `href` and `src` are absolutized, then truncated to 27 chars
 Every link renders as `href="http://127.0.0.1:PORT/gov/..."`, so hrefs cannot
 identify or disambiguate links. Concretely: the two roster links (`2025.html`,
 `2026.html`) have identical truncated names **and** identical truncated hrefs, so
 the snapshot cannot tell them apart. Reporting a URL requires `location.href` via
 `evaluate_script`.
 
-## A8. Missing tools
+## A10. Missing tools
 - **No key-press tool.** `modal-escape` sanctions dismissal by Escape *or* the
   close button; only the button is reachable, so half its sanctioned exits are
   tool-inaccessible. Also blocks the planned keyboard-only task (T061).
@@ -190,11 +207,11 @@ the snapshot cannot tell them apart. Reporting a URL requires `location.href` vi
   of key-based option matching; it breaks on labels not unique by prefix.
 - **No coordinate click.** Canvas tasks need an `evaluate`-dispatched `MouseEvent`.
 
-## A9. `evaluate_script` arg limitation
+## A11. `evaluate_script` arg limitation
 `args` accepts only `{uid}` objects, not plain values, so passing a number into
 the page means string-interpolating the function source.
 
-## A9b. `evaluate_script` has a hard 5-second default timeout
+## A12. `evaluate_script` has a hard 5-second default timeout
 `DEFAULT_TIMEOUT = 5000` in `src/tools/script.ts`. Awaiting the `timeout-vs-slow`
 fixture's 8-second fetch dies at 5008 ms with "Script execution timed out
 (exceeded 5000ms)"; the same call with `timeout: 15000` returns at 8012 ms.
@@ -207,7 +224,7 @@ consumes one of the task's allowed requests. A default that silently caps below
 common real-world latency, on a surface where the competitor has none, is worth
 raising even though the polling path is unaffected.
 
-## A10. SVG is effectively unusable through the tool surface
+## A13. SVG is effectively unusable through the tool surface
 - A shape is emitted only if the author gave it `role` or `aria-label`; a bare
   `<rect class="room" data-room="A-1">` is dropped, as are `<text>` nodes.
 - A `<g role="button" aria-label="...">` IS emitted, but `click_by_uid` on it
@@ -215,9 +232,9 @@ raising even though the polling path is unaffected.
 - No geometry is carried at all (no x/y/width/height, no bounding box, no
   ordering guarantee), so spatial reasoning over a diagram is impossible from the
   snapshot even when the shapes are named.
-Combined with A0, any SVG-based interface is `evaluate`-only today.
+Combined with A1, any SVG-based interface is `evaluate`-only today.
 
-## A11. `set_viewport_size` resizes the window, not the viewport — and reports success either way
+## A14. `set_viewport_size` resizes the window, not the viewport — and reports success either way
 `src/firefox/pages.ts:73` implements it as
 `driver.manage().window().setRect({width, height})`. Headless Firefox clamps the
 window to a ~500 px minimum, so `set_viewport_size(480, 900)` leaves
@@ -238,28 +255,28 @@ override rather than `setRect`, and return the size actually achieved.
 this, and its golden path asserts `matchMedia(...).matches` rather than trusting
 the requested number.
 
-## A12. An `<input>`'s `type` never reaches the snapshot
+## A15. An `<input>`'s `type` never reaches the snapshot
 A file input and a checkbox both render as a bare `uid=N input`. `accept` is not
-emitted either, and (per A4) a checked box shows `value="on"` exactly like an
+emitted either, and (per A6) a checked box shows `value="on"` exactly like an
 unchecked one. So an agent cannot tell which control is the file input except by
 position or by attempting an upload and reading the error, and cannot confirm
 that its click ticked rather than un-ticked a box. playwright-mcp's ARIA snapshot
 labels both control kinds.
 
-## A13. Attribute values are emitted with escape sequences interpreted
+## A16. Attribute values are emitted with escape sequences interpreted
 A file input holding `C:\fakepath\t052-attest.csv` printed as
 `value="C:akepath<tab>052-attest.csv"` — the `\f` and `\t` became a formfeed and a
 tab. Any attribute value containing backslashes is corrupted in the agent's view
 and cannot be matched against.
 
-## A14. The snapshot tree is not stable across captures of an unchanged DOM
+## A17. The snapshot tree is not stable across captures of an unchanged DOM
 Between two consecutive `take_snapshot` calls on a page that did not change, a
 short `<span>Or <a>...</a>.</span>` lost its span node and the anchor was
 re-parented directly under the preceding `<button>`. An agent or driver that
 navigates by tree structure rather than by text can therefore resolve a different
 element from one snapshot to the next.
 
-## A23. Tab management: `window.close()` destroys our whole view of the browser
+## A18. Tab management: `window.close()` destroys our whole view of the browser
 With three tabs open, one page calling `window.close()` left `list_pages`
 reporting `1 pages (selected: 0) > [0] Untitled` at `about:blank`, with the other
 tabs unreachable and `select_page(0)` unable to recover. playwright-mcp recovered
@@ -272,29 +289,29 @@ agent failure, not tool failure. The `cross-tab-pay` fixture ships **no**
 self-close button purely to avoid triggering it, which makes the fixture less
 realistic than a real processor page.
 
-## A24. `close_page` on the last remaining tab bricks the instance
+## A19. `close_page` on the last remaining tab bricks the instance
 It answers `Error: Tried to run command without establishing a connection` and
 leaves a phantom `Untitled` tab; nothing works afterwards. playwright answers
 `No open tabs. Navigate to a URL to create one.` and stays usable. So an agent
 that tidies up after itself can destroy its own session. Any cleanup loop must
 stop at index 1, which is what the harness now does.
 
-## A25. Nothing tells the agent a new tab opened
+## A20. Nothing tells the agent a new tab opened
 Clicking a `target=_blank` link opens a real second tab, but no tool response
 mentions it and the tool-side selection stays on the opener — the agent has to
 guess to call `list_pages`. playwright appends an `### Open tabs` section to
-**every** action result. Same shape as A18 (console state): the competitor
+**every** action result. Same shape as D4 (console state): the competitor
 volunteers state we make you ask for. Pure turn cost, and a plausible cause of
 one-tab thrashing on exactly the flows `cross-tab-pay` measures.
 
-## A26. `list_pages` omits URLs, contradicting its own description
+## A21. `list_pages` omits URLs, contradicting its own description
 The description says "List open tabs (index, title, URL)"; `formatPageList` in
 `src/tools/pages.ts` prints index and title only. Two authorizer tabs are
 therefore indistinguishable in our listing, and an agent must select each and
 snapshot to tell them apart. playwright shows full URLs. (Selecting *by* URL
 substring does work — it is only the listing that hides it.)
 
-## A27. Background tabs are throttled under our surface but not playwright's
+## A22. Background tabs are throttled under our surface but not playwright's
 A 500ms interval in a non-selected tab measured **0.75 ticks/s** against 2.0
 ticks/s while selected; playwright showed 2.0/s throughout. `select_page` fires
 blur/visibilitychange/focus where playwright's select fires focus only.
@@ -306,7 +323,7 @@ a real condition asymmetry on any wait-for-state task, and a page keying on
 `visibilitychange` behaves differently between conditions. The fixture polls every
 1200ms and refreshes on `focus` to stay neutral.
 
-## A28. Every `take_snapshot` invalidates all prior uids, even on an unchanged page
+## A23. Every `take_snapshot` invalidates all prior uids, even on an unchanged page
 `Error: 1_35 stale/invalid. Call take_snapshot first.` after a re-snapshot of a
 page that did not change. playwright refs survived both a re-snapshot and a DOM
 mutation, because they resolve by role plus accessible name. Every read-then-act
@@ -318,7 +335,7 @@ arguably better: a stale playwright ref that still resolves silently targets the
 ours fails loudly. The fix is not to copy their laxity but to keep uids valid
 while the DOM is unchanged.
 
-## A29. `includeAll` surfaces table cells but not the geometry needed to read them
+## A24. `includeAll` surfaces table cells but not the geometry needed to read them
 `take_snapshot({includeAll: true})` emits the 140 `td` nodes with their text
 (10.1k chars) but **no `rowspan`/`colspan` and no cell roles**, and span-covered
 cells are simply absent — so rows carry anywhere from 4 to 15 cells. Column
@@ -333,7 +350,7 @@ its snapshot alone and not from ours**. We expose no geometry option at all.
 Minimum solves measured: playwright 7 calls with zero `browser_evaluate`; ours 8
 calls, one of which *must* be `evaluate_script`.
 
-## A30. `take_snapshot`'s selector option fails opaquely
+## A25. `take_snapshot`'s selector option fails opaquely
 `{selector: 'table.diff'}` (and `'.dock'`, and `'table.daybook'`) fails with
 `Failed to take snapshot: Failed to generate snapshot: Unknown error` — including
 the case where the element exists but is `[hidden]`, where the honest answer is
@@ -341,7 +358,7 @@ the case where the element exists but is `[hidden]`, where the honest answer is
 subtree of the same page. So on a large page we must pay for the whole tree or
 drop to `evaluate`, and the error message actively misleads.
 
-## A31. `MAX_DEPTH = 10` is exactly on the edge for ordinary markup
+## A26. `MAX_DEPTH = 10` is exactly on the edge for ordinary markup
 `body > chrome > main > div#diff > section > div > table > tbody > tr > td >
 button` puts the diff's gutter buttons at depth 10 — the limit. **One more
 wrapper div, or syntax highlighting that wraps tokens in spans inside the code
@@ -349,12 +366,12 @@ cell, and the entire diff vanishes from our snapshot.** The `forge` fixture serv
 plain unhighlighted code in a single span, and that concession is load-bearing for
 our surface seeing anything at all. Real code hosts all highlight.
 
-## A32. There is no wait primitive, and polling costs 67% more tokens
+## A27. There is no wait primitive, and polling costs 67% more tokens
 No `wait_for` / `wait_for_text` tool exists, so the only way to learn that an
 async reply landed is to re-`take_snapshot` and diff. On `support-chat` the golden
 path spent 17 whole-page snapshots purely waiting. Measured on the identical flow:
 **32 calls / 94,131 result chars for us vs 22 calls / 56,334 for playwright** —
-67% more output while returning strictly less information (see A1: our transcript
+67% more output while returning strictly less information (see A2: our transcript
 is truncated at 27 chars per message, theirs is not).
 
 **Confirmed with real agents, and it is the largest measured loss in the suite.**
@@ -371,15 +388,15 @@ medians of 3 repeats. Two different genres, same direction, same cause. This is
 therefore a property of our surface rather than of one fixture — the strongest
 repeatable loss the suite has measured.
 
-That makes A32 the most actionable item in Part A. It is purely **additive** — a
+That makes A27 the most actionable item in Part A. It is purely **additive** — a
 new tool, no behaviour change to anything existing — and it is worth 41-50% of
 output tokens on async pages, which real sites are full of. Note playwright's
 `browser_wait_for` has its own hard 5000ms default with no extension, so a slower
 queue would make their ergonomic tool the fragile one; we could ship a better
 version rather than a copy.
 
-## A33. The 27-char cut is not Unicode-safe: it emits lone surrogates and eats combining marks
-A sibling of A1, and a straightforward product bug rather than a design tradeoff.
+## A28. The 27-char cut is not Unicode-safe: it emits lone surrogates and eats combining marks
+A sibling of A2, and a straightforward product bug rather than a design tradeoff.
 `formatter.ts`'s `truncate()` slices at UTF-16 index 27 — a **code-unit** index,
 not a codepoint index, and with no grapheme awareness. Two consequences, both
 measured against `pages/intl/` (the Qandara advisory site, `locale-notice`) and
@@ -424,7 +441,7 @@ itself.
 Confidence: high (source-verified in `truncate()`, reproduced through both
 surfaces on a controlled probe page).
 
-## A33b. Nothing on either surface says a page is RTL, and `lang`/`dir` never reach the snapshot
+## A29. Nothing on either surface says a page is RTL, and `lang`/`dir` never reach the snapshot
 Measured on the same site, and true of playwright-mcp too, so it is a gap rather
 than a competitive loss. Neither surface carries `lang` or `dir` — not in the
 default snapshot, not with `includeAll: true`, not in playwright's ARIA snapshot
@@ -440,7 +457,7 @@ inline items comes "first", and nothing warns the agent. Accessible names built
 from non-ASCII text are fine on both surfaces (`nav "النسخ"`,
 `heading "北桟橋の閉鎖と入港許可の取得義務"`).
 
-## A34. `includeAll` truncates a long table silently, and that is worse than seeing nothing
+## A30. `includeAll` truncates a long table silently, and that is worse than seeing nothing
 The dangerous state is not blindness, it is **partial data that looks complete**.
 Measured on `pages/metrics/` (`chart-escape`): the honest way to read an 18-row
 data table on our surface needs two non-default options together. With
@@ -450,18 +467,18 @@ truncated window contains the true answer only sometimes — in ~30% of mints an
 agent reading that state computes a **confidently wrong** steepest-drop month and
 has no reason to doubt it. playwright-mcp returns the table in one default call.
 
-This is the same failure mode as A29 (grid cells without geometry) and A19
-(`isXHR` matching nothing): we do not say "there is more". A2/A6 describe the
+This is the same failure mode as A24 (grid cells without geometry) and D5
+(`isXHR` matching nothing): we do not say "there is more". A3/A8 describe the
 mechanism; this entry exists because it is the first time the cost was measured
 as *wrong answers* rather than extra tokens.
 
-## A35. A `<table>` grid is invisible, but an `<input>`'s `value` comes through
+## A31. A `<table>` grid is invisible, but an `<input>`'s `value` comes through
 Two halves of one measurement on `pages/calc/` (`formula-repair`), and the split
 is the opposite of what we assumed when the fixture was commissioned.
 
 - **Value layer, invisible.** The sheet is a semantic `<table>`; our snapshot
   returns one childless `main` node and **0 of 70 cells**. `find` misses every
-  depot name. (A2 again, now on the canonical spreadsheet layout.)
+  depot name. (A3 again, now on the canonical spreadsheet layout.)
 - **Definition layer, visible.** The formula bar comes through as
   `input "Formula bar" value="=SUM(E3:E13)"`, because `treeWalker.ts` reads the
   `value` DOM *property*. Focusing a different cell is the one action that
@@ -475,7 +492,7 @@ once "Show formulas" is on. Worth keeping as the clearest single illustration
 that `value`-property reads are the one place our walker is *more* useful than it
 looks — extending that treatment to more of the DOM is a cheap direction.
 
-## A36. Canvas text is unreachable on both surfaces; `opacity: 0` is the one divergence
+## A32. Canvas text is unreachable on both surfaces; `opacity: 0` is the one divergence
 From the `canvas-log` verify-first spike, which was authorised to conclude "do
 not ship" and instead established a legitimate route.
 
@@ -495,11 +512,11 @@ means a page using opacity for a fade-in shows them content it does not show us.
 
 Also measured here, and a concrete cost for the default: with the log panel below
 the step summary, `take_snapshot`'s default `maxLines: 100` pushed the graded hit
-out of reach of `find` entirely (A6/B3 compounding). The fixture reorders its own
+out of reach of `find` entirely (A8/B3 compounding). The fixture reorders its own
 DOM to keep the task winnable — a concession that would not be available on a
 real site.
 
-## A37. `drag_by_uid_to_uid` reports success while doing nothing, on 5 of 6 drag idioms
+## A33. `drag_by_uid_to_uid` reports success while doing nothing, on 5 of 6 drag idioms
 **The most serious defect found so far, and the tool had never been exercised.**
 Before wave 12, no task and no golden-path driver had ever called
 `drag_by_uid_to_uid` — verified by grep across all 70 tasks. The first
@@ -547,7 +564,7 @@ in the probe, not the fixture. Second, the real-world exposure is **drag-only
 UIs**: boards, page builders and schedulers frequently ship no button fallback,
 and there the silent failure bites with nothing to reveal it.
 
-## A38. WebVTT cues reach neither accessibility tree
+## A34. WebVTT cues reach neither accessibility tree
 A `<track>`'s cues are invisible to our snapshot and to playwright's ARIA
 snapshot alike, so captions and subtitles are unreadable through either surface.
 A caption-only task would be unwinnable for everyone, which is why `media/`
@@ -555,7 +572,7 @@ ships a DOM transcript panel instead and the finding is recorded here.
 Not a competitive gap — a shared blind spot, and a real accessibility-surface
 hole given captions are a primary accessibility affordance.
 
-## A39. Clipboard works on both surfaces, but ours needs a user gesture and theirs does not
+## A35. Clipboard works on both surfaces, but ours needs a user gesture and theirs does not
 Both surfaces can reach the clipboard headless, and `http://127.0.0.1` is a
 secure context (`isSecureContext === true` on both), so the clipboard is usable.
 Neither MCP exposes a clipboard affordance of its own; both go through page JS.
@@ -567,7 +584,7 @@ The asymmetry is **user activation**:
 - playwright's `browser_evaluate` is always treated as gestured and needs no
   click at all.
 - playwright also has `browser_press_key`, so `Meta+V` performs a real paste. We
-  have no key-press tool (A8), so we cannot paste as a user would — only assign
+  have no key-press tool (A10), so we cannot paste as a user would — only assign
   the value.
 
 Positive result worth recording against a common assumption: **headless Firefox
@@ -575,17 +592,25 @@ decodes everything tried** — PCM WAV, WebM/Opus, MP4/AAC, WebM/VP9 and
 MP4/H.264 all reach `readyState 4` with correct duration and a full buffered
 range, playback advances at wall-clock rate on both surfaces, and a
 `click_by_uid` on an `<audio>` element fires `play`. Media decode was never the
-blocker; the blockers are A38 and the absence of a key-press tool.
+blocker; the blockers are A34 and the absence of a key-press tool.
 
 ---
 
-## The devtools surface (A15-A21)
+# Part D — the devtools surface (`D1`-`D8`)
 
-Found while designing a future wave, NOT by any shipped task — none of the 61
-tasks touches console, network, the debugger or the profiler, which is half of
-what makes us a *devtools* MCP. Full write-up and the proposed tasks are in
-`devtools-wave-proposal.md`. Every item below was reproduced headless against a
-scratch fixture and cross-checked against playwright-mcp on the same page.
+Also owned upstream in `src/`, exactly like Part A, but tracked as its own series
+because it is a distinct subsystem: console, network, the debugger and the
+profiler. **No shipped task measures any of it** — it is half of what makes us a
+*devtools* MCP and the eval is currently blind to all of it. Findings here came
+from designing a future wave (`devtools-wave-proposal.md`), not from a task, so
+none of them has a token cost attached the way Part A's do.
+
+These were originally filed as A15-A22, which wrongly implied they were the same
+class as the snapshot findings. They are now D1-D8, and the A-series was
+renumbered contiguously in the same pass, so no gap remains.
+
+Every item below was reproduced headless against a scratch fixture and
+cross-checked against playwright-mcp on the same page.
 
 **The competitive picture is the opposite of what we assumed.** playwright-mcp is
 at parity or ahead of us on console and network: it returns failing response
@@ -594,7 +619,7 @@ appends `Console: N errors, M warnings` to *every* tool response so its agent is
 prompted to look. We do none of that. The one axis we clearly win is retention
 (below).
 
-## A15. Console and network logs are silently emptied after five minutes
+## D1. Console and network logs are silently emptied after five minutes
 `CONSOLE_TTL_MS` and `NETWORK_TTL_MS` are both `5 * 60 * 1000`
 (`src/firefox/events/console.ts:11`, `src/firefox/events/network.ts:10`). Entries
 older than that are dropped, and `list_network_requests` then reports
@@ -609,24 +634,24 @@ playwright wipes its network log on every navigation with no way to opt out, so
 any question asked after the failing step favours us. The TTL quietly gives that
 advantage back on exactly the long tasks where it matters most.
 
-## A16. Response and request bodies are never captured
+## D2. Response and request bodies are never captured
 Not stored at all, so a failing endpoint's error payload is unreachable through
 our tools. playwright-mcp returns both (`part: "response-body"`, verified
 verbatim). This is the single largest capability gap on the devtools surface.
 
-## A17. Console messages carry no stack trace and no source location
+## D3. Console messages carry no stack trace and no source location
 An uncaught error arrives as bare `Error: <msg>` — no frames, no `url:line`.
 Worse, the `source` field we *do* expose is `entry.source.realm`, a GUID, which
 makes the documented filter useless for its apparent purpose. playwright prints
 the full trace and appends `@ url:line` to every message.
 
-## A18. Nothing in our output ever mentions console state
+## D4. Nothing in our output ever mentions console state
 playwright appends `Console: N errors, M warnings` to every tool response, so its
 agent learns for free that something is wrong. Ours stays silent until asked, and
 an agent with no reason to suspect a console error will not ask. Cheap to fix and
 probably the highest ratio of behaviour change to effort in this document.
 
-## A19. `isXHR` matches nothing in Firefox
+## D5. `isXHR` matches nothing in Firefox
 `src/firefox/events/network.ts:104` derives it from
 `req.initiator?.type === 'xmlhttprequest' || 'fetch'`, which returned **zero**
 rows on a page making nothing but `fetch` calls. `resourceType` is likewise
@@ -634,7 +659,7 @@ guessed from the URL string rather than reported by the browser. So the two
 filters an agent would naturally reach for to isolate API traffic both fail
 silently.
 
-## A20. The logpoint lifecycle is broken, silently
+## D6. The logpoint lifecycle is broken, silently
 - A logpoint set before a reload never collects again, and
   `get_logpoint_results` keeps returning the stale pre-reload results.
 - `enable_debugger` does not re-arm it.
@@ -644,13 +669,13 @@ silently.
 Together these kill the canonical instrument-then-reload workflow, which is the
 main reason to have logpoints at all. Every failure is silent.
 
-## A21. Transport failures are invisible
+## D7. Transport failures are invisible
 We do not subscribe to `network.fetchError`, so a connection-refused fetch is
 absent from the log entirely and an aborted response reads as a clean `200`.
 playwright is equally blind here, so this is a correctness gap rather than a
 competitive one.
 
-## A22. The profiler does not run on the Firefox the eval launches
+## D8. The profiler does not run on the Firefox the eval launches
 It errors out on release 153 and needs 154+. Combined with playwright having no
 profiling tool at all, a profiler task would be a zero-information row three
 different ways.
@@ -665,42 +690,44 @@ an emoji in the header of every `list_network_requests` response (lines 241, 257
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
 every change has a measured before/after.
 
-0. **A37** (`drag_by_uid_to_uid` silently succeeds while doing nothing on 5 of 6
-   drag idioms), **A23** (a page calling `window.close()` destroys our view of the
-   browser) and **A24** (`close_page` on the last tab bricks the instance).
-   A37 leads because a *false success* is the worst failure mode a tool can have —
-   the agent cannot detect it and will report work it did not do. A23/A24 sit here
+0. **A33** (`drag_by_uid_to_uid` silently succeeds while doing nothing on 5 of 6
+   drag idioms), **A18** (a page calling `window.close()` destroys our view of the
+   browser) and **A19** (`close_page` on the last tab bricks the instance).
+   A33 leads because a *false success* is the worst failure mode a tool can have —
+   the agent cannot detect it and will report work it did not do. A18/A19 sit here
    because between them an ordinary OAuth or payment popup can end a session
    outright, and no fixture can design around a real site's close button.
-1. **A0** (SVG anchor crashes the snapshot) — a one-line coercion, and it is the
+1. **A1** (SVG anchor crashes the snapshot) — a one-line coercion, and it is the
    only finding that disables the tool surface outright rather than degrading it.
-2. **A4** (state behind a non-default flag) — now known to be a defaults change,
+2. **A6** (state behind a non-default flag) — now known to be a defaults change,
    not new capability, and it decides `unsub-dark-patterns`.
-3. **A5** (silent `fill_by_uid` failures) — behaves like a plain bug; small blast radius.
-4. **A2 + A2b** (table content, and containers vanishing around inline tags) —
+3. **A7** (silent `fill_by_uid` failures) — behaves like a plain bug; small blast radius.
+4. **A3 + A4** (table content, and containers vanishing around inline tags) —
    the one measured cost (57% on `oos-substitute`), plus wholesale prose loss on
    any legacy page.
-5. **A3** (accessible names) — likely the next largest, on forms.
-6. **A1** (27-char cap) — biggest blast radius; changes every snapshot's size.
-7. **A8 + A10** (missing tools; SVG unusable) — additive, unblocks planned tasks.
-8. **A11** (viewport clamp reported as success) — narrow blast radius today, but
+5. **A5** (accessible names) — likely the next largest, on forms.
+6. **A2** (27-char cap) — biggest blast radius; changes every snapshot's size.
+7. **A10 + A13** (missing tools; SVG unusable) — additive, unblocks planned tasks.
+8. **A14** (viewport clamp reported as success) — narrow blast radius today, but
    it is the one finding that makes a whole task class unwinnable for us and
    winnable for playwright, invisibly.
-9. **A29 + A30 + A31** (table geometry, scoped snapshots, the depth limit) — the
+9. **A24 + A25 + A26** (table geometry, scoped snapshots, the depth limit) — the
    three that jointly decide whether a snapshot-only path exists on a dense page.
-   A30 in particular is cheap: a working `selector` would let an agent afford to
+   A25 in particular is cheap: a working `selector` would let an agent afford to
    look at the region it cares about.
-10. **A25 + A28 + A32** (announce new tabs; keep uids valid on an unchanged page;
+10. **A20 + A23 + A27** (announce new tabs; keep uids valid on an unchanged page;
     add a wait primitive) — all three are "stop making the agent pay for
-    bookkeeping", and A32 is the measured 67% token gap on async pages.
-11. **A26 + A27** (list URLs; background-tab throttling).
-12. **A6, A7, A9, A9b, A12, A13, A14** — cheap and independent.
+    bookkeeping", and A27 is the measured 67% token gap on async pages.
+11. **A21 + A22** (list URLs; background-tab throttling).
+12. **A8, A9, A11, A12, A15, A16, A17** — cheap and independent.
 
-The devtools findings sit on their own track, since no shipped task measures them
-yet. Order there: **A18** (free console cue — smallest change, largest behaviour
-delta), **A15** (the 5-minute TTL, which silently converts a correct answer into
-a wrong one on long tasks), **A17** then **A16** (stack traces, then response
-bodies — the two things playwright has and we do not), **A19**, **A20**, **A21**.
+Part D sits on its own track, since no shipped task measures it yet. Order there:
+**D4** (free console cue — smallest change, largest behaviour delta), **D1** (the
+5-minute TTL, which silently converts a correct answer into a wrong one on long
+tasks), **D3** then **D2** (stack traces, then response bodies — the two things
+playwright has and we do not), **D5**, **D6**, **D7**. **D8** (profiler) is
+deliberately last and arguably never: it does not run on the Firefox the eval
+launches AND playwright has no equivalent, so it is a zero-information row.
 
 Verified working, for contrast: `upload_file_by_uid` is sound end to end,
 headless. It fires the change event, the page sees a real `File` with the right
@@ -718,7 +745,7 @@ separable from Part A. B1 is the one that also affects anything else using
 
 ## B1. `callTool` surfaces failure as `isError` on the result, without throwing
 `cli/lib/mcp.mjs`. A caller that does not inspect `result.isError` sees a
-successful-looking response for a failed call. Combined with A5 this produces
+successful-looking response for a failed call. Combined with A7 this produces
 silent no-ops that look like success; it caused two false-negative bugs while
 authoring golden paths, which now wrap every mutating call in a helper that
 throws. **Cheapest fix in this document and no measurement impact.**
@@ -785,7 +812,7 @@ runs.
 chat did not reopen), and seven tabs accumulated during one manual probe. This is
 condition-asymmetric: our `navigate_page` and playwright's `browser_navigate` both
 navigate in place, so only the `cli` surface sees it. Related: `find` takes a
-fresh snapshot, which invalidates uids from the previous one (A28), so
+fresh snapshot, which invalidates uids from the previous one (A23), so
 `find`-then-`click` is only safe on the uids `find` itself just printed.
 
 Also cosmetic but a real discovery cost: the screenshot tool is `screenshot_page`,
@@ -794,7 +821,7 @@ playwright's `browser_take_screenshot`.
 
 ## B7. `eval` cannot pass `evaluate_script`'s `timeout`
 `lib/mcp.mjs` builds only `{function, args}`, so from the cli an awaited fetch
-slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
+slower than 5 s is unconditionally fatal (A12). Workaround is the passthrough:
 `firefox-cli call evaluate_script '{"function":"...","timeout":15000}'`.
 
 ---
@@ -807,7 +834,7 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   on a negated name claim ("No file named draft-final exists"); T054's cascade
   ordering false-failed a peek-then-drive solve; T058's tie-break masked
   wrong-row edits; T066's modal became undismissable after its own detector fired.
-- Documentation said the snapshot truncates at 30 chars; it is 27 (A1). That error
+- Documentation said the snapshot truncates at 30 chars; it is 27 (A2). That error
   had propagated into every wave's fixture-design brief.
 - `maxTurns` removed — a cli Bash call performs 1.21 browser ops per turn vs
   mcp's 1.00, and codex only approximates turns, so turns are neither a fair
@@ -847,7 +874,7 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
 - Tab contamination, the same bug one genre over. `cross-tab-pay` leaves an
   authorizer tab open, and the shared-browser envs would have carried it into the
   next task. `runOne` now closes every tab above index 0 and re-selects 0 — and
-  **stops at index 1**, because closing the last tab bricks the instance (A24).
+  **stops at index 1**, because closing the last tab bricks the instance (A19).
 - The vendored `@playwright/mcp` (0.0.78) takes `target`, not the older
   `element`/`ref` pair, on `browser_click`/`browser_type`. Passing `{element, ref}`
   fails with `expected string, received undefined -> at target`, and a harness
@@ -869,7 +896,7 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
 - **Task value review on the us-vs-playwright axis.** An earlier review proposed
   cutting ~12 tasks for showing no cli-vs-mcp separation, but that was the wrong
   axis: several of those (`fee-schedule`, `crm-join`, `roster-diff`, `ledger-sum`,
-  `grid-edit`) sit on the A2 table gap and are likely our best playwright
+  `grid-edit`) sit on the A3 table gap and are likely our best playwright
   discriminators. Re-evaluate only after a clean baseline.
 - **`file-upload` cannot grade what it was built to probe.** No server-side check
   can distinguish a real file selection from
@@ -888,7 +915,7 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   run, `browser_file_upload` in every playwright run — and none reached for the
   Blob shortcut. So the probe measured what it was built to measure. Keep
   checking: the transcript grep is the check, not the pass rate.
-- **T061 (keyboard-only) remains blocked by A8** (no key-press tool). It is now
+- **T061 (keyboard-only) remains blocked by A10** (no key-press tool). It is now
   the only task idea blocked on a missing tool.
 - **`room-booking` has a measured residual leak.** An agent that reads the request
   card and the room list but never the grid, then posts allowed `(day, slot, big
@@ -914,10 +941,10 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   the agent asks for `includeAll`; (b) the English empty state,
   `No supplementary notices in the English edition.`, truncates to
   `No supplementary notices in...` — the words that scope it to one edition are
-  exactly the words A1 removes. Both are natural consequences of natural markup
+  exactly the words A2 removes. Both are natural consequences of natural markup
   and were left in place deliberately, but they mean a playwright win here is
-  partly a measurement of A1 and the `<em>` drop, not only of agent judgement.
+  partly a measurement of A2 and the `<em>` drop, not only of agent judgement.
   Read the `en=Nreq/Nnav ar=… ja=…` counters in `detail` before reading the delta.
-  Also: A33's truncation makes the Arabic notice materially harder to read than
+  Also: A28's truncation makes the Arabic notice materially harder to read than
   the identical Japanese one (32% vs 18% of nodes cut), so which translated
   edition the agent picks changes the difficulty.

@@ -448,10 +448,10 @@ are all in use).
   Un-attemptable for playwright either way.
 - **A breakpoint/step-through task** — we ship no pause/resume/step/call-stack
   tools, only logpoints. There is nothing to measure yet.
-- **Re-measuring a known finding** — no task here depends on tables (A2), the
-  27-char cap (A1), checkbox state (A4) or the viewport clamp (A11). T121's
+- **Re-measuring a known finding** — no task here depends on tables (A3), the
+  27-char cap (A2), checkbox state (A6) or the viewport clamp (A14). T121's
   fixture in particular should render its results as cards, not a `<table>`, so
-  the row measures the console/debugger axis and not A2 a fourth time.
+  the row measures the console/debugger axis and not A3 a fourth time.
 - **Resurrecting a graveyard idea** — checked: nothing in the killed list (T004,
   T006, T009, T016, T017, T023, T025, T032, T034, T035, T046, T048, T057, T065,
   T071, T073, T076, T094, T095, T097, T099) touches console, network or the
@@ -459,43 +459,43 @@ are all in use).
 
 ---
 
-## 6. Tool defects found while probing (for `findings.md`, suggested A15–A21)
+## 6. Tool defects found while probing (filed in `findings.md` as Part D, D1-D8)
 
 All reproduced headless against a scratch fixture; none fixed, per the
 tool-fix freeze.
 
-- **A15. Console and network logs are silently emptied after 5 minutes.**
+- **D1. Console and network logs are silently emptied after 5 minutes.**
   `CONSOLE_TTL_MS`/`NETWORK_TTL_MS = 5 * 60 * 1000`. `list_network_requests`
   then reports `total: 0` with no indication that anything expired. Wall tiers
   reach 600s, so evidence can vanish mid-task. playwright keeps a 200-entry ring
   with no TTL. Highest-impact of these.
-- **A16. Response bodies are never captured**, for any request, and neither are
+- **D2. Response bodies are never captured**, for any request, and neither are
   request bodies. `get_network_request` returns headers/timings only.
   playwright-mcp returns both on demand (`part: "response-body"`), and even
   advertises it in its output. This is the single largest capability gap on the
   network surface.
-- **A17. Console messages carry no source location and no stack trace.**
+- **D3. Console messages carry no source location and no stack trace.**
   `log.entryAdded` supplies `stackTrace` and a source url/line; we keep neither.
   An uncaught exception arrives as `Error: <message>` and nothing else, where
   playwright gives the full frame list with function names, files and columns.
   Worse, the `source` field we *do* expose is `entry.source.realm` — a GUID — so
   the documented `source` filter is unusable.
-- **A18. Nothing in our responses ever mentions console state.** playwright
+- **D4. Nothing in our responses ever mentions console state.** playwright
   appends `Console: N errors, M warnings` (plus a pointer to new entries) to
   every tool response, so its agent learns about a silent failure without asking.
   Cheap fix, direct effect on turns for any diagnostic task.
-- **A19. `isXHR` is dead in Firefox.** `initiator.type` is never
+- **D5. `isXHR` is dead in Firefox.** `initiator.type` is never
   `fetch`/`xmlhttprequest`, so every `fetch()` records `isXHR: false` and
   `list_network_requests {isXHR: true}` returns nothing. `resourceType` is also
   guessed from the URL string rather than reported.
-- **A20. Logpoint lifecycle is broken across navigation, silently.** A logpoint
+- **D6. Logpoint lifecycle is broken across navigation, silently.** A logpoint
   set before a reload never collects again; `get_logpoint_results` keeps
   returning the stale pre-navigation list; re-calling `enable_debugger` does not
   re-arm it. Also: a second logpoint on an already-instrumented line silently
   never collects, and `set_logpoint` on a nonexistent line number (999 of a
   12-line file) reports success. This breaks the most common real debugging
   workflow (instrument, then reload to catch load-time code).
-- **A21. Transport-level failures are invisible.** We never subscribe to
+- **D7. Transport-level failures are invisible.** We never subscribe to
   `network.fetchError`, so a request that cannot connect is absent from the log
   entirely (not even pending), and a response aborted mid-body is recorded as
   `200` with no `duration`. playwright is equally blind here, so it is not a

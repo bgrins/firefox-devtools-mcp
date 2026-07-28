@@ -126,7 +126,7 @@
 > (`oos-substitute`, 57% MORE tokens for us, on a task whose answer sits in a
 > `<table>` our walker drops). Read together: we are not uniformly behind — we are
 > behind specifically where the snapshot loses information, and ahead on multi-step
-> auth flows. See `findings.md` A2/A4.
+> auth flows. See `findings.md` A3/A6.
 >
 > **Wave 8 (2026-07-27): navigation + consent. P1 COMPLETE except three stragglers.**
 > T044 (`dept-descent`), T045 (`breadcrumb-sibling`), T047 (`search-decoy`), T042
@@ -141,7 +141,7 @@
 > Taken with waves 6 and 7 the pattern is consistent: **we are ahead on multi-step
 > navigation and behind where a single view loses information** (wave 6's
 > `oos-substitute` +57% on dropped table content). `search-decoy` may be the same
-> effect — gov pages are exactly the `<font>`-inside-`<p>` case of finding A2b —
+> effect — gov pages are exactly the `<font>`-inside-`<p>` case of finding A4 —
 > but its variance makes that a hypothesis, not a result.
 >
 > Notable build decisions: T042's redirect loop was prototyped first, and Firefox
@@ -173,13 +173,13 @@
 > multi-step interaction tasks, not single-view extraction tasks.
 >
 > Two product findings came out of the verify-first step, both in `findings.md`:
-> **A11** — `set_viewport_size` calls `window().setRect()`, so it resizes the WINDOW and
+> **A14** — `set_viewport_size` calls `window().setRect()`, so it resizes the WINDOW and
 > headless Firefox clamps it to ~500px while the tool still reports the requested size.
 > Any breakpoint below 500px is unwinnable for us and winnable via playwright's
 > `browser_resize`, and it would look like agent failure. It is visible right in this
 > run's rows: our `issuedWidth=500`, playwright's `issuedWidth=480`, same requested 480.
 > The fixture's breakpoint is 600px specifically to stay clear of it.
-> **A9b** — `evaluate_script` has a hard 5000ms default timeout where playwright's
+> **A12** — `evaluate_script` has a hard 5000ms default timeout where playwright's
 > `browser_evaluate` has none; the aborted script does not abort the request, so it also
 > burns one of `timeout-vs-slow`'s three allowed attempts. No agent hit it this run.
 >
@@ -236,18 +236,18 @@
 > path really costs is ROBUSTNESS — the agent has to know to stop trusting the
 > snapshot. A weaker model that trusts it answers confidently wrong.
 > `support-chat` is the mirror image and the most actionable result in the suite:
-> having no wait primitive (findings A32) costs +41% output tokens and +52% wall on a
+> having no wait primitive (findings A27) costs +41% output tokens and +52% wall on a
 > real async page. That fix is purely additive.
 >
-> New product findings, all in findings.md: **A23** — a page calling
+> New product findings, all in findings.md: **A18** — a page calling
 > `window.close()` DESTROYS our whole view of the browser (every tab unreachable, no
 > recovery; playwright recovers cleanly). Payment and OAuth popups do this routinely,
 > so an ordinary authorization ends the session and it reads as agent failure; the
-> fixture ships no close button purely to dodge it. **A24** close_page on the last tab
-> bricks the instance. **A25** nothing announces a new tab (playwright appends "Open
-> tabs" to every result). **A27** background tabs throttle to 0.75 ticks/s under us vs
+> fixture ships no close button purely to dodge it. **A19** close_page on the last tab
+> bricks the instance. **A20** nothing announces a new tab (playwright appends "Open
+> tabs" to every result). **A22** background tabs throttle to 0.75 ticks/s under us vs
 > 2.0 under playwright — a 2.5x condition asymmetry on any wait-for-state task.
-> **A28** every snapshot invalidates all uids even on an unchanged page. **A29/A30/A31**
+> **A23** every snapshot invalidates all uids even on an unchanged page. **A24/A25/A26**
 > table geometry, opaque scoped-snapshot errors, and MAX_DEPTH=10 landing exactly on
 > the diff's gutter buttons (one more wrapper div, or any syntax highlighting, and the
 > whole diff vanishes — real code hosts all highlight).
@@ -267,7 +267,7 @@
 > `pr-review`'s four defect variants are not equally hard while the draw is random per
 > session — compare variants before reading its token delta.
 >
-> **Wave 11 (2026-07-28): five more new-genre sites, and A32 is now corroborated.**
+> **Wave 11 (2026-07-28): five more new-genre sites, and A27 is now corroborated.**
 > T114 (`formula-repair`, a spreadsheet), T115 (`chart-escape`, an analytics
 > dashboard), T116 (`live-auction`), T117 (`canvas-log`, a web terminal), T118
 > (`locale-notice`, a partially translated advisory site). Suite is now 70 web tasks
@@ -280,10 +280,10 @@
 > `chart-escape` 1,365 vs 821 (**+66%**). Totals 29,578 vs 26,567 (+11% for us).
 >
 > THE RESULT THIS WAVE WAS BUILT FOR: `live-auction` was commissioned partly to
-> re-probe A32 (no wait primitive) in a second genre. It did. Wave 10's
+> re-probe A27 (no wait primitive) in a second genre. It did. Wave 10's
 > `support-chat` was +41% output tokens; `live-auction` is +50%. Two unrelated
 > genres, same direction, same cause — waiting means re-snapshotting the whole page.
-> **A32 is a property of our surface, not of one fixture**, and it is the largest
+> **A27 is a property of our surface, not of one fixture**, and it is the largest
 > repeatable loss in the suite. The fix is purely additive (a new tool).
 >
 > Read together with wave 10, the picture is now consistent enough to state plainly:
@@ -298,19 +298,19 @@
 > playwright carrying all 70 cells in context. Being unable to see the grid cost us
 > nothing on tokens here. What it costs is robustness, the same caveat as `pr-review`.
 >
-> New findings (findings.md): **A33** the 27-char cut slices at a UTF-16 CODE UNIT
+> New findings (findings.md): **A28** the 27-char cut slices at a UTF-16 CODE UNIT
 > index — it splits surrogate pairs and emits a LONE HIGH SURROGATE into the MCP
 > payload (U+FFFD on the wire) on an ordinary Japanese sentence, and silently eats
 > combining marks *inside* the surviving text (Arabic shadda/tanween drop, "é"
 > becomes "e", no ellipsis to mark it). Truncation is language-dependent: 32% of
 > Arabic text nodes vs 18% of Japanese, so the same sentence is findable in one
-> language and invisible in another. **A33b** neither surface carries `lang`/`dir`.
-> **A34** `includeAll` returns 10 of 18 table rows with NO marker, and because the
+> language and invisible in another. **A29** neither surface carries `lang`/`dir`.
+> **A30** `includeAll` returns 10 of 18 table rows with NO marker, and because the
 > series is per-session an agent computes a confidently WRONG answer in ~30% of
 > mints — the first time a snapshot gap has been measured as wrong answers rather
-> than extra tokens. **A35** the `<table>` grid is invisible (0/70 cells) but an
+> than extra tokens. **A31** the `<table>` grid is invisible (0/70 cells) but an
 > `<input>`'s `value` property IS read, which is why the blind solve works at all.
-> **A36** neither surface reads canvas text and we do not even emit the `<canvas>`
+> **A32** neither surface reads canvas text and we do not even emit the `<canvas>`
 > element, so web terminals need an escape hatch; `opacity: 0` is the one divergence
 > (we drop, playwright keeps).
 >
@@ -330,7 +330,7 @@
 > tasks across 38 sites; golden paths 74/74 green twice. Acceptance 24/24.
 >
 > SELECTION CHANGED: waves 10-11 picked genres by novelty of interaction and the
-> findings converged hard on A32 and the table family. Round 3 instead picked by
+> findings converged hard on A27 and the table family. Round 3 instead picked by
 > which TOOL CAPABILITY had zero coverage, verified by grep: `drag_by_uid_to_uid`
 > (never called by any of 70 tasks or any driver), the clipboard (untouched), and
 > time-based media (no `<video>`/`<audio>` in 34 sites).
@@ -342,7 +342,7 @@
 > surfaces on efficiency, and that is fine: this wave's value is entirely in what
 > the verify-first spikes found.
 >
-> **A37, the most serious defect in the document: `drag_by_uid_to_uid` reports
+> **A33, the most serious defect in the document: `drag_by_uid_to_uid` reports
 > success while doing nothing, on 5 of 6 drag idioms.** It works only against
 > canonical HTML5 DnD; against pointer-events and mouse-events implementations it
 > fires NOTHING and still reports success. It also delivers clientX/clientY=0 (so
@@ -353,7 +353,7 @@
 > board as triaged when nothing moved. Promoted to the top of the Part A fix order.
 >
 > **THE METHODOLOGICAL FINDING, and it is worth more than the numbers: the eval's
-> own agent runs would never have found A37.** All six `kanban-triage` runs, on BOTH
+> own agent runs would never have found A33.** All six `kanban-triage` runs, on BOTH
 > surfaces, reported `route=button` — not one agent dragged anything, even
 > playwright, whose drag works correctly. Agents reach for an explicit control
 > whenever a site offers one. So a tool can be completely broken and a
@@ -363,13 +363,13 @@
 > real-world exposure is drag-ONLY UIs (many boards, builders and schedulers have no
 > button fallback), where the silent failure would bite invisibly.
 >
-> Other findings: **A38** WebVTT cues reach NEITHER accessibility tree, so captions
+> Other findings: **A34** WebVTT cues reach NEITHER accessibility tree, so captions
 > are unreadable on both surfaces — a shared blind spot and a real accessibility
-> hole. **A39** the clipboard works on both, but ours needs a `click_by_uid`
+> hole. **A35** the clipboard works on both, but ours needs a `click_by_uid`
 > immediately before the read (user-activation window measured at ~5s, verified
 > failing at 9s) where playwright's `browser_evaluate` is always gestured; playwright
 > also has `browser_press_key` for a real Meta+V paste and we still have no key-press
-> tool (A8). Assumption disproved: headless Firefox decodes EVERYTHING tried (PCM
+> tool (A10). Assumption disproved: headless Firefox decodes EVERYTHING tried (PCM
 > WAV, WebM/Opus, MP4/AAC, WebM/VP9, MP4/H.264) — decode was never the media blocker,
 > which is why T131 shipped rather than taking its authorised do-not-ship option.
 >
@@ -477,7 +477,7 @@ widgets, expensive-per-run waits, or build-heavy fixtures.
 T001, T007, T008, T050, T051, T053, T061, T062, ~~T067~~ (shipped, wave 9), T068,
 T072, T087, T090, T098
 Only T061 (keyboard-only) is still blocked on a missing tool — there is no
-key-press tool at all; see `findings.md` A8.
+key-press tool at all; see `findings.md` A10.
 
 ## Dynamic / Stateful UIs (T001–T009)
 
@@ -1625,8 +1625,8 @@ built, then measure both surfaces on it and report the delta.
   A failing check on the Checks tab reports an assertion message naming the
   symptom but not the line.
 - Why this genre: dense monospace with LONG lines is the worst case for the
-  27-char snapshot cap (A1), and real diffs are commonly laid out as tables,
-  which our walker drops entirely (A2). This is the honest version of the
+  27-char snapshot cap (A2), and real diffs are commonly laid out as tables,
+  which our walker drops entirely (A3). This is the honest version of the
   question wave 6 raised with `oos-substitute`. Also: line-anchored interaction
   (comment on ONE specific line) is an addressing problem nothing else tests.
 - Server: the diff is NOT on disk — `GET /api/forge/diff` (session-gated) serves
@@ -1645,7 +1645,7 @@ built, then measure both surfaces on it and report the delta.
   request card stating the constraints (duration, earliest start, capacity, a
   day to avoid).
 - Why this genre: nothing in the suite has a TIME axis, and a booking grid is
-  naturally a `<table>` — the exact structure finding A2 says never reaches our
+  naturally a `<table>` — the exact structure finding A3 says never reaches our
   snapshot. Spanning cells make it harder than a flat data table.
 - Server: the occupancy grid is generated per session by
   `GET /api/schedule/grid`, so the free slot moves. `POST /api/schedule/book
@@ -1665,7 +1665,7 @@ built, then measure both surfaces on it and report the delta.
   yields a case number.
 - Why this genre: distinct from `flaky/slow` (a progress bar with a known
   duration). Here replies arrive at unpredictable intervals, the transcript
-  GROWS with each turn (pushing the 100-line snapshot cap, A6), and the agent
+  GROWS with each turn (pushing the 100-line snapshot cap, A8), and the agent
   must carry a value between two pages. It also tests restraint: an agent that
   invents an answer to the rep's question rather than going to look it up fails.
 - Server: scripted per-session state machine. `POST /api/support/msg` advances
@@ -1711,7 +1711,7 @@ because implementers stopped softening fixtures.
 Selection criteria this round, learned from wave 10: the useful tasks were the
 ones where the *interaction* was unlike anything else in the suite, not the ones
 with novel-looking chrome. Two of these also deliberately re-probe the two gaps
-wave 10 measured (A32 no wait primitive; A29 no geometry) in a different genre, so
+wave 10 measured (A27 no wait primitive; A24 no geometry) in a different genre, so
 a corroborating measurement exists rather than a single data point.
 
 ### T114 — Spreadsheet Formula Repair (new genre: formula grid)
@@ -1762,7 +1762,7 @@ a corroborating measurement exists rather than a single data point.
 - Why this genre: nothing in the suite has state that changes without the agent
   acting. `flaky/slow` waits for a known duration; `support-chat` waits for a
   scripted reply; this one *invalidates the agent's information* while it thinks.
-  It also re-probes A32 (no wait primitive) in a second genre — if the +41% token
+  It also re-probes A27 (no wait primitive) in a second genre — if the +41% token
   gap reproduces here, it is a property of our surface and not of one fixture.
 - Server: the price ladder advances on a per-session clock server-side (never
   client-side, so it cannot be frozen by stopping JS). `POST /api/auction/bid`
@@ -1799,7 +1799,7 @@ a corroborating measurement exists rather than a single data point.
   Japanese, where the notice the agent needs was only ever published in the
   non-English versions. Locale switching via a real language menu.
 - Why this genre: the suite is 100% English LTR ASCII. This asks concrete new
-  questions: does the 27-char text cap (A1) cut mid-codepoint or mangle combining
+  questions: does the 27-char text cap (A2) cut mid-codepoint or mangle combining
   characters; does an RTL layout confuse the snapshot's ordering; is `lang`/`dir`
   carried at all; does the agent notice content differs by locale rather than
   assuming the English page is complete.
@@ -1818,7 +1818,7 @@ mandatory dual-surface measurement.
 
 Selection criterion CHANGED for this round, and it is the point. Waves 10-11
 picked genres by novelty of interaction, and the findings converged fast — every
-loss traced back to A32 (no wait primitive) or the table family (A2/A29/A34/A35).
+loss traced back to A27 (no wait primitive) or the table family (A3/A24/A30/A31).
 Picking more genres the same way mostly re-confirms those. So round 3 picks by
 **which TOOL CAPABILITY has zero coverage in the suite**, verified by grep:
 - `drag_by_uid_to_uid` — we ship the tool; NO task and NO golden-path driver has
@@ -1849,7 +1849,7 @@ by dragging, that is the finding.
   paste it into a rotation form on another page of the same site.
 - Why this genre: nothing in the suite touches the clipboard, and this is the
   realistic case where a value genuinely cannot be read from the page. It also
-  interacts with A1 honestly rather than artificially — the displayed value is
+  interacts with A2 honestly rather than artificially — the displayed value is
   ellipsised by the SITE, not by our snapshot, so both surfaces face the same wall
   and the question is purely whether either can get at the clipboard.
 - Server: token minted per session, never in the page source in full; the mask is
