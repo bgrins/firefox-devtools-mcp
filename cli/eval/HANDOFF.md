@@ -185,38 +185,107 @@ on both surfaces used the button, not drag — so `drag_by_uid_to_uid` was compl
 broken and the pass rates showed nothing. Only the deliberate capability spike found
 it. **Keep commissioning verify-first spikes against tools no task exercises.**
 
-## 7. Roadmap
+## 7. State as of 2026-07-28, and the worklist
 
-In the order I would do them.
+**Suite:** 74 web tasks + 3 smoke, 38 sites, `verify.mjs` 74/74 green. Head is
+`a242a37` on `firefox-cli`, pushed. **16 tasks now carry regression assertions** —
+the exact strings that were once mis-graded, wired into the gate so a future change
+that re-breaks them fails the run and names the string.
 
-1. **Finish the grading-defect fixes** (in flight as of this writing; see
-   `review-2026-07-28.md` §2 and the `staging/FIX-*.md` specs). 42 confirmed
-   defects: ~11 tasks that pass a wrong answer, ~5 that reject a correct one. Until
-   these land, some pass rates overstate what was measured. **This is the highest
-   priority because it is about the instrument's validity, not its coverage.**
-2. **The cosmetic tail** — `review-2026-07-28.md` §4, roughly 100 items, grouped by
-   site. Explicitly **unverified**: single-reported, not reproduced, and 24 of 64
-   severe claims in the same review were refuted, so expect a similar error rate.
-   Verify before acting. The one item worth doing regardless: `X-Eval-Nonce`,
-   `__SESSION_NONCE__` and `evalsid` appear in 139 fixture files, and a header
-   literally named "Eval" is the biggest realism tell in the suite. Mechanical
-   rename.
-3. **Then pick one of:**
+**Fixed in the 2026-07-28 defect pass (21 items):** 18 validator/fixture fixes
+(`617cb74`), the `/api/beacon` default-deny (`4cfde87`) which was the shared root
+cause behind the forgeable `roster-submit` / `form-progress` / `biglist-fetch`
+gates, and `pr-review` + `chart-escape` clause scoping (`a242a37`). Notably fixed:
+`form-gauntlet` and `roster`, the two worst cheatability defects (both were passable
+without doing the work), and `oos-substitute`, a false fail that punished correct
+reasoning.
+
+### 7a. Open defects — in value order
+
+Each of these is CONFIRMED and reproduced; see `review-2026-07-28.md` §2 and its
+addendum for exact line numbers and proof strings. Roughly half of a first fix
+attempt had to be discarded, so **read §4b before starting** and work them in
+small test-first increments.
+
+**Tier 1 — a wrong answer passes.** These are the ones that make the suite report
+capability it did not measure.
+1. `price-compare` — the store conjunct is satisfied by the *product* name, so an
+   answer crediting the wrong store passes; `perStore` is loaded and never read; a
+   sold-out decoy passes as the winner. A first fix attempt did NOT close it (the
+   verdict window absorbed the per-store list) and added 12 false fails — do not
+   reuse it.
+2. `news-extract` — no row binding, so a table with the points column rotated one
+   row scores 20/20. The first attempt's line-windowed rows failed any answer with
+   two rows on one line.
+3. `variant-matrix` — declaring the most expensive combination the cheapest passes.
+4. `crm-join` — naming the wrong winning region passes if the right region and
+   figure appear anywhere.
+5. `roster-diff` — the added and removed lists can be completely SWAPPED and pass;
+   categories are demanded by the ask and never graded; `newTitle` collides with an
+   unchanged decoy's existing title.
+6. `canvas-pick` — a blind 48-cell sweep passes; the palette is inline in the page.
+   The first attempt was defeated by re-minting the session (10/10 blind runs) and
+   introduced a permanent unrecoverable void.
+7. `shadow-unlock`, `modal-escape` — forgeable gates; `modal-escape` also lacks the
+   provenance gate twelve sibling endpoints have.
+
+**Tier 2 — a correct answer fails.** These penalise good agents today.
+8. `faceted-search` — normal reviewing prose fails unless the literal word
+   "reference" precedes the target. **Blocked on testability**: the false fail needs
+   an answer quoting 3+ rejected references and the driver surfaces only 2, so the
+   driver must be extended before a fix can be demonstrated.
+9. `live-auction` — a correct early decline fails and the byte-identical answer
+   passes 152s later. **Blocked on testability**: frequency-gated to the 1-in-9
+   `ceiling=1800` draw, so it needs `--seed` or a server mode first.
+10. `intake-carryover`, `handbook`, `brochure-minimal`, `ledger-csv`,
+    `consent-reject`, `locale-notice`, `qty-limit`, `injection-bait` — each has a
+    specific over-strict rule; `locale-notice` is also a live false pass on the one
+    answer the fixture was built to catch.
+
+**Tier 3 — ungraded halves and telemetry.** `cross-tab-pay` (decoy computed and
+ignored), `kanban-triage` (the "leave Routine alone" half cannot be graded — the
+start column is overwritten), `formula-repair` (`?formulas=1` stamps every cell so
+`inspected` proves nothing), `room-booking` and `abstract-length`.
+
+**Cross-cutting, still open.** The remaining hand-rolled `PREFIX-HEX` comparisons
+(`brochure-minimal`, `promo-zindex`, `canvas-pick`, `draft-resume`, `checkout-stop`,
+`abstract-length`) are still case- and dash-exact; use
+`/[^\S\n\r]+|[‐-―−-]+/g`, NOT `/[\s…]+/g`, or a per-line list bridges
+a newline into the code. `breadcrumb-sibling` / `search-decoy` clause boundaries need
+the reviewer's measured remedy (`&& !namesStart(c)`), which recovers 3 of 4 false
+fails at no discrimination cost — plain removal of `:` as a boundary was measured to
+ADD false fails.
+
+**Honest gaps in what was landed.** `form-gauntlet`'s `opens=` and `unsub`'s
+`removal.fromPage` are satisfiable from a shell (`Accept: text/html`, `curl -e`) —
+they are route telemetry, not browser proof, and the comments say so. `gridword` and
+`canvas-pick` sessions can still be re-minted, so a guess count is spoofable
+downward. `ledger-sum`'s `folios >= 4` threshold is undocumented.
+
+### 7b. Then, in order
+
+1. **The cosmetic tail** — `review-2026-07-28.md` §4, roughly 100 items by site.
+   Explicitly **unverified**: single-reported, never reproduced, and 24 of 64 severe
+   claims in the same review were refuted, so expect a similar error rate. Verify
+   each before acting. Worth doing regardless: `X-Eval-Nonce`, `__SESSION_NONCE__`
+   and `evalsid` appear in 139 fixture files — a header literally named "Eval" is
+   the biggest realism tell in the suite, and it is a mechanical rename.
+2. **Then pick one of:**
    - **Fix Part A and measure before/after.** The tool-fix freeze (§8) exists to
-     preserve a "before"; we now have a rich one — 74 tasks, a free golden-path
-     gate, per-task medians. Suggested order is in `findings.md`. A27 (wait
-     primitive) is additive and worth 41-50% on async pages. A33 (drag false
-     success) is the most severe defect found.
-   - **Build the devtools wave.** Fully designed in
-     `devtools-wave-proposal.md` (T120-T124). Read its fairness section first: it
-     is honest that a task the other side cannot attempt proves nothing.
-   - **More capability spikes.** Untested surface remaining: keyboard input (no
-     tool exists at all, A10), scroll (no tool), `select_option`, coordinate
-     clicks. Cheaper than a site wave and higher yield, on the wave-12 evidence.
+     preserve a "before"; there is now a rich one. Order is in `findings.md`. A27
+     (wait primitive) is purely additive and worth 41-50% on async pages. A33 (drag
+     reports success while doing nothing) is the most severe defect found.
+   - **Build the devtools wave**, fully designed in `devtools-wave-proposal.md`
+     (T120-T124). Read its fairness section first: it is honest that a task the
+     other side cannot attempt proves nothing.
+   - **More capability spikes.** Untested surface: keyboard input (no tool at all,
+     A10), scroll (no tool), `select_option`, coordinate clicks.
 
-**Do not** default to building more site genres. Waves 10 and 11 did that; the
-findings converged hard onto the same short list, and wave 12 showed that picking by
-*untested capability* yields far more per unit of effort.
+**Do not** default to building more site genres. Waves 10 and 11 did that and the
+findings converged hard onto the same short list; wave 12 showed that picking by
+*untested capability* yields far more per unit of effort. And note the wave-12
+lesson: an agent run will NOT surface a broken tool if agents can route around it,
+so the spikes matter more than the fixtures.
 
 ## 8. Standing decisions and their reasons
 
@@ -260,6 +329,14 @@ findings converged hard onto the same short list, and wave 12 showed that pickin
 - Whether `room-booking` (brute-forceable in 13.2% of sessions) and `pr-review`
   (four defect variants of unequal difficulty, drawn at random) are good enough, or
   want a `--seed` flag.
-- `findings.md` cites `ledger-sum` as a table-gap discriminator. That is not
-  currently supportable — an Export CSV button makes it a 4-call solve and the
-  validator cannot tell. Either add route telemetry or drop the claim.
+- `findings.md` cites `ledger-sum` as a table-gap discriminator. Route telemetry
+  now exists (`route=csv/table/unknown` in `detail`), but no agent run has been
+  recorded since, so the claim is still unsupported by data — check `route=` on the
+  next sweep before citing it.
+- Whether to add `--seed` to `run.mjs`. Two things want it: `live-auction`'s
+  defect is only reachable on a 1-in-9 draw, and `pr-review` draws one of four
+  defect variants of unequal difficulty, which confounds its token comparison.
+- **Pass rates recorded BEFORE 2026-07-28 overstate what was measured** on the
+  tasks listed in §7a, because their validators graded a bag of substrings. Wave
+  token comparisons are unaffected (efficiency, not correctness), but do not quote
+  an old "N/N passed" for those tasks without the caveat.
