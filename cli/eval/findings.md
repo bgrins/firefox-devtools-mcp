@@ -15,10 +15,32 @@ risk:
 - **Part C — the eval harness itself (`cli/eval/`).** Ours to change freely. Lists
   what has already been fixed and what is still outstanding.
 
-How things were found: **golden path** means `node eval/verify.mjs`, 51
+How things were found: **golden path** means `node eval/verify.mjs`, 65
 deterministic drivers that solve every task through our own MCP — so any finding
 there is reproducible on demand for nothing. **measured** means it moved a number
 in a recorded agent run under `results/`.
+
+---
+
+## The headline, as of wave 10
+
+Waves 4-9 built fixtures with an explicit instruction to design *around* our
+snapshot's limits. That kept tasks winnable but meant the suite could only
+rediscover gaps we already suspected. Wave 10 suspended that rule and built four
+sites in their genres' natural idioms — a real diff table, a real booking grid, a
+growing chat transcript, a real two-tab payment handoff — then measured both
+surfaces on them.
+
+**Result: on two of the four, playwright-mcp has a snapshot-only solve path and we
+have none at all.** Not "ours is more expensive" — ours cannot do it from the
+snapshot, at any cost, and must drop to `evaluate_script`. That is a categorically
+stronger finding than anything the previous six waves produced, and it is a direct
+consequence of no longer letting fixture authors route around the gap.
+
+The corollary matters for how every cost number in this document is read: we look
+cheaper on dense pages (4x cheaper per snapshot, 2.8x over a solve) largely
+because we stop looking and start scripting. **A token comparison on a dense page
+is not meaningful unless it says whether a snapshot-only path existed.**
 
 ---
 
@@ -237,6 +259,118 @@ re-parented directly under the preceding `<button>`. An agent or driver that
 navigates by tree structure rather than by text can therefore resolve a different
 element from one snapshot to the next.
 
+## A23. Tab management: `window.close()` destroys our whole view of the browser
+With three tabs open, one page calling `window.close()` left `list_pages`
+reporting `1 pages (selected: 0) > [0] Untitled` at `about:blank`, with the other
+tabs unreachable and `select_page(0)` unable to recover. playwright-mcp recovered
+cleanly onto a surviving tab.
+
+**This is the most severe finding in Part A.** Payment and OAuth popups call
+`window.close()` as a matter of course, so an agent doing an ordinary third-party
+authorization loses its entire session and every open tab — and it would read as
+agent failure, not tool failure. The `cross-tab-pay` fixture ships **no**
+self-close button purely to avoid triggering it, which makes the fixture less
+realistic than a real processor page.
+
+## A24. `close_page` on the last remaining tab bricks the instance
+It answers `Error: Tried to run command without establishing a connection` and
+leaves a phantom `Untitled` tab; nothing works afterwards. playwright answers
+`No open tabs. Navigate to a URL to create one.` and stays usable. So an agent
+that tidies up after itself can destroy its own session. Any cleanup loop must
+stop at index 1, which is what the harness now does.
+
+## A25. Nothing tells the agent a new tab opened
+Clicking a `target=_blank` link opens a real second tab, but no tool response
+mentions it and the tool-side selection stays on the opener — the agent has to
+guess to call `list_pages`. playwright appends an `### Open tabs` section to
+**every** action result. Same shape as A18 (console state): the competitor
+volunteers state we make you ask for. Pure turn cost, and a plausible cause of
+one-tab thrashing on exactly the flows `cross-tab-pay` measures.
+
+## A26. `list_pages` omits URLs, contradicting its own description
+The description says "List open tabs (index, title, URL)"; `formatPageList` in
+`src/tools/pages.ts` prints index and title only. Two authorizer tabs are
+therefore indistinguishable in our listing, and an agent must select each and
+snapshot to tell them apart. playwright shows full URLs. (Selecting *by* URL
+substring does work — it is only the listing that hides it.)
+
+## A27. Background tabs are throttled under our surface but not playwright's
+A 500ms interval in a non-selected tab measured **0.75 ticks/s** against 2.0
+ticks/s while selected; playwright showed 2.0/s throughout. `select_page` fires
+blur/visibilitychange/focus where playwright's select fires focus only.
+`document.visibilityState` is `"visible"` and `hasFocus()` true in *both* tabs, so
+a page cannot detect which tab is fronted.
+
+Impact: a polling page reflects cross-tab state ~2.5x slower under our surface —
+a real condition asymmetry on any wait-for-state task, and a page keying on
+`visibilitychange` behaves differently between conditions. The fixture polls every
+1200ms and refreshes on `focus` to stay neutral.
+
+## A28. Every `take_snapshot` invalidates all prior uids, even on an unchanged page
+`Error: 1_35 stale/invalid. Call take_snapshot first.` after a re-snapshot of a
+page that did not change. playwright refs survived both a re-snapshot and a DOM
+mutation, because they resolve by role plus accessible name. Every read-then-act
+burst on our surface therefore costs an extra call.
+
+Worth stating the flip side honestly, since it is the one place our design is
+arguably better: a stale playwright ref that still resolves silently targets the
+*wrong* element (observed typing into "Start time" when "Day" was meant), whereas
+ours fails loudly. The fix is not to copy their laxity but to keep uids valid
+while the DOM is unchanged.
+
+## A29. `includeAll` surfaces table cells but not the geometry needed to read them
+`take_snapshot({includeAll: true})` emits the 140 `td` nodes with their text
+(10.1k chars) but **no `rowspan`/`colspan` and no cell roles**, and span-covered
+cells are simply absent — so rows carry anywhere from 4 to 15 cells. Column
+identity is unrecoverable: the only available reconstruction (read left to right)
+disagreed with the DOM on 112 cells and produced a confidently wrong answer.
+Two different weeks can emit byte-identical snapshots.
+
+playwright's ARIA snapshot has the identical gap — but it also offers
+`browser_snapshot({boxes: true})`, whose `[box=x,y,w,h]` annotations resolve to
+exactly 15 columns and give each block's span, so **the answer is recoverable from
+its snapshot alone and not from ours**. We expose no geometry option at all.
+Minimum solves measured: playwright 7 calls with zero `browser_evaluate`; ours 8
+calls, one of which *must* be `evaluate_script`.
+
+## A30. `take_snapshot`'s selector option fails opaquely
+`{selector: 'table.diff'}` (and `'.dock'`, and `'table.daybook'`) fails with
+`Failed to take snapshot: Failed to generate snapshot: Unknown error` — including
+the case where the element exists but is `[hidden]`, where the honest answer is
+"not visible". playwright's `browser_snapshot({target})` returned a scoped 9.7 KB
+subtree of the same page. So on a large page we must pay for the whole tree or
+drop to `evaluate`, and the error message actively misleads.
+
+## A31. `MAX_DEPTH = 10` is exactly on the edge for ordinary markup
+`body > chrome > main > div#diff > section > div > table > tbody > tr > td >
+button` puts the diff's gutter buttons at depth 10 — the limit. **One more
+wrapper div, or syntax highlighting that wraps tokens in spans inside the code
+cell, and the entire diff vanishes from our snapshot.** The `forge` fixture serves
+plain unhighlighted code in a single span, and that concession is load-bearing for
+our surface seeing anything at all. Real code hosts all highlight.
+
+## A32. There is no wait primitive, and polling costs 67% more tokens
+No `wait_for` / `wait_for_text` tool exists, so the only way to learn that an
+async reply landed is to re-`take_snapshot` and diff. On `support-chat` the golden
+path spent 17 whole-page snapshots purely waiting. Measured on the identical flow:
+**32 calls / 94,131 result chars for us vs 22 calls / 56,334 for playwright** —
+67% more output while returning strictly less information (see A1: our transcript
+is truncated at 27 chars per message, theirs is not).
+
+**Confirmed with real agents, and it is the largest measured loss in the suite.**
+`support-chat`, 3 repeats per condition, medians: **2,491 output tokens for us vs
+1,768 for playwright (+41%)**, and **84.3s vs 55.4s of wall time (+52%)** — so
+unlike the driver micro-benchmark we lose the clock too, once a real agent is
+choosing when to poll (44-50 thread polls for us against 27-43). The run is about
+as clean as this suite gets: our output spread across repeats was 1.01x.
+
+That makes A32 the most actionable item in Part A. It is purely **additive** — a
+new tool, no behaviour change to anything existing — and it is worth 41% of output
+tokens on async pages, which real sites are full of. Note playwright's
+`browser_wait_for` has its own hard 5000ms default with no extension, so a slower
+queue would make their ergonomic tool the fragile one; we could ship a better
+version rather than a copy.
+
 ---
 
 ## The devtools surface (A15-A21)
@@ -325,6 +459,10 @@ an emoji in the header of every `list_network_requests` response (lines 241, 257
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
 every change has a measured before/after.
 
+0. **A23** (a page calling `window.close()` destroys our view of the browser) and
+   **A24** (`close_page` on the last tab bricks the instance). Promoted above A0
+   because between them they mean an ordinary OAuth or payment popup can end a
+   session outright, and no fixture can design around a real site's close button.
 1. **A0** (SVG anchor crashes the snapshot) — a one-line coercion, and it is the
    only finding that disables the tool surface outright rather than degrading it.
 2. **A4** (state behind a non-default flag) — now known to be a defaults change,
@@ -339,7 +477,15 @@ every change has a measured before/after.
 8. **A11** (viewport clamp reported as success) — narrow blast radius today, but
    it is the one finding that makes a whole task class unwinnable for us and
    winnable for playwright, invisibly.
-9. **A6, A7, A9, A9b, A12, A13, A14** — cheap and independent.
+9. **A29 + A30 + A31** (table geometry, scoped snapshots, the depth limit) — the
+   three that jointly decide whether a snapshot-only path exists on a dense page.
+   A30 in particular is cheap: a working `selector` would let an agent afford to
+   look at the region it cares about.
+10. **A25 + A28 + A32** (announce new tabs; keep uids valid on an unchanged page;
+    add a wait primitive) — all three are "stop making the agent pay for
+    bookkeeping", and A32 is the measured 67% token gap on async pages.
+11. **A26 + A27** (list URLs; background-tab throttling).
+12. **A6, A7, A9, A9b, A12, A13, A14** — cheap and independent.
 
 The devtools findings sit on their own track, since no shipped task measures them
 yet. Order there: **A18** (free console cue — smallest change, largest behaviour
@@ -387,6 +533,16 @@ reloads, which on `timeout-vs-slow` spends a request against the patience budget
 Printing matches and context on distinguishable streams, or a `--uids-only` mode,
 would remove the whole class.
 
+**Worse, found in wave 10: `find` is strictly less capable than the snapshot it
+wraps.** `findInSnapshot()` calls `take_snapshot({})` with no `maxLines`, so it
+only ever searches the first 100 snapshot lines and offers no way to widen them.
+On the `forge` diff page, `find "evictOldest"`, `find "nextBoundary"`,
+`find "describeRate"` and even `find "src/tariff/window.js"` (a plain `<a>`) all
+returned **"no matches"** while the elements were plainly in the DOM. Reporting
+absence rather than truncation is the harmful part: "no matches" reads as "the
+thing is not there", so an agent stops looking. It should either pass a high
+`maxLines` or say that it only searched the first N lines.
+
 ## B4. `fill` gaps
 Cannot set a `<select>`. In one run a rename POST fired ~260 ms **before** the
 Save click and not in a repeat, suggesting `fill` sometimes commits on its own
@@ -413,6 +569,19 @@ this only distorts a cli run. If cli data is ever wanted on these two tasks,
 either ship `resize`/`upload` verbs or add `tools` and `call` to the cheatsheet
 first — and note that either change makes cli numbers non-comparable with earlier
 runs.
+
+## B6b. `open` creates a tab where `goto` navigates in place
+`firefox-cli open <url>` opens a NEW tab; `goto` navigates the current one. A
+`sessionStorage`-backed widget therefore looks broken when driven with `open` (the
+chat did not reopen), and seven tabs accumulated during one manual probe. This is
+condition-asymmetric: our `navigate_page` and playwright's `browser_navigate` both
+navigate in place, so only the `cli` surface sees it. Related: `find` takes a
+fresh snapshot, which invalidates uids from the previous one (A28), so
+`find`-then-`click` is only safe on the uids `find` itself just printed.
+
+Also cosmetic but a real discovery cost: the screenshot tool is `screenshot_page`,
+not `take_screenshot`, diverging from both our own `take_snapshot` convention and
+playwright's `browser_take_screenshot`.
 
 ## B7. `eval` cannot pass `evaluate_script`'s `timeout`
 `lib/mcp.mjs` builds only `{function, args}`, so from the cli an awaited fetch
@@ -445,6 +614,19 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   coaching one condition biased the metric.
 - `pages/index.html` moved out of the served root: it was reachable at `/` and
   spoiled three tasks' answers.
+- **The suite's primary metric could be silently understated by 45x.** A run does
+  not always emit ONE SDK result message: if the agent starts a background Bash
+  task (which agents do to wait for an async page reply), its completion
+  re-invokes the agent and the SDK emits a fresh result for that continuation.
+  `usage` and `num_turns` are per-segment while `total_cost_usd` and the durations
+  are cumulative. `backends/anthropic.mjs` kept only the LAST result, so a
+  26-turn/2392-token `support-chat` run was recorded as **1 turn and 53 output
+  tokens** — with a cost of $0.597 sitting next to it, which is the only reason it
+  looked wrong rather than merely small. Now: usage summed across segments, cost
+  and durations taken from the last, `segments` recorded on the row when >1.
+  Caught by the >2x spread flag (45.8x), which is the second time that flag has
+  paid for itself. `backends/codex.mjs` has the same last-wins shape at line 160;
+  unverified because codex is not the default and was not exercised here.
 - Viewport contamination between tasks. `narrow-viewport` leaves the browser at
   phone width, and `runOne` reset only server state — so in the shared-browser
   envs (`cli`, `mcp+http`) every later task ran in a 500x815 window
@@ -453,6 +635,16 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   `playwright` conditions spawn a browser per task and were immune, so it would
   have corrupted the comparison in the direction of whichever surface *did* the
   resize. `runOne` now restores 1366x768 for any env that owns an instance.
+- Tab contamination, the same bug one genre over. `cross-tab-pay` leaves an
+  authorizer tab open, and the shared-browser envs would have carried it into the
+  next task. `runOne` now closes every tab above index 0 and re-selects 0 — and
+  **stops at index 1**, because closing the last tab bricks the instance (A24).
+- The vendored `@playwright/mcp` (0.0.78) takes `target`, not the older
+  `element`/`ref` pair, on `browser_click`/`browser_type`. Passing `{element, ref}`
+  fails with `expected string, received undefined -> at target`, and a harness
+  written against the old API silently no-ops through an entire flow while the
+  snapshots still look correct. Cost an implementer a debug cycle; noted here
+  because anything new we write against playwright will hit it.
 
 ## Outstanding
 - **Nonce-gate the static tasks** so they must route through the browser. Lower
@@ -489,3 +681,17 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   checking: the transcript grep is the check, not the pass rate.
 - **T061 (keyboard-only) remains blocked by A8** (no key-press tool). It is now
   the only task idea blocked on a missing tool.
+- **`room-booking` has a measured residual leak.** An agent that reads the request
+  card and the room list but never the grid, then posts allowed `(day, slot, big
+  room)` windows in reading order, needs a median of 26 posts; **4.3% of sessions
+  put the answer inside the free 10-request budget and 13.2% are winnable inside
+  the 600s cap.** A desk patience budget (10 requests, then a doubling pause to a
+  240s cap) cut this from 100% scannable to 13.2%, which is honest but not zero.
+  Watch `bookPosts` in the detail string: a pass with a high post count and no
+  grid read is a brute-force pass, not a solve.
+- **`pr-review` draws one of four defect variants per session, and they are not
+  equally hard.** The draw is random and uncontrollable from the CLI, so two
+  conditions can draw different variants in the same sweep. Compare variants
+  before reading any token delta on this task. Blind guessing is bounded at ~8%.
+  A `--seed` flag, or pinning the draw when `--repeat` is used, would remove the
+  confound.

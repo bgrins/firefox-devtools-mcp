@@ -3017,6 +3017,322 @@ async function webTasks(base) {
         };
       },
     },
+    {
+      id: 'pr-review',
+      ask:
+        `Open ${base}/forge/pulls/482/ — pull request 482 in hollowmill/brine-gateway ` +
+        `on Kettleforge. One job in its pipeline is failing. Work out which single ` +
+        `changed line of the diff causes that failure, leave a single review comment ` +
+        `on exactly that line in the Files changed view, name the at-fault identifier ` +
+        `in that comment, and submit the review with the Request changes verdict. ` +
+        `Then report the file, the new-side line number and the identifier.`,
+      validate: (rawText, ctx) => {
+        // "did **not** persist" taught us to strip emphasis before any prose regex.
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const idents = ANSWERS.prReview.identifiers;
+        const looseRe = (key) => new RegExp(idents[key].loose, 'i');
+        const strictRe = (key) => new RegExp(idents[key].match, 'i');
+        // A line number in prose: leading zeros are fine and so is a comma or a
+        // full stop right before it ("quote.js,35"), but a digit — or a separator
+        // that is itself inside a number — is not, so 1336.5 never satisfies 13.
+        const lineRe = (n) => new RegExp(`(?<!\\d)(?<!\\d[.,])0*${n}(?![\\d])`);
+        const sessions = [...ctx.pages.state.sessions.values()].filter(
+          (s) => s.forge?.defect && (s.forge.reviews ?? []).length > 0
+        );
+        // Every distinct line this session has ever commented on. Addressing one
+        // line is the task; spraying comments over the candidate addresses until
+        // one sticks is not, and the line numbers move per session precisely so
+        // that a memorised address cannot stand in for reading the diff.
+        const addressesOf = (s) =>
+          new Set(
+            (s.forge.reviews ?? []).flatMap((r) =>
+              (r.comments ?? []).map((c) => `${c.file}:${c.line}`)
+            )
+          );
+        // Reviews carrying exactly ONE line comment, sitting on the seeded line.
+        const onLineReviews = (s) =>
+          (s.forge.reviews ?? []).filter(
+            (r) =>
+              (r.comments ?? []).length === 1 &&
+              r.comments[0].file === s.forge.defect.file &&
+              r.comments[0].line === s.forge.defect.line
+          );
+        const names = (s, r) => looseRe(s.forge.defect.key).test(r.comments[0].body);
+        // Grade the best such review rather than the last one submitted: a
+        // clarifying comment-only review before or after the real one neither
+        // rescues a botched run nor spoils a good one.
+        const hitOf = (s) => {
+          const rs = onLineReviews(s);
+          return (
+            rs.find((r) => r.verdict === 'changes' && names(s, r)) ??
+            rs.find((r) => r.verdict === 'changes') ??
+            rs.find((r) => names(s, r)) ??
+            rs[0] ??
+            null
+          );
+        };
+        const qualifies = (s) => {
+          const r = hitOf(s);
+          return (
+            !!r &&
+            r.verdict === 'changes' &&
+            names(s, r) &&
+            addressesOf(s).size <= 2 &&
+            s.forge.diffFetches > 0
+          );
+        };
+        // Each session draws its own defect, so a Bash probe and the browser run
+        // can be graded against different ground truths. Pick the session the
+        // answer is actually about, and only fall back to recency.
+        const describes = (s) =>
+          looseRe(s.forge.defect.key).test(text) && lineRe(s.forge.defect.line).test(text);
+        const good = sessions.filter(qualifies);
+        const withHit = sessions.filter((s) => hitOf(s));
+        const graded =
+          good.find(describes) ??
+          good.at(-1) ??
+          withHit.find(describes) ??
+          withHit.at(-1) ??
+          sessions.find(describes) ??
+          sessions.at(-1) ??
+          null;
+        const defect = graded?.forge?.defect ?? null;
+        const onLine = graded ? hitOf(graded) : null;
+        const verdictOk = onLine?.verdict === 'changes';
+        // The identifier has to be named in the comment that sits ON the at-fault
+        // line, which is what the ask calls for.
+        const namedInReview = !!onLine && names(graded, onLine);
+        const oneSite = !!graded && addressesOf(graded).size <= 2;
+        const readDiff = (graded?.forge?.diffFetches ?? 0) > 0;
+        const namedInAnswer = !!defect && looseRe(defect.key).test(text);
+        // Naming a second candidate identifier is not an answer, it is a spread
+        // bet: the report has to commit to one site.
+        const alsoNamed = defect
+          ? Object.keys(idents).filter((k) => k !== defect.key && strictRe(k).test(text))
+          : [];
+        const lineInAnswer = !!defect && lineRe(defect.line).test(text);
+        return {
+          pass:
+            !!onLine &&
+            verdictOk &&
+            namedInReview &&
+            oneSite &&
+            readDiff &&
+            namedInAnswer &&
+            alsoNamed.length === 0 &&
+            lineInAnswer,
+          detail:
+            `sessions=${sessions.length} ` +
+            `defect=${defect ? `${defect.key}@${defect.file}:${defect.line}` : 'none'} ` +
+            `reviews=${graded?.forge?.reviews?.length ?? 0} ` +
+            `commentedOnLine=${!!onLine} hitVerdict=${onLine?.verdict ?? 'none'} ` +
+            `addresses=${graded ? addressesOf(graded).size : 0} ` +
+            `namedInReview=${namedInReview} namedInAnswer=${namedInAnswer} ` +
+            `alsoNamed=${alsoNamed.join('+') || 'none'} lineInAnswer=${lineInAnswer} ` +
+            `offPage=${graded?.forge?.offPage ?? 0} ` +
+            `diffFetches=${graded?.forge?.diffFetches ?? 0} ` +
+            `checkFetches=${graded?.forge?.checkFetches ?? 0}`,
+        };
+      },
+    },
+    {
+      id: 'room-booking',
+      ask:
+        `Open ${base}/schedule/ — the day book for Peregrine Court, a business ` +
+        `room venue. The request card on that page sets out what one client needs. ` +
+        `Using the page's quick-book line, book the EARLIEST slot in the week that ` +
+        `meets every condition on that card, and report the confirmation reference ` +
+        `the desk issues. The desk logs every request and pauses the line if it is ` +
+        `asked for slots it cannot take, so work the slot out from the day book ` +
+        `rather than trying slots in turn.`,
+      validate: (rawText, ctx) => {
+        // Emphasis marks dropped and the unicode dashes an LLM reaches for folded to
+        // a plain hyphen, so formatting never decides a run.
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212]/g, '-');
+        const want = ANSWERS.roomBooking;
+        const desks = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.schedule)
+          .filter(Boolean);
+        const cites = (ref) =>
+          !!ref && new RegExp(ref.replace('-', '[\\s-]*'), 'i').test(text);
+        // Grade the session whose reference the answer actually quotes, so a stray
+        // curl probe or a re-minted cookie cannot shadow the real run; failing
+        // that, any session that reached a confirmation; failing that, the session
+        // that worked the day book hardest, so a run that never got a reference
+        // still reports its near misses instead of an empty detail line.
+        const graded =
+          desks.find((d) => cites(d.confirmed?.reference)) ??
+          desks.find((d) => d.confirmed) ??
+          [...desks].sort((a, b) => (b.attempts?.length ?? 0) - (a.attempts?.length ?? 0))[0] ??
+          null;
+        // `confirmed` is written only by POST /api/schedule/book, and only for the
+        // earliest window that satisfies the whole request card as re-checked
+        // server-side against a week minted from randomBytes. So this is a
+        // server-observed gate: a forged /api/beacon cannot set it, the reference
+        // is not derivable from the page nonce, and a valid-but-later booking is
+        // accepted as a hold WITHOUT a reference and therefore fails here.
+        const booked = !!graded?.confirmed;
+        const reported = booked && cites(graded.confirmed.reference);
+        const attempts = graded?.attempts ?? [];
+        const outcomes = attempts.reduce((acc, a) => {
+          acc[a.outcome] = (acc[a.outcome] ?? 0) + 1;
+          return acc;
+        }, {});
+        const target = graded?.target ?? null;
+        const brief = graded?.brief ?? null;
+        const near = attempts
+          .filter((a) => !['confirmed', 'already-held'].includes(a.outcome))
+          .slice(-6)
+          .map((a) => `${a.day} ${a.start} ${a.room}:${a.outcome}`);
+        return {
+          pass: booked && reported,
+          detail:
+            `sessions=${desks.length} ` +
+            `card=${brief ? `${brief.minutes}m/${brief.notBefore}/${brief.seats}seats/no-${brief.avoidDay}` : 'none'} ` +
+            `target=${target ? `${target.day} ${target.startLabel} ${target.room}` : 'none'} ` +
+            `confirmed=${booked ? `${graded.confirmed.day} ${graded.confirmed.start} ${graded.confirmed.room}` : 'none'} ` +
+            `reference=${graded?.confirmed?.reference ?? 'none'} reported=${reported} ` +
+            `refShaped=${want.referencePattern.test(text)} attempts=${attempts.length} ` +
+            `refused=${graded?.refused ?? 0} ` +
+            `outcomes=${JSON.stringify(outcomes)} lastTries=[${near.join(' | ')}]`,
+        };
+      },
+    },
+    {
+      id: 'support-chat',
+      ask:
+        `Open ${base}/support/ — the Kelverne Fibre help centre — and start a chat ` +
+        `with an adviser about this fault: the connection drops out for a few minutes ` +
+        `three or four times every evening between 7pm and 10pm, and the gateway's ` +
+        `status light turns amber each time. The adviser answers slowly, so replies ` +
+        `take several seconds to arrive. Before they will raise anything they will ask ` +
+        `you for a detail about your service — answer it with the real value from this ` +
+        `site rather than guessing, and stay in the chat until the case is open. ` +
+        `Report the case reference the adviser gives you.`,
+      validate: (rawText, ctx) => {
+        // Emphasis characters and the Unicode dash family both turn up inside
+        // reported references ("**SR-1A2B3C**", "SR–1A2B3C").
+        const text = rawText
+          .replace(/[*_~`\\]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\u00ad]/g, '-')
+          .replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+        const reported = (ref) =>
+          !!ref && new RegExp(ref.replace('-', '[\\s-]*'), 'i').test(text);
+        // Grade the session that actually held the chat, preferring the one whose
+        // minted reference the agent reported, so a stray curl session cannot
+        // shadow the real run.
+        const chats = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.support?.visitorMessages ?? []).length > 0
+        );
+        const session =
+          chats.find((s) => reported(s.support.caseNumber)) ??
+          chats.find((s) => s.support.caseNumber) ??
+          chats[0] ??
+          null;
+        const sup = session?.support ?? null;
+        // modelExact is written only by /api/support/msg, and only when a chat
+        // message carried this session's exact gateway model. That model is
+        // minted from randomBytes and rendered by nothing but the account page,
+        // so an invented model number can never set it and no case is minted.
+        const modelOk = sup?.modelExact === true;
+        const caseOk =
+          reported(sup?.caseNumber) &&
+          ANSWERS.supportChat.casePattern.test(sup?.caseNumber ?? '');
+        // The fault has to have been described as well as the model supplied.
+        // Strip model-shaped tokens and measure what prose is left, so "paste
+        // the model and nothing else" fails while a terse but real complaint
+        // ("Drops out nightly.") passes — the ask never says be wordy.
+        const prose = (t) =>
+          t
+            .replace(/[A-Z]{2}[-\s]?\d{3,5}[A-Z]?|[A-Z]\d{3,5}[A-Z]?/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const described = (sup?.visitorMessages ?? []).some((m) => prose(m.text).length >= 12);
+        // Only model-shaped messages are recorded as attempts, so this really is
+        // the list of invented model numbers and not of ordinary chat.
+        const guesses = (sup?.modelAttempts ?? [])
+          .filter((a) => !a.matched)
+          .map((a) => a.text.slice(0, 40));
+        return {
+          pass: modelOk && caseOk && described,
+          detail:
+            `chatSessions=${chats.length} sent=${(sup?.visitorMessages ?? []).length} ` +
+            `accountLoaded=${sup?.accountLoaded === true} accountViews=${sup?.accountViews ?? 0} ` +
+            `accountDenied=${sup?.accountDenied ?? 0} threadPolls=${sup?.threadPolls ?? 0} ` +
+            `threadCapped=${sup?.threadCapped === true} ` +
+            `gateway=${sup?.make ?? '?'} ${sup?.model ?? '?'} modelExact=${modelOk} ` +
+            `rejectedGuesses=${JSON.stringify(guesses)} ` +
+            `case=${sup?.caseNumber ?? 'never raised: no chat message carried the real gateway model'} ` +
+            `caseReported=${caseOk} faultDescribed=${described} ` +
+            `msgBeacons=${ctx.pages.state.beaconsOf('support-msg').length}`,
+        };
+      },
+    },
+    {
+      id: 'cross-tab-pay',
+      ask:
+        `You are finishing a card payment at the Ollister & Crane trade shop. Open ` +
+        `${base}/paylink/checkout.html, take the payment authorisation all the way ` +
+        `through, and report the order confirmation code that Ollister & Crane shows ` +
+        `for the placed order. Close the payment window when you no longer need it.`,
+      validate: (text, ctx) => {
+        // Strip markdown emphasis and fold the unicode dash family (non-breaking
+        // hyphen, en/em dash, minus) onto '-', so a prettified code still reads
+        // as the code it is.
+        const clean = String(text)
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u2010-\u2015\u2212]/g, '-');
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const intentsOf = (s) => Object.values(s.paylink?.intents ?? {});
+        // Grade the session that actually completed the handoff: a curl probe or
+        // a re-minted cookie can leave several sessions behind, and only one of
+        // them ever had a merchant page render the code.
+        const settled = sessions
+          .map((s) => s.paylink?.settled)
+          .filter(Boolean)
+          .sort((a, b) => b.at - a.at);
+        if (!settled.length) {
+          const windows = sessions.filter((s) =>
+            intentsOf(s).some((i) => i.openedInWindow)
+          ).length;
+          const approved = sessions.filter((s) => intentsOf(s).some((i) => i.approved)).length;
+          const intents = sessions.reduce((n, s) => n + intentsOf(s).length, 0);
+          return {
+            pass: false,
+            detail:
+              `no session ever displayed an order confirmation code ` +
+              `(sessions=${sessions.length} intents=${intents} ` +
+              `authorizerWindowOpened=${windows} approved=${approved})`,
+          };
+        }
+        // Allow any spacing/hyphenation of the code the agent echoes back,
+        // including a line break after the hyphen.
+        const carries = (r) => new RegExp(r.code.replace(/-/g, '[-\\s]*'), 'i').test(clean);
+        // Grade the settle the ANSWER names, not merely the newest one: an agent
+        // that solves the task in the browser and then replays the flow with curl
+        // to check its work leaves a newer settle carrying a different code, and
+        // that must not fail a correct answer. Fall back to the newest settle so
+        // an answer with no code at all still reports one.
+        const record = settled.find(carries) ?? settled[0];
+        const codeOk = carries(record);
+        const detail =
+          `code=${record.code} processorRef=${record.processorRef} word=${record.word} ` +
+          `intent=${record.ref} approvalAttempts=${record.attempts} ` +
+          `authorizerWindowLoads=${record.opens} codeReads=${record.codeReads} ` +
+          `merchantPollsWhileAuthorizerOpen=${record.pollsWhileOpen} ` +
+          `settledSessions=${settled.length} sessions=${sessions.length} ` +
+          `secFetchSite=${record.secFetchSite ?? 'none'} ` +
+          `ua=${/Firefox/.test(record.ua) ? 'firefox' : JSON.stringify(record.ua.slice(0, 48))} ` +
+          `answerCarriesCode=${codeOk} ` +
+          `answerAlsoNamesProcessorRef=${clean.includes(record.processorRef)}`;
+        if (!codeOk) {
+          return { pass: false, detail: `answer does not carry the merchant code — ${detail}` };
+        }
+        return { pass: true, detail };
+      },
+    },
   ];
 }
 
@@ -3195,6 +3511,9 @@ async function runTask(backendName, condition, label, task, ctx, rep = 1) {
     duration_s: tenth(r.duration_ms),
     api_s: tenth(r.api_duration_ms),
     wall_s: tenth(wallMs),
+    // >1 when the agent used a background task, so the run arrived as several
+    // SDK result segments whose usage had to be summed (see backends/anthropic.mjs).
+    ...(r.segments > 1 ? { segments: r.segments } : {}),
   };
 }
 
@@ -3532,6 +3851,21 @@ async function runCondition(backendName, condition, shared) {
           width: 1366,
           height: 768,
         }).catch(() => {});
+        // cross-tab-pay leaves the Anverra Pay authorizer tab open, and `cli` and
+        // `mcp` over http share ONE Firefox across every task, so an extra tab
+        // would follow the payment task into the next one. Close everything above
+        // index 0 and select index 0 again. Never close the last remaining tab:
+        // `close_page` on it answers "Tried to run command without establishing a
+        // connection" and leaves the instance in a phantom state.
+        await (async () => {
+          const listed = await callTool(env.endpoint, 'list_pages', {});
+          const text = (listed.content ?? []).map((c) => c.text).join('\n');
+          const count = (text.match(/^\s*>?\[\d+\]/gm) ?? []).length;
+          for (let idx = count - 1; idx >= 1; idx--) {
+            await callTool(env.endpoint, 'close_page', { pageIdx: idx });
+          }
+          if (count > 1) await callTool(env.endpoint, 'select_page', { pageIdx: 0 });
+        })().catch(() => {});
       }
       // Per-task page-serving modes (mirror-reroute takes the gadgetron store
       // offline for its own run only). reset() above restored the server's

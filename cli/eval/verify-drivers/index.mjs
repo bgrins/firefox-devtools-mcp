@@ -17,6 +17,10 @@ import { DRIVERS as consent } from './consent.mjs';
 import { DRIVERS as govNavigation } from './gov-navigation.mjs';
 import { DRIVERS as flakySlow } from './flaky-slow.mjs';
 import { DRIVERS as viewport } from './viewport.mjs';
+import { DRIVERS as paylink } from './paylink.mjs';
+import { DRIVERS as forge } from './forge.mjs';
+import { DRIVERS as support } from './support.mjs';
+import { DRIVERS as schedule } from './schedule.mjs';
 
 const modules = {
   probes,
@@ -32,6 +36,10 @@ const modules = {
   govNavigation,
   flakySlow,
   viewport,
+  paylink,
+  forge,
+  support,
+  schedule,
 };
 
 export const DRIVERS = {};

@@ -199,6 +199,74 @@
 > comparison in favour of whichever surface did the resize. `runOne` now restores
 > 1366x768 for any env owning an instance.
 >
+> **Wave 10 (2026-07-28): four brand-new site genres, and the doctrine changed.**
+> T110 (`pr-review`, Kettleforge code host), T111 (`room-booking`, Peregrine Court),
+> T112 (`support-chat`, Kelverne Fibre), T113 (`cross-tab-pay`, Ollister & Crane +
+> Avonpay). Suite is now 65 web tasks across 29 sites; golden paths 65/65 green twice.
+>
+> THE CHANGE: waves 4-9 told implementers to design tasks AWARE of our snapshot's
+> bugs and route around them. That keeps tasks winnable but means the suite can only
+> rediscover gaps we already suspected. For wave 10 that rule was SUSPENDED — build
+> each genre in its natural idiom (a real diff table, a real booking grid with
+> spanning cells, a growing chat transcript, a real two-tab handoff), then measure
+> both surfaces on the honest fixture. Each group also had to drive its finished page
+> through our MCP *and* playwright-mcp and report the delta as a primary deliverable.
+>
+> IT WORKED, and produced the strongest finding of the whole exercise: **on two of the
+> four, playwright-mcp has a snapshot-only solve path and we have none at all.** Not
+> "more expensive" — impossible, forcing evaluate_script. On the diff, table/tr/td
+> never reach our snapshot, so an addition and a deletion are indistinguishable; 43%
+> of rows truncate at 27 chars and in all four seeded variants the at-fault identifier
+> sits past the cut. On the booking grid, includeAll emits the cells but no
+> rowspan/colspan, so column identity is unrecoverable and the only available
+> reconstruction produced a confidently WRONG answer (112 cells misplaced).
+>
+> Acceptance 24/24, zero failures. Output-token medians, us vs playwright-mcp:
+> `pr-review` 2,981 vs 8,800 (**-66%**, wall 72s vs 187s); `room-booking` 4,519 vs
+> 7,229 (**-38%**, 62s vs 76s); `cross-tab-pay` 1,482 vs 1,431 (+4%, 43s vs 38s);
+> `support-chat` 2,491 vs 1,768 (**+41%**, 84s vs 55s).
+>
+> The pattern is crisp and it is NOT "we are behind": **we win where the answer needs
+> scripting anyway, and we lose where the task needs WAITING.** We are cheap on dense
+> pages largely because we stop looking and start scripting — so read no token
+> comparison on a dense page without asking whether a snapshot-only path existed.
+> The narrow, honest reading of `pr-review`: for a capable model, dropping to
+> evaluate_script is not merely adequate, it is cheaper and faster than reading a
+> 59KB ARIA tree (they took a median 58 turns, we took 24). What the missing snapshot
+> path really costs is ROBUSTNESS — the agent has to know to stop trusting the
+> snapshot. A weaker model that trusts it answers confidently wrong.
+> `support-chat` is the mirror image and the most actionable result in the suite:
+> having no wait primitive (findings A32) costs +41% output tokens and +52% wall on a
+> real async page. That fix is purely additive.
+>
+> New product findings, all in findings.md: **A23** — a page calling
+> `window.close()` DESTROYS our whole view of the browser (every tab unreachable, no
+> recovery; playwright recovers cleanly). Payment and OAuth popups do this routinely,
+> so an ordinary authorization ends the session and it reads as agent failure; the
+> fixture ships no close button purely to dodge it. **A24** close_page on the last tab
+> bricks the instance. **A25** nothing announces a new tab (playwright appends "Open
+> tabs" to every result). **A27** background tabs throttle to 0.75 ticks/s under us vs
+> 2.0 under playwright — a 2.5x condition asymmetry on any wait-for-state task.
+> **A28** every snapshot invalidates all uids even on an unchanged page. **A29/A30/A31**
+> table geometry, opaque scoped-snapshot errors, and MAX_DEPTH=10 landing exactly on
+> the diff's gutter buttons (one more wrapper div, or any syntax highlighting, and the
+> whole diff vanishes — real code hosts all highlight).
+>
+> HARNESS BUG THIS WAVE CAUGHT, and it invalidates nothing earlier but could have:
+> a run does not always emit ONE SDK result message. When the agent starts a
+> background Bash task to wait for an async reply, its completion re-invokes the agent
+> and the SDK emits a fresh result; `usage`/`num_turns` are per-segment while
+> `total_cost_usd` and durations are cumulative. Keeping only the last result recorded
+> a 26-turn/2,392-token run as **1 turn and 53 output tokens**, next to a $0.597 cost
+> that was the only sign anything was wrong. Usage is now summed across segments and
+> `segments` is recorded on the row. Exactly one of 24 rows was affected (re-run
+> clean); the >2x spread flag is what caught it, for the second time.
+>
+> Two weaknesses recorded rather than hidden: `room-booking` is still brute-forceable
+> in 13.2% of sessions (down from 100% via a request-patience budget), and
+> `pr-review`'s four defect variants are not equally hard while the draw is random per
+> session — compare variants before reading its token delta.
+>
 > **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
 > deterministically through our own MCP and asserts each validator accepts a correct
 > answer and rejects a plausible wrong one: 77 seconds, no API spend, 51/51 green

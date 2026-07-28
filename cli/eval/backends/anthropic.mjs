@@ -55,27 +55,36 @@ export async function run({ prompt, model, effort, condition, env, endpoint, cwd
   }
 
   const started = Date.now();
-  let result = null;
+  // A run can emit MORE THAN ONE result message: if the agent starts a background
+  // Bash task (agents do this to wait for an async page reply), its completion
+  // re-invokes the agent and the SDK emits a fresh result for that continuation.
+  // `usage` and `num_turns` are PER-SEGMENT while `total_cost_usd` and the
+  // durations are CUMULATIVE — so usage must be summed and the rest taken at its
+  // last value. Keeping only the last result reported a 26-turn/2392-token run as
+  // 1 turn and 53 tokens, silently understating the suite's primary metric by 45x.
+  const results = [];
   for await (const message of query({ prompt, options })) {
     onMessage?.(message);
     if (message.type === 'result') {
-      result = message;
+      results.push(message);
     }
   }
-  if (!result) {
+  if (!results.length) {
     throw new Error('no result message from agent');
   }
-  const usage = result.usage ?? {};
+  const last = results.at(-1);
+  const sum = (pick) => results.reduce((n, r) => n + (pick(r.usage ?? {}) ?? 0), 0);
   return {
-    text: result.subtype === 'success' ? result.result : `[${result.subtype}]`,
-    turns: result.num_turns,
-    input_tokens: usage.input_tokens ?? 0,
-    cache_creation: usage.cache_creation_input_tokens ?? 0,
-    cache_read: usage.cache_read_input_tokens ?? 0,
-    output_tokens: usage.output_tokens ?? 0,
-    cost_usd: result.total_cost_usd ?? null,
-    duration_ms: result.duration_ms ?? Date.now() - started,
+    text: last.subtype === 'success' ? last.result : `[${last.subtype}]`,
+    turns: results.reduce((n, r) => n + (r.num_turns ?? 0), 0),
+    input_tokens: sum((u) => u.input_tokens),
+    cache_creation: sum((u) => u.cache_creation_input_tokens),
+    cache_read: sum((u) => u.cache_read_input_tokens),
+    output_tokens: sum((u) => u.output_tokens),
+    cost_usd: last.total_cost_usd ?? null,
+    duration_ms: last.duration_ms ?? Date.now() - started,
     // Time spent in API calls (vs tool execution etc.), when reported.
-    api_duration_ms: result.duration_api_ms ?? null,
+    api_duration_ms: last.duration_api_ms ?? null,
+    segments: results.length,
   };
 }

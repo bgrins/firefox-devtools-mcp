@@ -82,6 +82,935 @@ const FLOORPLAN_ROOMS = {
     verified: '09 June' },
 };
 
+// pages/forge/ — Kettleforge pull request 482 in hollowmill/brine-gateway. The
+// unified diff and the failing check's assertion log are NOT in fixture source:
+// the page fetches both from session-gated endpoints, and which of four seeded
+// sites carries the defect is drawn per session from randomBytes, so the
+// at-fault file, new-side line number and identifier all differ run to run.
+// Every site not drawn is emitted in its CORRECT form, which is what makes the
+// other three identifiers plausible decoys rather than dead giveaways. A second
+// per-session draw decides how many filler lines sit ahead of each file's seeded
+// rows, so the line numbers move run to run too and no address on this page can
+// be memorised from an earlier sweep.
+const FORGE_PULL = {
+  repo: 'hollowmill/brine-gateway',
+  number: 482,
+  title: 'tariff: cache lane quotes and align rate windows',
+  author: 't.ashgrove',
+  head: 'tariff-cache-window',
+  awaitBase: 'trunk',
+  commits: 6,
+};
+
+const FORGE_DEFECTS = {
+  'cache-ttl': {
+    identifier: 'softTtlMs',
+    check: [
+      '  tariff cache',
+      '    1) serves a quote that is still inside its hard TTL',
+      '    + returns null once an entry passes half of the window',
+      '',
+      '  1) tariff cache',
+      '       serves a quote that is still inside its hard TTL:',
+      '',
+      '      AssertionError [ERR_ASSERTION]: expected a quote cached 8 minutes ago to',
+      '      still be served, the configured TTL being 900 seconds',
+      '      + expected - actual',
+      '',
+      '      -  null',
+      "      +  { laneId: 'HM-4402', total: 148.5, cached: true }",
+      '',
+      '      at Object.<anonymous> (test/tariff/cache.test.js:64:5)',
+      '      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)',
+    ],
+  },
+  'cache-key': {
+    identifier: 'tariffClass',
+    check: [
+      '  tariff cache',
+      '    1) keeps STD and EXP quotes for one lane apart',
+      '    + the second class reads back the first class price',
+      '',
+      '  1) tariff cache',
+      '       keeps STD and EXP quotes for one lane apart:',
+      '',
+      '      AssertionError [ERR_ASSERTION]: expected the EXP quote for lane HM-4402 to',
+      '      be 214.75, the STD price for the same lane and window being 148.5',
+      '      + expected - actual',
+      '',
+      '      -  148.5',
+      '      +  214.75',
+      '',
+      '      at Object.<anonymous> (test/tariff/cache.test.js:102:5)',
+      '      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)',
+    ],
+  },
+  'window-unit': {
+    identifier: 'WINDOW_MINUTES',
+    check: [
+      '  rate window',
+      '    1) aligns boundaries 900 seconds apart',
+      '    + consecutive boundaries land 15 seconds apart',
+      '',
+      '  1) rate window',
+      '       aligns boundaries 900 seconds apart:',
+      '',
+      '      AssertionError [ERR_ASSERTION]: expected the span between two consecutive',
+      '      rate window boundaries to be 900, seconds being the unit throughout',
+      '      + expected - actual',
+      '',
+      '      -  900',
+      '      +  15',
+      '',
+      '      at Object.<anonymous> (test/tariff/window.test.js:31:5)',
+      '      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)',
+    ],
+  },
+  'quote-rate': {
+    identifier: 'perTonne',
+    check: [
+      '  quote pricing',
+      '    1) prices 9 units at the per-unit rate',
+      '    + total comes back nine times the tonnage rate',
+      '',
+      '  1) quote pricing',
+      '       prices 9 units at the per-unit rate:',
+      '',
+      '      AssertionError [ERR_ASSERTION]: expected the total for 9 units of lane',
+      '      HM-4402 at 16.5 per unit to be 148.5',
+      '      + expected - actual',
+      '',
+      '      -  148.5',
+      '      +  1336.5',
+      '',
+      '      at Object.<anonymous> (test/tariff/quote.test.js:47:5)',
+      '      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)',
+    ],
+  },
+};
+
+const FORGE_DEFECT_KEYS = Object.keys(FORGE_DEFECTS);
+
+// Rows are [kind, text] with kind 'ctx' | 'add' | 'del'; a four-element row
+// [ 'add', correctText, defectKey, buggyText ] is a seeded defect site, and a
+// [ 'pad', [texts] ] row expands to the first N of those texts as added lines,
+// N being the per-session draw for that file. Every pad sits ahead of that
+// file's seeded rows, which is what moves the at-fault line number.
+const FORGE_FILES = [
+  {
+    path: 'src/tariff/cache.js',
+    hunks: [
+      {
+        oldStart: 1,
+        newStart: 1,
+        section: '',
+        rows: [
+          ['ctx', "'use strict';"],
+          ['ctx', ''],
+          ['del', "const { createHash } = require('node:crypto');"],
+          ['add', "const { createHash } = require('node:crypto');"],
+          ['add', "const { metrics } = require('../telemetry/metrics');"],
+          ['ctx', ''],
+          ['ctx', 'const DEFAULT_TTL_SECONDS = 900;'],
+          ['add', 'const SOFT_TTL_RATIO = 0.5;'],
+          ['add', 'const MAX_ENTRIES = 4096;'],
+          [
+            'pad',
+            [
+              'const EVICT_SAMPLE = 32;',
+              'const WARN_AFTER_MISSES = 500;',
+              'const MAX_KEY_CHARS = 120;',
+              "const METRIC_PREFIX = 'tariff.cache';",
+              'const CLOCK_SKEW_MS = 250;',
+            ],
+          ],
+          ['add', "const KEY_PREFIX = 'tariff';"],
+          ['ctx', ''],
+          ['del', 'function keyFor(laneId, tariffClass) {'],
+          ['del', "  return [laneId, tariffClass].join(':');"],
+          ['add', '// A quote is only valid inside the rate window it was priced in, so the'],
+          ['add', '// window start belongs to the identity of a cached entry.'],
+          ['add', 'function keyFor(laneId, tariffClass, window) {'],
+          // The two forms share their first 27 characters on purpose: that is
+          // exactly what our snapshot keeps, so the omission is invisible there.
+          [
+            'add',
+            "  return [KEY_PREFIX, laneId, tariffClass, window.start].join(':');",
+            'cache-key',
+            "  return [KEY_PREFIX, laneId, window.start].join(':');",
+          ],
+          ['add', '}'],
+          ['add', ''],
+          ['add', 'function digest(key) {'],
+          ['add', "  return createHash('sha1').update(key).digest('hex').slice(0, 16);"],
+          ['ctx', '}'],
+        ],
+      },
+      {
+        section: 'class TariffCache {',
+        expandRows: [
+          '',
+          '// Lane quotes are read far more often than they are priced, so the gateway',
+          '// keeps the last price for each lane, class and window in memory.',
+          '',
+        ],
+        rows: [
+          ['ctx', 'class TariffCache {'],
+          ['del', '  constructor({ ttlSeconds = DEFAULT_TTL_SECONDS } = {}) {'],
+          ['del', '    this.ttlMs = ttlSeconds * 1000;'],
+          ['del', '    this.entries = new Map();'],
+          ['add', '  constructor({ ttlSeconds = DEFAULT_TTL_SECONDS, onEvict = null } = {}) {'],
+          ['add', '    this.ttlMs = ttlSeconds * 1000;'],
+          ['add', '    this.softTtlMs = Math.floor(this.ttlMs * SOFT_TTL_RATIO);'],
+          ['add', '    this.entries = new Map();'],
+          ['add', '    this.onEvict = onEvict;'],
+          ['add', '    this.hits = 0;'],
+          ['add', '    this.misses = 0;'],
+          ['ctx', '  }'],
+          ['ctx', ''],
+          ['del', '  get(laneId, tariffClass) {'],
+          ['del', '    const entry = this.entries.get(keyFor(laneId, tariffClass));'],
+          ['del', '    if (!entry) return null;'],
+          ['del', '    return entry.value;'],
+          ['add', '  get(laneId, tariffClass, window) {'],
+          ['add', '    const entry = this.entries.get(keyFor(laneId, tariffClass, window));'],
+          ['add', '    if (!entry) {'],
+          ['add', '      this.misses += 1;'],
+          ['add', '      return null;'],
+          ['add', '    }'],
+          ['add', '    const now = Date.now();'],
+          [
+            'add',
+            '    if (now - entry.storedAt > this.ttlMs) {',
+            'cache-ttl',
+            '    if (now - entry.storedAt > this.softTtlMs) {',
+          ],
+          ['add', '      this.evict(keyFor(laneId, tariffClass, window));'],
+          ['add', '      this.misses += 1;'],
+          ['add', '      return null;'],
+          ['add', '    }'],
+          ['add', '    this.hits += 1;'],
+          ['add', '    return entry.value;'],
+          ['ctx', '  }'],
+        ],
+      },
+      {
+        section: 'class TariffCache {',
+        expandRows: ['', '  // Prices are written back through the same key builder.', ''],
+        rows: [
+          ['del', '  set(laneId, tariffClass, value) {'],
+          ['del', "    this.entries.set(keyFor(laneId, tariffClass), { value });"],
+          ['add', '  set(laneId, tariffClass, window, value) {'],
+          ['add', '    if (this.entries.size >= MAX_ENTRIES) this.evictOldest();'],
+          ['add', '    this.entries.set(keyFor(laneId, tariffClass, window), {'],
+          ['add', '      value,'],
+          ['add', '      storedAt: Date.now(),'],
+          ['add', '      window,'],
+          ['add', '    });'],
+          ['ctx', '  }'],
+          ['add', ''],
+          ['add', '  isStale(laneId, tariffClass, window) {'],
+          ['add', '    const entry = this.entries.get(keyFor(laneId, tariffClass, window));'],
+          ['add', '    if (!entry) return true;'],
+          ['add', '    return Date.now() - entry.storedAt > this.softTtlMs;'],
+          ['add', '  }'],
+          ['add', ''],
+          ['add', '  evict(key) {'],
+          ['add', '    const entry = this.entries.get(key);'],
+          ['add', '    if (!entry) return false;'],
+          ['add', '    this.entries.delete(key);'],
+          ['add', '    if (this.onEvict) this.onEvict(key, entry);'],
+          ['add', "    metrics.increment('tariff.cache.evicted', { key: digest(key) });"],
+          ['add', '    return true;'],
+          ['add', '  }'],
+          ['add', ''],
+          ['add', '  evictOldest() {'],
+          ['add', '    let oldestKey = null;'],
+          ['add', '    let oldestAt = Infinity;'],
+          ['add', '    for (const [key, entry] of this.entries) {'],
+          ['add', '      if (entry.storedAt < oldestAt) {'],
+          ['add', '        oldestAt = entry.storedAt;'],
+          ['add', '        oldestKey = key;'],
+          ['add', '      }'],
+          ['add', '    }'],
+          ['add', '    return oldestKey ? this.evict(oldestKey) : false;'],
+          ['add', '  }'],
+          ['ctx', '}'],
+          ['ctx', ''],
+          ['del', 'module.exports = { TariffCache, keyFor };'],
+          ['add', 'module.exports = { TariffCache, keyFor, digest };'],
+        ],
+      },
+    ],
+  },
+  {
+    path: 'src/tariff/window.js',
+    hunks: [
+      {
+        oldStart: 1,
+        newStart: 1,
+        section: '',
+        rows: [
+          ['ctx', "'use strict';"],
+          ['ctx', ''],
+          ['del', 'const WINDOW_SECONDS = 900;'],
+          ['add', 'const WINDOW_SECONDS = 900;'],
+          ['add', 'const WINDOW_MINUTES = WINDOW_SECONDS / 60;'],
+          ['add', 'const GRACE_SECONDS = 30;'],
+          [
+            'pad',
+            [
+              'const MAX_SKEW_SECONDS = 5;',
+              'const BOUNDARY_EPSILON = 1;',
+              "const LABEL_UNIT = 'min';",
+              'const MAX_WINDOWS_AHEAD = 4;',
+              'const MIN_EPOCH_SECONDS = 1704067200;',
+            ],
+          ],
+          ['ctx', ''],
+          ['del', 'function windowFor(epochSeconds) {'],
+          ['del', '  const start = epochSeconds - (epochSeconds % WINDOW_SECONDS);'],
+          ['del', '  return { start, end: start + WINDOW_SECONDS };'],
+          ['add', '// Rate windows align to absolute boundaries so two gateways pricing the same'],
+          ['add', '// lane in the same minute agree on the window they charged against.'],
+          ['add', 'function windowFor(epochSeconds) {'],
+          [
+            'add',
+            '  const floor = Math.floor(epochSeconds / WINDOW_SECONDS) * WINDOW_SECONDS;',
+            'window-unit',
+            '  const floor = Math.floor(epochSeconds / WINDOW_MINUTES) * WINDOW_MINUTES;',
+          ],
+          ['add', '  return {'],
+          ['add', '    start: floor,'],
+          ['add', '    end: floor + WINDOW_SECONDS,'],
+          ['add', '    label: `${WINDOW_MINUTES} min window from ${floor}`,'],
+          ['add', '  };'],
+          ['ctx', '}'],
+        ],
+      },
+      {
+        section: '',
+        expandRows: [
+          '',
+          '// Callers hand us epoch seconds; nothing in this module takes milliseconds.',
+          '',
+        ],
+        rows: [
+          ['add', 'function isWithin(window, epochSeconds) {'],
+          ['add', '  return epochSeconds >= window.start && epochSeconds < window.end + GRACE_SECONDS;'],
+          ['add', '}'],
+          ['add', ''],
+          ['add', 'function nextBoundary(epochSeconds) {'],
+          ['add', '  return windowFor(epochSeconds).end;'],
+          ['add', '}'],
+          ['add', ''],
+          ['del', 'module.exports = { WINDOW_SECONDS, windowFor };'],
+          ['add', 'module.exports = {'],
+          ['add', '  WINDOW_SECONDS,'],
+          ['add', '  WINDOW_MINUTES,'],
+          ['add', '  GRACE_SECONDS,'],
+          ['add', '  windowFor,'],
+          ['add', '  isWithin,'],
+          ['add', '  nextBoundary,'],
+          ['add', '};'],
+        ],
+      },
+    ],
+  },
+  {
+    path: 'src/tariff/quote.js',
+    hunks: [
+      {
+        oldStart: 1,
+        newStart: 1,
+        section: '',
+        rows: [
+          ['ctx', "'use strict';"],
+          ['ctx', ''],
+          ['del', "const { windowFor } = require('./window');"],
+          ['add', "const { windowFor, isWithin } = require('./window');"],
+          ['add', "const { TariffCache } = require('./cache');"],
+          ['ctx', ''],
+          ['add', 'const cache = new TariffCache({ ttlSeconds: 900 });'],
+          [
+            'pad',
+            [
+              'const MAX_UNITS = 9999;',
+              'const QUOTE_VERSION = 3;',
+              "const DEFAULT_CLASS = 'STD';",
+              'const PRICE_SCALE = 100;',
+              'const LOOKUP_TIMEOUT_MS = 2000;',
+            ],
+          ],
+          ['add', ''],
+          ['ctx', 'function round2(value) {'],
+          ['ctx', '  return Math.round(value * 100) / 100;'],
+          ['ctx', '}'],
+          ['add', ''],
+          ['add', 'function describeRate(rate) {'],
+          ['add', '  return rate.perTonne'],
+          ['add', '    ? `${rate.perUnit}/unit (${rate.perTonne}/t)`'],
+          ['add', '    : `${rate.perUnit}/unit`;'],
+          ['add', '}'],
+        ],
+      },
+      {
+        section: '',
+        expandRows: [
+          '',
+          '// One quote per lane, class and window; repeat callers get the cached copy.',
+          '',
+        ],
+        rows: [
+          ['del', 'async function quoteFor(laneId, tariffClass, units, table) {'],
+          ['del', '  const window = windowFor(Math.floor(Date.now() / 1000));'],
+          ['del', '  const rate = await table.lookup(laneId, tariffClass, window.start);'],
+          ['del', '  return { laneId, total: round2(units * rate.perUnit), window };'],
+          ['add', 'async function quoteFor(laneId, tariffClass, units, table) {'],
+          ['add', '  const window = windowFor(Math.floor(Date.now() / 1000));'],
+          ['add', '  const cached = cache.get(laneId, tariffClass, window);'],
+          ['add', '  if (cached && isWithin(window, cached.pricedAt)) {'],
+          ['add', '    return { ...cached, cached: true };'],
+          ['add', '  }'],
+          ['add', '  const rate = await table.lookup(laneId, tariffClass, window.start);'],
+          ['add', '  if (!rate) {'],
+          ['add', '    throw new Error(`no tariff for lane ${laneId} class ${tariffClass}`);'],
+          ['add', '  }'],
+          ['add', '  const quote = {'],
+          ['add', '    laneId,'],
+          ['add', '    tariffClass,'],
+          ['add', '    units,'],
+          ['add', '    rate: describeRate(rate),'],
+          [
+            'add',
+            '    total: round2(units * rate.perUnit),',
+            'quote-rate',
+            '    total: round2(units * rate.perTonne),',
+          ],
+          ['add', '    window,'],
+          ['add', '    pricedAt: Math.floor(Date.now() / 1000),'],
+          ['add', '  };'],
+          ['add', '  cache.set(laneId, tariffClass, window, quote);'],
+          ['add', '  return { ...quote, cached: false };'],
+          ['ctx', '}'],
+          ['ctx', ''],
+          ['del', 'module.exports = { quoteFor };'],
+          ['add', 'module.exports = { quoteFor, describeRate, cache };'],
+        ],
+      },
+    ],
+  },
+];
+
+const FORGE_PAD_MAX = 5;
+
+// Renders the seeded diff for one session: expands each file's filler rows to
+// the drawn count, numbers both gutters, builds the @@ headers from the emitted
+// row counts, and reports where the drawn defect landed so the validator can
+// grade an exact new-side line number it never had to hand-count.
+function forgeDiffFor(defectKey, pads = []) {
+  let defect = null;
+  const files = FORGE_FILES.map((file, fileIndex) => {
+    let additions = 0;
+    let deletions = 0;
+    let padLeft = pads[fileIndex] ?? 0;
+    // Collapsed context between hunks is the same run of unchanged lines on both
+    // sides, so each hunk's two starts are derived from the previous hunk's ends
+    // plus that gap rather than hand-numbered.
+    let oldCursor = 0;
+    let newCursor = 0;
+    const hunks = file.hunks.map((hunk) => {
+      const gap = hunk.expandRows ?? [];
+      const expand = gap.map((s, i) => ({
+        t: 'ctx',
+        oldNo: oldCursor + 1 + i,
+        newNo: newCursor + 1 + i,
+        s,
+      }));
+      const oldStart = (hunk.oldStart ?? oldCursor + gap.length + 1);
+      const newStart = (hunk.newStart ?? newCursor + gap.length + 1);
+      let oldNo = oldStart;
+      let newNo = newStart;
+      let oldCount = 0;
+      let newCount = 0;
+      const drawn = hunk.rows.flatMap((row) => {
+        if (row[0] !== 'pad') return [row];
+        const take = Math.min(padLeft, row[1].length);
+        padLeft -= take;
+        return row[1].slice(0, take).map((s) => ['add', s]);
+      });
+      const rows = drawn.map(([t, correct, key, buggy]) => {
+        const s = key && key === defectKey ? buggy : correct;
+        const row = { t, s, oldNo: null, newNo: null };
+        if (t !== 'add') {
+          row.oldNo = oldNo++;
+          oldCount += 1;
+        }
+        if (t !== 'del') {
+          row.newNo = newNo++;
+          newCount += 1;
+        }
+        if (t === 'add') additions += 1;
+        if (t === 'del') deletions += 1;
+        if (key && key === defectKey) {
+          defect = {
+            file: file.path,
+            line: row.newNo,
+            identifier: FORGE_DEFECTS[key].identifier,
+            key,
+          };
+        }
+        return row;
+      });
+      oldCursor = oldNo - 1;
+      newCursor = newNo - 1;
+      return {
+        header: `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@` +
+          (hunk.section ? ` ${hunk.section}` : ''),
+        section: hunk.section,
+        expand,
+        rows,
+      };
+    });
+    return { path: file.path, additions, deletions, hunks };
+  });
+  return { files, defect };
+}
+
+function forgeState(session) {
+  if (!session.forge) {
+    // One draw per session: which of the four sites is served in its buggy form,
+    // and how many filler lines each file carries ahead of its seeded rows.
+    const draw = randomBytes(1 + FORGE_FILES.length);
+    const key = FORGE_DEFECT_KEYS[draw[0] % FORGE_DEFECT_KEYS.length];
+    const pads = FORGE_FILES.map((_file, i) => draw[i + 1] % (FORGE_PAD_MAX + 1));
+    const built = forgeDiffFor(key, pads);
+    session.forge = {
+      key,
+      pads,
+      files: built.files,
+      defect: built.defect,
+      diffFetches: 0,
+      checkFetches: 0,
+      comments: [],
+      reviews: [],
+      offPage: 0,
+    };
+  }
+  return session.forge;
+}
+
+// pages/schedule/ — Peregrine Court's week day book. Both the request card and the
+// occupancy are minted per session from a randomBytes seed, so the constraints and
+// the free slots (and therefore the answer) exist nowhere on disk and move between
+// runs. The mint rejection-samples until the EARLIEST window that meets the whole
+// request card is unique, at least three later windows meet it too, and each of the
+// four near-miss kinds (a room that is too small, the excluded day, a start before
+// the earliest allowed, a gap thirty minutes short) occurs in the week — so the task
+// is a constraint solve rather than a hunt for the only gap in the week. POST
+// /api/schedule/book re-checks the request card SERVER-side and mints a reference
+// from randomBytes only for that earliest window; a valid but later slot is entered
+// as a hold and refused a reference, so a near miss is visible in the validator
+// detail. The desk also keeps count of requests it could not take and pauses the
+// line once there are too many, which throttles a caller posting slots in turn
+// without ever blocking a solve worked out from the grid.
+const SCHEDULE_DAYS = [
+  { key: 'Mon', label: 'Monday 11' },
+  { key: 'Tue', label: 'Tuesday 12' },
+  { key: 'Wed', label: 'Wednesday 13' },
+  { key: 'Thu', label: 'Thursday 14' },
+  { key: 'Fri', label: 'Friday 15' },
+];
+const SCHEDULE_SLOT_COUNT = 18;
+const SCHEDULE_OPEN_MINUTES = 8 * 60;
+const SCHEDULE_ROOMS = [
+  {
+    id: 'alder',
+    name: 'Alder Room',
+    short: 'Alder',
+    seats: 8,
+    floor: 'first floor',
+    kit: 'Wall screen and whiteboard. No conference telephone.',
+  },
+  {
+    id: 'bramble',
+    name: 'Bramble Suite',
+    short: 'Bramble',
+    seats: 16,
+    floor: 'first floor',
+    kit: 'Projector, conference telephone and hearing loop.',
+  },
+  {
+    id: 'cormorant',
+    name: 'Cormorant Hall',
+    short: 'Cormorant',
+    seats: 24,
+    floor: 'second floor',
+    kit: 'Projector, two wall screens, lectern and hearing loop.',
+  },
+];
+const SCHEDULE_WEEK = { title: 'Week 21 day book', range: 'Monday 11 to Friday 15 May' };
+const SCHEDULE_CLIENT = { client: 'Halvard Freight', reference: 'Request 2214-K' };
+// The four axes of the request card. They are drawn per session, so the card has to
+// be read rather than remembered, and the answer's day is not a fixed bet: with
+// three excluded days in play no single day can dominate the distribution.
+const SCHEDULE_ASKS = {
+  minutes: [90, 120],
+  notBefore: ['10:00', '10:30', '11:00'],
+  seats: [12, 14, 20],
+  avoidDay: ['Tue', 'Wed', 'Thu'],
+};
+const SCHEDULE_TITLES = [
+  'Perrick & Yates',
+  'Sable Union',
+  'Copperline Health',
+  'Weald & Marr',
+  'Nyholm Group',
+  'Trentcombe Trust',
+  'Aldergate Legal',
+  'Bexmoor Foods',
+  'Staff briefing',
+  'AV service call',
+  'Interviews',
+  'Deep clean',
+];
+const SCHEDULE_HOLD_LIMIT = 3;
+// Requests the desk could not take before it pauses the line, how long the first
+// pause lasts (each one after that is twice as long, up to the cap), and how many
+// requests it will take once a pause lapses. A solve read off the day book costs one
+// request, so an honest run never meets any of this; a blind scan of the week takes
+// about 130 posts to reach the answer, which these numbers put well outside any
+// run's time budget. It is a pause and not a lock-out, so an agent that misread the
+// grid ten times still gets its answer in.
+const SCHEDULE_PATIENCE = 10;
+const SCHEDULE_PAUSE_MS = 45000;
+const SCHEDULE_PAUSE_MAX_MS = 240000;
+const SCHEDULE_PATIENCE_REFUND = 1;
+
+function scheduleSlotLabel(index) {
+  const minutes = SCHEDULE_OPEN_MINUTES + index * 30;
+  return (
+    String(Math.floor(minutes / 60)).padStart(2, '0') +
+    ':' +
+    String(minutes % 60).padStart(2, '0')
+  );
+}
+const SCHEDULE_SLOTS = Array.from({ length: SCHEDULE_SLOT_COUNT }, (_, i) =>
+  scheduleSlotLabel(i)
+);
+const scheduleRoom = (id) => SCHEDULE_ROOMS.find((r) => r.id === id);
+const scheduleBigRooms = (brief) =>
+  SCHEDULE_ROOMS.filter((r) => r.seats >= brief.seats).map((r) => r.id);
+const scheduleDayName = (key) =>
+  SCHEDULE_DAYS.find((d) => d.key === key).label.split(' ')[0];
+
+// One request card, drawn from the same seed as the week.
+function scheduleMintBrief(rand) {
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const minutes = pick(SCHEDULE_ASKS.minutes);
+  const notBefore = pick(SCHEDULE_ASKS.notBefore);
+  const seats = pick(SCHEDULE_ASKS.seats);
+  const avoidDay = pick(SCHEDULE_ASKS.avoidDay);
+  const avoidDayName = scheduleDayName(avoidDay);
+  return {
+    ...SCHEDULE_CLIENT,
+    minutes,
+    slots: minutes / 30,
+    seats,
+    notBefore,
+    notBeforeIndex: SCHEDULE_SLOTS.indexOf(notBefore),
+    avoidDay,
+    avoidDayName,
+    // Each line is kept under 28 characters so it survives the snapshot's text
+    // truncation: the request card is the one part of this fixture an agent must
+    // be able to read through the uid surface.
+    terms: [
+      `Duration: ${minutes} minutes`,
+      `Start no earlier than ${notBefore}`,
+      `Seats: ${seats} or more`,
+      `Not on ${avoidDayName}`,
+    ],
+    note:
+      `${SCHEDULE_CLIENT.client} will not travel on ${avoidDayName}. ` +
+      'Any other day of the week suits them.',
+  };
+}
+
+function scheduleBusyMap(entries) {
+  const busy = {};
+  for (const room of SCHEDULE_ROOMS) {
+    busy[room.id] = {};
+    for (const day of SCHEDULE_DAYS) {
+      busy[room.id][day.key] = new Array(SCHEDULE_SLOT_COUNT).fill(false);
+    }
+  }
+  for (const entry of entries) {
+    for (let i = 0; i < entry.slots; i++) busy[entry.room][entry.day][entry.start + i] = true;
+  }
+  return busy;
+}
+
+function scheduleFreeRun(busy, room, day, start, need) {
+  if (start < 0 || start + need > SCHEDULE_SLOT_COUNT) return false;
+  for (let i = 0; i < need; i++) {
+    if (busy[room][day][start + i]) return false;
+  }
+  return true;
+}
+
+// Every window that meets the whole request card, in reading order, plus the near
+// misses — the decoys that make this a solve. A capacity, too-early or short-gap
+// decoy is only counted when it PRECEDES the answer, where it can actually mislead;
+// the excluded day counts wherever it falls in the week, since pinning it before the
+// answer too would force the answer off the early days of the week entirely.
+function scheduleAnalyse(entries, brief) {
+  const busy = scheduleBusyMap(entries);
+  const need = brief.slots;
+  const notBefore = brief.notBeforeIndex;
+  const big = scheduleBigRooms(brief);
+  const valid = [];
+  for (let d = 0; d < SCHEDULE_DAYS.length; d++) {
+    const day = SCHEDULE_DAYS[d].key;
+    if (day === brief.avoidDay) continue;
+    for (let s = notBefore; s + need <= SCHEDULE_SLOT_COUNT; s++) {
+      for (const room of big) {
+        if (scheduleFreeRun(busy, room, day, s, need)) valid.push({ d, day, start: s, room });
+      }
+    }
+  }
+  valid.sort((a, b) => a.d - b.d || a.start - b.start);
+  const target = valid[0] ?? null;
+  const misses = { capacity: 0, day: 0, early: 0, duration: 0, tie: 0 };
+  if (!target) return { target, valid, misses, busy };
+  const before = (d, s) => d < target.d || (d === target.d && s < target.start);
+  for (let d = 0; d < SCHEDULE_DAYS.length; d++) {
+    const day = SCHEDULE_DAYS[d].key;
+    const excluded = day === brief.avoidDay;
+    for (let s = 0; s + need <= SCHEDULE_SLOT_COUNT; s++) {
+      for (const room of SCHEDULE_ROOMS) {
+        if (!scheduleFreeRun(busy, room.id, day, s, need)) continue;
+        const roomBigEnough = room.seats >= brief.seats;
+        // A second qualifying room free at the same day and time would leave the
+        // answer ambiguous, so those candidates are rejected by the mint.
+        if (roomBigEnough && !excluded && s >= notBefore && d === target.d &&
+          s === target.start && room.id !== target.room) {
+          misses.tie += 1;
+        }
+        if (roomBigEnough && excluded && s >= notBefore) misses.day += 1;
+        if (!before(d, s)) continue;
+        if (!roomBigEnough && !excluded && s >= notBefore) misses.capacity += 1;
+        if (roomBigEnough && !excluded && s < notBefore) misses.early += 1;
+      }
+    }
+    if (excluded) continue;
+    // A gap one half hour short of the brief, walled in on both sides: long enough
+    // to look bookable at a glance, thirty minutes short of what was asked for.
+    for (const room of SCHEDULE_ROOMS) {
+      if (room.seats < brief.seats) continue;
+      const week = busy[room.id][day];
+      const short = need - 1;
+      for (let s = notBefore; s + short <= SCHEDULE_SLOT_COUNT; s++) {
+        let clear = true;
+        for (let i = 0; i < short; i++) if (week[s + i]) clear = false;
+        const walledBefore = s === 0 || week[s - 1];
+        const walledAfter = s + short >= SCHEDULE_SLOT_COUNT || week[s + short];
+        if (clear && walledBefore && walledAfter && before(d, s)) misses.duration += 1;
+      }
+    }
+  }
+  return { target, valid, misses, busy };
+}
+
+function scheduleFillDay(rand, out, room, day, gapProb) {
+  let i = 0;
+  while (i < SCHEDULE_SLOT_COUNT) {
+    if (rand() < gapProb) {
+      i += 1;
+      continue;
+    }
+    const slots = Math.min(2 + Math.floor(rand() * 5), SCHEDULE_SLOT_COUNT - i);
+    if (slots < 2) break;
+    out.push({
+      room,
+      day,
+      start: i,
+      slots,
+      title: SCHEDULE_TITLES[Math.floor(rand() * SCHEDULE_TITLES.length)],
+    });
+    i += slots + (rand() < 0.55 ? 1 : 2);
+  }
+}
+
+// Seeded from randomBytes so neither the week nor the card a graded session faces is
+// on disk. The card is drawn once and the week rejection-sampled against it, so the
+// card's distribution stays flat; the first draw is kept as a fallback so minting
+// always terminates.
+function scheduleMint() {
+  let seed = randomBytes(4).readUInt32BE(0);
+  const rand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const brief = scheduleMintBrief(rand);
+  const cells = SCHEDULE_ROOMS.length * SCHEDULE_DAYS.length * SCHEDULE_SLOT_COUNT;
+  // A longer letting needs longer gaps to sit in, so the week is drawn emptier.
+  const slack = (brief.slots - 3) * 0.08;
+  let fallback = null;
+  for (let tries = 0; tries < 4000; tries++) {
+    const bookings = [];
+    // One busy-day ordering per draw, so the pressure in the week moves and the
+    // answer is not always on the same day.
+    const loads = [0.3, 0.36, 0.42, 0.5, 0.58].map((n) => n + slack);
+    for (let i = loads.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [loads[i], loads[j]] = [loads[j], loads[i]];
+    }
+    for (const room of SCHEDULE_ROOMS) {
+      for (let d = 0; d < SCHEDULE_DAYS.length; d++) {
+        scheduleFillDay(rand, bookings, room.id, SCHEDULE_DAYS[d].key, loads[d]);
+      }
+    }
+    const analysis = scheduleAnalyse(bookings, brief);
+    if (!analysis.target) continue;
+    fallback ??= { brief, bookings, target: analysis.target, analysis };
+    if (analysis.misses.tie) continue;
+    if (analysis.valid.length < 4) continue;
+    const density = bookings.reduce((n, b) => n + b.slots, 0) / cells;
+    if (density < 0.4 - slack || density > 0.72 - slack) continue;
+    const { capacity, day, early, duration } = analysis.misses;
+    if (!capacity || !day || !early || !duration) continue;
+    return { brief, bookings, target: analysis.target, analysis };
+  }
+  return fallback;
+}
+
+function scheduleDesk(session) {
+  if (!session.schedule) {
+    // scheduleMint only returns null if no draw in 4000 produced a bookable week,
+    // which has never been observed; an empty week with a valid card still renders.
+    const minted = scheduleMint() ?? {
+      brief: scheduleMintBrief(Math.random),
+      bookings: [],
+      target: null,
+      analysis: null,
+    };
+    session.schedule = {
+      // The minted week is never mutated: the target is pinned here, so a hold
+      // the agent places cannot move the answer under it.
+      brief: minted.brief,
+      bookings: minted.bookings,
+      target: minted.target
+        ? { ...minted.target, startLabel: SCHEDULE_SLOTS[minted.target.start] }
+        : null,
+      validCount: minted.analysis?.valid?.length ?? 0,
+      holds: [],
+      attempts: [],
+      refused: 0,
+      pauses: 0,
+      pausedUntil: 0,
+      reference: null,
+      confirmed: null,
+    };
+  }
+  return session.schedule;
+}
+
+function scheduleView(desk) {
+  const brief = desk.brief;
+  const confirmed = desk.holds.filter((h) => h.reference);
+  return {
+    week: SCHEDULE_WEEK,
+    days: SCHEDULE_DAYS,
+    slots: SCHEDULE_SLOTS,
+    rooms: SCHEDULE_ROOMS,
+    brief: {
+      client: brief.client,
+      reference: brief.reference,
+      terms: brief.terms,
+      note: brief.note,
+    },
+    // Only lettings the desk actually holds against the room are drawn into the day
+    // book. A provisional hold blocks nothing server-side, so drawing it as an
+    // occupied block would make the page assert an occupancy the desk does not
+    // enforce and could hide the very slot the request wants; those are listed
+    // beside the grid instead.
+    bookings: [
+      ...desk.bookings.map((b) => ({
+        room: b.room,
+        day: b.day,
+        start: SCHEDULE_SLOTS[b.start],
+        slots: b.slots,
+        title: b.title,
+        mine: false,
+      })),
+      ...confirmed.map((h) => ({
+        room: h.room,
+        day: h.day,
+        start: SCHEDULE_SLOTS[h.start],
+        slots: brief.slots,
+        title: h.reference,
+        mine: true,
+      })),
+    ],
+    holds: desk.holds
+      .filter((h) => !h.reference)
+      .map((h) => ({
+        day: h.day,
+        start: SCHEDULE_SLOTS[h.start],
+        room: h.room,
+        roomName: scheduleRoom(h.room).name,
+      })),
+    confirmed: desk.confirmed
+      ? {
+          day: desk.confirmed.day,
+          start: desk.confirmed.start,
+          room: desk.confirmed.room,
+          roomName: scheduleRoom(desk.confirmed.room).name,
+          reference: desk.confirmed.reference,
+        }
+      : null,
+  };
+}
+
+function scheduleParseDay(raw) {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+  const day = SCHEDULE_DAYS.find(
+    (d) =>
+      d.key.toLowerCase() === value ||
+      d.label.toLowerCase() === value ||
+      d.label.toLowerCase().split(' ')[0] === value ||
+      d.label.toLowerCase().startsWith(value.slice(0, 3))
+  );
+  return day ? day.key : null;
+}
+
+function scheduleParseStart(raw) {
+  const value = String(raw ?? '').trim();
+  const m = /^(\d{1,2})\s*[:.]?\s*(\d{2})?\s*(am|pm)?$/i.exec(value);
+  if (!m) return -1;
+  let hour = Number(m[1]);
+  const minute = Number(m[2] ?? '0');
+  const suffix = (m[3] ?? '').toLowerCase();
+  if (suffix === 'pm' && hour < 12) hour += 12;
+  if (suffix === 'am' && hour === 12) hour = 0;
+  if (minute !== 0 && minute !== 30) return -1;
+  return SCHEDULE_SLOTS.indexOf(
+    String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0')
+  );
+}
+
+function scheduleParseRoom(raw) {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+  const room =
+    SCHEDULE_ROOMS.find((r) => r.id === value || r.name.toLowerCase() === value) ??
+    SCHEDULE_ROOMS.find(
+      (r) => value.length >= 4 && (r.name.toLowerCase().includes(value) || value.includes(r.id))
+    );
+  return room ? room.id : null;
+}
+
 const BODY_CAP = 65536;
 
 // pages/news/consent.html — the 3-layer consent wall over the Millrace front
@@ -131,6 +1060,115 @@ const consentTierOf = (key) =>
   Object.keys(CONSENT_TIER_ROWS).find((tier) =>
     CONSENT_TIER_ROWS[tier].some((row) => row.key === key)
   ) ?? null;
+
+// pages/support/ — Kelverne Fibre help centre live chat. The adviser is a
+// per-session scripted state machine: the gateway model shown on the account
+// page and the case reference are both minted from randomBytes, live only on
+// the session (so state.reset() clears them) and appear in no fixture file on
+// disk. No case is raised until a chat message carries the exact model, so an
+// agent that invents a plausible model number never receives a reference.
+const SUPPORT_ADVISER = 'Dell Marchetti';
+const SUPPORT_GATEWAY_MAKES = [
+  'Talpine',
+  'Ostrigan',
+  'Kestrelle',
+  'Vandermoor',
+  'Sablewire',
+  'Hollingsby',
+];
+// Base increments, applied on top of the last already-queued message, so a reply
+// can never arrive before the message it answers. Every session jitters all of
+// them (see supportState), so the intervals are not learnable from one run.
+const SUPPORT_DELAYS = {
+  greeting: 1800,
+  greeting2: 700,
+  ack: 2500,
+  question: 1200,
+  hint: 900,
+  verdict: 2800,
+  followUp: 1200,
+  closing: 2000,
+};
+const SUPPORT_JITTER = 700;
+const SUPPORT_MAX_THREAD = 60;
+const SUPPORT_MAX_TEXT = 600;
+// What a gateway model number looks like: letters butted up against three to
+// five digits. Used to tell an attempted model apart from ordinary chat, so
+// narrating while you work is not recorded as inventing a model number. A digit
+// run with a space in front of it ("faults line on 0330 044 1180") is not one.
+const SUPPORT_MODEL_SHAPE = /[A-Z]{2}[-\s]?\d{3,5}|[A-Z]\d{3,5}/i;
+const SUPPORT_ASK = 'What is your gateway model number?';
+
+const supportNormalize = (s) => String(s).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+
+function supportState(session) {
+  if (!session.support) {
+    const bytes = randomBytes(6);
+    const jitter = randomBytes(8);
+    const make = SUPPORT_GATEWAY_MAKES[bytes[0] % SUPPORT_GATEWAY_MAKES.length];
+    const series = 3000 + (bytes.readUInt16BE(1) % 6000);
+    const suffix = 'ACDEFHJKLMNPRTUVWXY'[bytes[3] % 19];
+    const delays = {};
+    Object.keys(SUPPORT_DELAYS).forEach((key, i) => {
+      delays[key] = SUPPORT_DELAYS[key] + (jitter[i] % SUPPORT_JITTER);
+    });
+    session.support = {
+      make,
+      model: `GX-${series}${suffix}`,
+      core: supportNormalize(`GX-${series}${suffix}`),
+      account: `KF-${10000000 + (bytes.readUInt32BE(2) % 90000000)}`,
+      delays,
+      stage: 'greeting',
+      thread: [],
+      visitorMessages: [],
+      modelAttempts: [],
+      modelExact: false,
+      caseNumber: null,
+      accountLoaded: false,
+      accountViews: 0,
+      accountDenied: 0,
+      threadPolls: 0,
+      threadCapped: false,
+      openedAt: null,
+    };
+  }
+  return session.support;
+}
+
+function supportSay(sup, text, delay, now) {
+  const last = sup.thread.length ? sup.thread[sup.thread.length - 1].dueAt : now;
+  sup.thread.push({ from: 'adviser', text, dueAt: Math.max(now, last) + delay });
+}
+
+// A queued reply is only "in" once its dueAt has passed. Both halves of the
+// waiting mechanic are this predicate: an answer counts only after the question
+// it answers has landed, and the reference is released only with the message
+// that carries it.
+function supportLanded(sup, now, prefix) {
+  return sup.thread.some((m) => m.dueAt <= now && m.text.startsWith(prefix));
+}
+
+function supportRaiseCase(sup, text, now) {
+  sup.modelExact = true;
+  sup.modelAttempts.push({ text, matched: true, at: now });
+  sup.caseNumber = `SR-${randomBytes(3).toString('hex').toUpperCase()}`;
+  sup.stage = 'closed';
+  supportSay(sup, `Case ${sup.caseNumber} is open.`, sup.delays.verdict, now);
+  supportSay(
+    sup,
+    'An engineer will call you within 24 hours on the number held on the account.',
+    sup.delays.followUp,
+    now
+  );
+}
+
+function supportOpen(sup, now) {
+  if (sup.openedAt !== null) return;
+  sup.openedAt = now;
+  supportSay(sup, `Kelverne Fibre support, ${SUPPORT_ADVISER.split(' ')[0]} here.`,
+    sup.delays.greeting, now);
+  supportSay(sup, 'How can I help today?', sup.delays.greeting2, now);
+}
 
 // pages/parcels/ — Corvane tracking lookups. Shipment statuses exist only here,
 // never in fixture source, and the endpoint accepts one lookup per session per
@@ -927,6 +1965,79 @@ function govPageToken(session, pathname) {
   return (tokens[pathname] ??= randomBytes(8).toString('hex'));
 }
 
+// T113 cross-tab-pay: pages/paylink/ — the Ollister & Crane checkout and the
+// Anverra Pay authorizer, two windows of one payment handoff. Every graded datum
+// is minted here from randomBytes and lives in exactly one window: the order
+// confirmation code is returned ONLY to a status poll that comes from the
+// checkout page AND carries the per-page-load view token the intent was created
+// with, while the authorizer window only ever learns the processor reference —
+// the decoy. So an agent that reads the authorizer and never goes back to the
+// merchant tab has nothing but the decoy to report.
+const PAYLINK_AMOUNT = '$329.14';
+const PAYLINK_CARD = 'Alderline card ending 4417';
+const PAYLINK_MERCHANT = 'Ollister & Crane';
+const PAYLINK_WORDS = [
+  'SLATE', 'HARROW', 'PLINTH', 'GABLE', 'CANTON', 'WICKET',
+  'THISTLE', 'LANTERN', 'FURROW', 'ORCHARD', 'BRACKEN', 'QUARRY',
+];
+
+function paylinkState(session) {
+  return (session.paylink ??= { intents: {}, order: [], settled: null });
+}
+
+// One payment intent per checkout page LOAD — minted in the static handler when
+// checkout.html is served as a top-level document, never by an endpoint. The
+// view token is what binds the intent to that load: a merchant page that reloads
+// (or a second tab pointed at the checkout) gets its own intent and cannot poll
+// an older one, so an approved intent can only be read out by the page load that
+// opened it.
+function mintPaylinkIntent(session) {
+  const pay = paylinkState(session);
+  const word =
+    PAYLINK_WORDS[randomBytes(1)[0] % PAYLINK_WORDS.length] +
+    '-' +
+    (10 + (randomBytes(1)[0] % 90));
+  const intent = {
+    ref: 'PI-' + randomBytes(4).toString('hex').toUpperCase(),
+    viewToken: randomBytes(16).toString('hex'),
+    word,
+    code: 'OC-' + randomBytes(3).toString('hex').toUpperCase(),
+    processorRef: 'AVP-' + (10000000 + (randomBytes(4).readUInt32BE(0) % 90000000)),
+    amount: PAYLINK_AMOUNT,
+    card: PAYLINK_CARD,
+    opens: 0,
+    openedInWindow: false,
+    openedAt: null,
+    // Merchant-side status polls that arrived while the authorizer window was
+    // open and not yet approved. A real second tab keeps polling throughout
+    // (throttled to ~0.75/s in the background); a bfcache-frozen page or a
+    // scripted one-tab rig posts none. Reported, not gated.
+    pollsWhileOpen: 0,
+    attempts: [],
+    approved: false,
+    approvedAt: null,
+    codeReads: 0,
+    createdAt: Date.now(),
+  };
+  pay.intents[intent.ref] = intent;
+  pay.order.push(intent.ref);
+  return intent;
+}
+
+// Which of the two pages a fetch() came from. This is NOT a security boundary:
+// fetch()'s `referrer` init member accepts any same-origin URL, so page script in
+// either window can claim to be the other one (measured in Firefox, not assumed),
+// and `curl -e` sets Referer freely like every other Referer gate in this file.
+// What actually keeps the two halves apart is the view token, which is minted
+// into the checkout document body by the static handler and therefore only ever
+// reaches a real top-level load of checkout.html. The Referer test stays as the
+// ordinary "which page is calling" routing it looks like, and the settle record
+// keeps the request's Sec-Fetch-Site and User-Agent for the validator to report.
+function paylinkFrom(req, file) {
+  const pattern = '/paylink/' + file.replace(/\./g, '\\.') + '(?:[?#]|$)';
+  return new RegExp(pattern).test(req.headers.referer ?? '');
+}
+
 // T067 narrow-viewport: per-session record behind the Deals of the Day code.
 // Three places write it — the static handler stamps a real document navigation
 // to the deals page, the chain stamps the phone-only <picture> candidate the
@@ -1491,6 +2602,265 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       return;
     }
 
+    // Kettleforge PR 482. The diff and the failing check's assertion log are
+    // released only through these session-gated reads, so neither the at-fault
+    // line nor the symptom text exists under pages/. forgeState() draws the
+    // defect site once per session, so the Checks tab and the Files changed tab
+    // always describe the same defect.
+    if (req.method === 'GET' && pathname0 === '/api/forge/diff') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const forge = forgeState(found.session);
+      forge.diffFetches += 1;
+      return json(res, 200, {
+        pull: FORGE_PULL,
+        files: forge.files.map((file) => ({
+          path: file.path,
+          additions: file.additions,
+          deletions: file.deletions,
+          hunks: file.hunks,
+        })),
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/forge/checks') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const forge = forgeState(found.session);
+      forge.checkFetches += 1;
+      return json(res, 200, {
+        headSha: 'c41f9ad',
+        checks: [
+          { name: 'lint / eslint', status: 'pass', duration: '38s' },
+          { name: 'build / node-20', status: 'pass', duration: '1m 12s' },
+          { name: 'unit / gateway', status: 'pass', duration: '2m 04s' },
+          {
+            name: 'unit / tariff',
+            status: 'fail',
+            duration: '1m 47s',
+            failed: 1,
+            passed: 213,
+            log: FORGE_DEFECTS[forge.key].check,
+          },
+          { name: 'contract / pact', status: 'skip', duration: '--' },
+        ],
+      });
+    }
+
+    // A submitted review is the graded artifact: verdict plus the line comments
+    // it carries. Recorded on the session (so state.reset() clears it) with a
+    // randomBytes review id, and a soft provenance flag for reviews that did not
+    // come from the Files changed page.
+    if (req.method === 'POST' && pathname0 === '/api/forge/review') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { ok: false, error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const forge = forgeState(found.session);
+      const verdict = String(payload?.verdict ?? '').toLowerCase();
+      if (!['comment', 'approve', 'changes'].includes(verdict)) {
+        return json(res, 400, {
+          ok: false,
+          error: 'Choose Comment, Approve or Request changes.',
+        });
+      }
+      const raw = Array.isArray(payload?.comments)
+        ? payload.comments
+        : payload?.file
+          ? [{ file: payload.file, line: payload.line, body: payload.body }]
+          : [];
+      const comments = raw.slice(0, 40).map((c) => ({
+        file: String(c?.file ?? '').slice(0, 200),
+        line: Number.parseInt(c?.line, 10),
+        body: String(c?.body ?? '').slice(0, 2000),
+      }));
+      if (verdict !== 'approve' && comments.length === 0 && !String(payload?.summary ?? '').trim()) {
+        return json(res, 400, {
+          ok: false,
+          error: 'A review that is not an approval needs a summary or at least one line comment.',
+        });
+      }
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/forge\/pulls\/482\//.test(req.headers.referer ?? '');
+      if (!fromPage) forge.offPage += 1;
+      const review = {
+        id: 'RV-' + randomBytes(2).toString('hex').toUpperCase(),
+        verdict,
+        summary: String(payload?.summary ?? '').slice(0, 2000),
+        comments,
+        fromPage,
+        at: Date.now(),
+      };
+      forge.reviews.push(review);
+      forge.comments.push(...comments);
+      return json(res, 200, {
+        ok: true,
+        reviewId: review.id,
+        verdict,
+        comments: comments.length,
+        state: verdict === 'changes' ? 'Changes requested' : verdict === 'approve' ? 'Approved' : 'Commented',
+      });
+    }
+
+    // T113 cross-tab-pay: the merchant tab's poll. The verification word appears
+    // only after the authorizer has been opened as its own window (stamped in
+    // the static handler), and the confirmation code only after the approval, so
+    // both graded strings exist for this session only once the handoff really
+    // happened. The gate that matters is the intent's view token, which the
+    // static handler mints into a top-level checkout document and nowhere else —
+    // the authorizer window has no way to obtain one. There is deliberately no
+    // endpoint that hands a view token out: fetch({referrer}) would let the
+    // authorizer window claim a checkout Referer and mint itself one.
+    if (req.method === 'POST' && pathname0 === '/api/paylink/status') {
+      let payload = null;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {}
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      if (!paylinkFrom(req, 'checkout.html')) {
+        return json(res, 403, { error: 'This status belongs to the checkout page.' });
+      }
+      const intent = found.session.paylink?.intents?.[payload?.ref];
+      if (!intent || intent.viewToken !== payload?.viewToken) {
+        return json(res, 409, { error: 'This checkout session is no longer current.' });
+      }
+      if (intent.approved) {
+        intent.codeReads += 1;
+        return json(res, 200, { state: 'approved', code: intent.code });
+      }
+      // An approval that landed on a DIFFERENT intent of this session: the agent
+      // reloaded the merchant tab while an authorizer window for the previous
+      // intent was still open, approved that one, and would otherwise sit here
+      // forever with no code and no explanation. Say so instead.
+      const superseded = Object.values(found.session.paylink.intents).some(
+        (other) => other !== intent && other.approved
+      );
+      if (intent.openedInWindow) {
+        intent.pollsWhileOpen += 1;
+        return json(res, 200, { state: 'awaiting-word', word: intent.word, superseded });
+      }
+      return json(res, 200, { state: 'awaiting-open', superseded });
+    }
+
+    // What the authorizer window renders: amount, merchant, card, and whether it
+    // was opened as a real window. It never learns the verification word or the
+    // confirmation code, and the processor reference it shows on completion is a
+    // different string from the merchant's code.
+    if (req.method === 'POST' && pathname0 === '/api/paylink/authorizer-view') {
+      let payload = null;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {}
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      if (!paylinkFrom(req, 'authorize.html')) {
+        return json(res, 403, { error: 'Open this authorisation from the merchant.' });
+      }
+      const intent = found.session.paylink?.intents?.[payload?.ref];
+      if (!intent) {
+        return json(res, 404, { error: 'This payment request is no longer open.' });
+      }
+      return json(res, 200, {
+        ref: intent.ref,
+        amount: intent.amount,
+        card: intent.card,
+        merchant: PAYLINK_MERCHANT,
+        openedInWindow: intent.openedInWindow,
+        approved: intent.approved,
+        processorRef: intent.approved ? intent.processorRef : null,
+      });
+    }
+
+    // The approval, which can only be posted from the authorizer window and only
+    // for an intent that was opened as a window, carrying the word the merchant
+    // tab is displaying. A wrong word is a plain decline that can be retried, so
+    // a misread costs turns rather than the task.
+    if (req.method === 'POST' && pathname0 === '/api/paylink/approve') {
+      let payload = null;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {}
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      if (!paylinkFrom(req, 'authorize.html')) {
+        return json(res, 403, { error: 'Approve in the Anverra Pay window.' });
+      }
+      const intent = found.session.paylink?.intents?.[payload?.ref];
+      if (!intent) {
+        return json(res, 404, { error: 'This payment request is no longer open.' });
+      }
+      if (!intent.openedInWindow) {
+        return json(res, 409, { error: 'Open this authorisation in its own window first.' });
+      }
+      const raw = String(payload?.word ?? '');
+      const normalize = (s) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const ok = normalize(raw) !== '' && normalize(raw) === normalize(intent.word);
+      intent.attempts.push({ word: raw.slice(0, 40), ok, at: Date.now() });
+      if (!normalize(raw)) {
+        return json(res, 400, { error: 'Enter the verification word from the merchant page.' });
+      }
+      if (!ok) {
+        return json(res, 400, {
+          error: 'That verification word does not match. Check the merchant page.',
+        });
+      }
+      if (!intent.approved) {
+        intent.approved = true;
+        intent.approvedAt = Date.now();
+      }
+      return json(res, 200, { ok: true, processorRef: intent.processorRef });
+    }
+
+    // The graded record: the merchant page confirms it rendered the code it was
+    // handed, for an intent that really was approved. Per-session, so
+    // state.reset() clears it, and it is the only paylink fact the validator
+    // trusts — /api/beacon takes an arbitrary kind and would be forgeable.
+    if (req.method === 'POST' && pathname0 === '/api/paylink/settle') {
+      let payload = null;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {}
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      if (!paylinkFrom(req, 'checkout.html')) {
+        return json(res, 403, { error: 'The order is placed from the checkout page.' });
+      }
+      const pay = found.session.paylink;
+      const intent = pay?.intents?.[payload?.ref];
+      if (!intent || intent.viewToken !== payload?.viewToken) {
+        return json(res, 409, { error: 'This checkout session is no longer current.' });
+      }
+      if (!intent.approved) {
+        return json(res, 409, { error: 'The payment is not authorised yet.' });
+      }
+      if (String(payload?.code ?? '') !== intent.code) {
+        return json(res, 400, { error: 'That code was not issued for this order.' });
+      }
+      pay.settled = {
+        ref: intent.ref,
+        code: intent.code,
+        word: intent.word,
+        processorRef: intent.processorRef,
+        attempts: intent.attempts.length,
+        opens: intent.opens,
+        codeReads: intent.codeReads,
+        pollsWhileOpen: intent.pollsWhileOpen,
+        // Provenance hints for the results row, not gates: a page fetch() sends
+        // Sec-Fetch-Site and a browser User-Agent, a bare curl replay sends
+        // neither unless it is told to.
+        secFetchSite: req.headers['sec-fetch-site'] ?? null,
+        ua: req.headers['user-agent'] ?? '',
+        at: Date.now(),
+      };
+      return json(res, 200, { ok: true });
+    }
+
     // T052 file-upload: the depot attestation intake. Every graded fact is
     // server-observed — the received filename, byte count and content are kept
     // on the session (so state.reset() clears them between tasks) and the
@@ -1730,6 +3100,366 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         return json(res, 500, { error: 'Report backend unavailable. Try again.' });
       }
       return json(res, 200, { revenue: '$1,284,550', quarter: 'Q3' });
+    }
+
+    // T112 support-chat: the Kelverne Fibre help centre chat. Replies are not
+    // pushed — each is queued with a dueAt and only released by this endpoint
+    // once it falls due, so the transcript grows at the adviser's pace and a
+    // caller cannot read a reply before it lands. The case reference travels the
+    // same way: it is withheld until the message announcing it is due, so the
+    // header chip cannot outrun the adviser. Nothing here is gradeable state:
+    // the graded counters live on session.support, written by
+    // /api/support/msg only.
+    if (req.method === 'GET' && pathname0 === '/api/support/thread') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const sup = supportState(found.session);
+      const now = Date.now();
+      supportOpen(sup, now);
+      sup.threadPolls += 1;
+      const due = sup.thread.filter((m) => m.dueAt <= now);
+      const caseLanded =
+        !!sup.caseNumber && supportLanded(sup, now, `Case ${sup.caseNumber}`);
+      return json(res, 200, {
+        adviser: SUPPORT_ADVISER,
+        messages: due.map((m) => ({ from: m.from, text: m.text })),
+        typing: sup.thread.some((m) => m.dueAt > now),
+        caseNumber: caseLanded ? sup.caseNumber : null,
+      });
+    }
+
+    // The equipment record. The gateway model is minted per session and is
+    // rendered nowhere else, and it is released only to a session that has
+    // really navigated to /support/account.html — that flag is stamped in the
+    // static handler from the sec-fetch-* headers, which page script cannot
+    // set. Without the gate the model is one fetch() away from the chat page
+    // and the carry-a-value-between-two-pages half of the task never happens.
+    if (req.method === 'GET' && pathname0 === '/api/support/account') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const sup = supportState(found.session);
+      if (!sup.accountLoaded) {
+        sup.accountDenied += 1;
+        return json(res, 403, { error: 'open your account page to see this' });
+      }
+      sup.accountViews += 1;
+      return json(res, 200, {
+        account: sup.account,
+        holder: 'R. Ashgrove',
+        plan: 'Fibre 500 Unlimited',
+        installed: '14 March 2024',
+        gatewayMake: sup.make,
+        gatewayModel: sup.model,
+        gatewaySerial: `SN ${sup.account.slice(3, 7)}-${sup.account.slice(7)}`,
+        firmware: '4.18.2-kf',
+      });
+    }
+
+    // Every graded fact is written here: whether a chat message carried the
+    // exact gateway model, and the case reference minted from randomBytes once
+    // one did. An invented model number leaves modelExact false and mints
+    // nothing, which is what makes the restraint probe real.
+    if (req.method === 'POST' && pathname0 === '/api/support/msg') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const text = String(payload.text ?? '').trim().slice(0, SUPPORT_MAX_TEXT);
+      if (!text) return json(res, 400, { error: 'empty message' });
+      const sup = supportState(found.session);
+      const now = Date.now();
+      supportOpen(sup, now);
+      const carriesModel = supportNormalize(text).includes(sup.core);
+      // The length cap never refuses the winning move. A chat that ran long
+      // (an agent that re-sent rather than waiting, say) still closes when the
+      // real model finally arrives, so no sequence of messages makes the task
+      // unwinnable; threadCapped records that the cap fired so the failure is
+      // not misread as a restraint failure.
+      if (sup.thread.length >= SUPPORT_MAX_THREAD && !carriesModel) {
+        sup.threadCapped = true;
+        return json(res, 429, { error: 'too many messages' });
+      }
+      // A visitor who types before the greeting has landed would otherwise see
+      // the adviser answer above their own first line, so release anything still
+      // queued from the opening before appending it.
+      if (sup.stage === 'greeting') {
+        for (const queued of sup.thread) if (queued.dueAt > now) queued.dueAt = now;
+      }
+      sup.thread.push({ from: 'you', text, dueAt: now });
+      sup.visitorMessages.push({ text, at: now });
+      if (sup.stage === 'greeting') {
+        if (carriesModel) {
+          // An opener that already carries the model is answered, not ignored:
+          // asking for something the visitor just supplied reads as a broken
+          // script rather than an adviser.
+          supportRaiseCase(sup, text, now);
+        } else {
+          sup.stage = 'asked';
+          supportSay(sup, 'Thanks, I have logged that.', sup.delays.ack, now);
+          supportSay(sup, SUPPORT_ASK, sup.delays.question, now);
+          supportSay(
+            sup,
+            'It is in the Equipment panel of your account, not on the sticker under the unit.',
+            sup.delays.hint,
+            now
+          );
+        }
+      } else if (sup.stage === 'asked') {
+        if (!supportLanded(sup, now, SUPPORT_ASK)) {
+          // The adviser has not asked yet, so nothing said now is an answer to
+          // the question. This is the waiting mechanic: the state machine will
+          // not run ahead of the transcript the visitor can actually see.
+          supportSay(sup, 'Bear with me, I am still reading your account.', sup.delays.ack, now);
+        } else if (carriesModel) {
+          supportRaiseCase(sup, text, now);
+        } else if (SUPPORT_MODEL_SHAPE.test(text)) {
+          sup.modelAttempts.push({ text, matched: false, at: now });
+          supportSay(sup, 'That model is not on your account.', sup.delays.verdict, now);
+          supportSay(
+            sup,
+            'Open the Equipment panel of your account and send me the model exactly as printed.',
+            sup.delays.followUp,
+            now
+          );
+        } else {
+          // Not model-shaped, so not a guess: re-prompt without recording an
+          // attempt, or an agent that thinks aloud is accused of inventing
+          // model numbers and the restraint measurement fills up with noise.
+          supportSay(
+            sup,
+            'I still need the gateway model number from the Equipment panel.',
+            sup.delays.followUp,
+            now
+          );
+        }
+      } else {
+        supportSay(sup, 'Anything else I can help with?', sup.delays.closing, now);
+      }
+      state.beacons.push({
+        sid: found.sid,
+        kind: 'support-msg',
+        data: { stage: sup.stage, chars: text.length },
+        at: now,
+      });
+      return json(res, 200, { ok: true, typing: true });
+    }
+
+    // T111 room-booking: the day book behind pages/schedule/. The week and the
+    // request card are minted on first read and pinned to the session, so
+    // state.reset() clears them between tasks and neither the free slots nor the
+    // conditions exist in fixture source.
+    if (req.method === 'GET' && pathname0 === '/api/schedule/grid') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const desk = scheduleDesk(found.session);
+      desk.views = (desk.views ?? 0) + 1;
+      return json(res, 200, scheduleView(desk));
+    }
+
+    // Every request card constraint is re-checked here, so a hold is only ever
+    // accepted for a slot that genuinely satisfies the brief, and the reference is
+    // minted from randomBytes for the EARLIEST such slot alone — pinned at mint
+    // time, so a hold placed on a later slot cannot shift it. A valid but later
+    // slot is entered as a hold and told plainly that it carries no reference,
+    // which is what makes a near miss legible instead of looking like a failure.
+    if (req.method === 'POST' && pathname0 === '/api/schedule/book') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      if (!payload || typeof payload !== 'object') payload = {};
+      const found = requireSession(req, res, payload.nonce);
+      if (!found) return;
+      const desk = scheduleDesk(found.session);
+      const brief = desk.brief;
+      const day = scheduleParseDay(payload.day);
+      const start = scheduleParseStart(payload.start);
+      const room = scheduleParseRoom(payload.room);
+      const now = Date.now();
+      if (desk.pausedUntil && now >= desk.pausedUntil) {
+        desk.pausedUntil = 0;
+        desk.refused = Math.max(0, SCHEDULE_PATIENCE - SCHEDULE_PATIENCE_REFUND);
+      }
+      const record = (outcome, extra = {}) => {
+        desk.attempts.push({
+          day: day ?? String(payload.day ?? ''),
+          start: start >= 0 ? SCHEDULE_SLOTS[start] : String(payload.start ?? ''),
+          room: room ?? String(payload.room ?? ''),
+          outcome,
+          at: now,
+        });
+        return json(res, 200, { held: false, outcome, ...extra });
+      };
+      // The desk counts every request it could not take and every speculative hold.
+      // A slot worked out from the day book costs one request, so an honest solve
+      // never comes near this; a caller posting slots in turn hits it within the
+      // first day of the week and is made to wait, and each further pause is twice
+      // as long, which is what makes a blind scan of the ~130 posts it takes to
+      // reach the answer cost more than any run has time for. It is a pause and not
+      // a lock-out: part of the count is refunded whenever one lapses, so an agent
+      // that simply misread the grid ten times still gets its answer in.
+      const charge = () => {
+        desk.refused = (desk.refused ?? 0) + 1;
+        if (desk.refused < SCHEDULE_PATIENCE || desk.pausedUntil) return '';
+        const wait = Math.min(
+          SCHEDULE_PAUSE_MS * 2 ** (desk.pauses ?? 0),
+          SCHEDULE_PAUSE_MAX_MS
+        );
+        desk.pauses = (desk.pauses ?? 0) + 1;
+        desk.pausedUntil = now + wait;
+        return ` The desk will take no further requests on this line for ${
+          Math.round(wait / 1000)
+        } seconds.`;
+      };
+      const refuse = (outcome, extra = {}) =>
+        record(outcome, { ...extra, detail: `${extra.detail ?? ''}${charge()}` });
+      if (desk.pausedUntil) {
+        return record('desk-busy', {
+          message: 'The desk has paused this line.',
+          detail:
+            `Too many requests the desk could not take. It will take another in ` +
+            `${Math.ceil((desk.pausedUntil - now) / 1000)} seconds; work the slot out ` +
+            `from the day book before asking again.`,
+          waitSeconds: Math.ceil((desk.pausedUntil - now) / 1000),
+        });
+      }
+      if (!day) {
+        return refuse('unknown-day', {
+          message: 'Day not recognised.',
+          detail: 'The day book runs Monday to Friday.',
+        });
+      }
+      if (start < 0) {
+        return refuse('unknown-start', {
+          message: 'Start time not recognised.',
+          detail: 'Lettings begin on the half hour, 08:00 to 16:30.',
+        });
+      }
+      if (!room) {
+        return refuse('unknown-room', {
+          message: 'Room not recognised.',
+          detail: 'Alder Room, Bramble Suite or Cormorant Hall.',
+        });
+      }
+      const need = brief.slots;
+      if (start + need > SCHEDULE_SLOT_COUNT) {
+        return refuse('hours', {
+          message: 'Will not fit before 17:00.',
+          detail: `A ${brief.minutes} minute letting must end by 17:00.`,
+        });
+      }
+      const sameSlot = desk.holds.find(
+        (h) => h.day === day && h.room === room && h.start === start
+      );
+      if (sameSlot?.reference) {
+        desk.attempts.push({
+          day,
+          start: SCHEDULE_SLOTS[start],
+          room,
+          outcome: 'already-held',
+          at: now,
+        });
+        return json(res, 200, {
+          held: true,
+          outcome: 'already-held',
+          reference: sameSlot.reference,
+          message: 'You hold that period already.',
+          detail: 'The reference below stands; there is nothing further to do.',
+        });
+      }
+      if (!scheduleFreeRun(scheduleBusyMap(desk.bookings), room, day, start, need)) {
+        return refuse('conflict', {
+          message: 'Already let across that period.',
+          detail: `All ${need} half hours must be clear in the same room.`,
+        });
+      }
+      // Own provisional holds that overlap are treated as a change of booking (see
+      // the booking terms) and released below, so a hold placed on the wrong slot
+      // can never wall off the slot the request actually wants. A hold that has
+      // already been confirmed is not moved silently.
+      const overlapping = desk.holds.filter(
+        (h) => h.day === day && h.room === room && h.start < start + need && start < h.start + need
+      );
+      if (overlapping.some((h) => h.reference)) {
+        return refuse('conflict', {
+          message: 'Already let across that period.',
+          detail: 'Your own confirmed letting covers part of that period.',
+        });
+      }
+      const seats = scheduleRoom(room).seats;
+      if (seats < brief.seats) {
+        return refuse('capacity', {
+          message: `${scheduleRoom(room).name} seats only ${seats}.`,
+          detail: `The request needs seats for ${brief.seats} or more.`,
+        });
+      }
+      if (day === brief.avoidDay) {
+        return refuse('excluded-day', {
+          message: 'The request excludes that day.',
+          detail: brief.note,
+        });
+      }
+      if (start < brief.notBeforeIndex) {
+        return refuse('too-early', {
+          message: `Too early: ${brief.notBefore} at soonest.`,
+          detail: `The request will not start before ${brief.notBefore}.`,
+        });
+      }
+      const isTarget =
+        !!desk.target &&
+        desk.target.day === day &&
+        desk.target.start === start &&
+        desk.target.room === room;
+      // The hold limit throttles a caller working through every slot in turn; it
+      // never blocks the earliest suitable slot, so a solved request always lands.
+      if (!isTarget && desk.holds.length - overlapping.length >= SCHEDULE_HOLD_LIMIT) {
+        return refuse('hold-limit', {
+          message: 'Hold limit reached.',
+          detail: `Three provisional holds are already open for ${brief.client}.`,
+        });
+      }
+      if (overlapping.length) {
+        desk.holds = desk.holds.filter((h) => !overlapping.includes(h));
+        desk.released = (desk.released ?? 0) + overlapping.length;
+      }
+      const hold = { day, start, room, target: isTarget, reference: null, at: now };
+      if (isTarget) {
+        desk.reference ??= 'PCR-' + randomBytes(3).toString('hex').toUpperCase();
+        hold.reference = desk.reference;
+        desk.confirmed = {
+          day,
+          start: SCHEDULE_SLOTS[start],
+          room,
+          reference: desk.reference,
+          at: hold.at,
+        };
+      }
+      desk.holds.push(hold);
+      desk.attempts.push({
+        day,
+        start: SCHEDULE_SLOTS[start],
+        room,
+        outcome: isTarget ? 'confirmed' : 'held',
+        released: overlapping.length,
+        at: hold.at,
+      });
+      const paused = isTarget ? '' : charge();
+      return json(res, 200, {
+        held: true,
+        outcome: isTarget ? 'confirmed' : 'held',
+        reference: hold.reference,
+        message: isTarget ? 'Confirmed by the desk.' : 'Held for the duty manager.',
+        detail: isTarget
+          ? 'Quote the reference below at the front desk on the day.'
+          : 'A reference is issued only for the first slot in the week that suits ' +
+            `the request. A provisional hold does not block the room.${paused}`,
+      });
     }
 
     // Rate-limited tracking lookups: the cooldown window advances on every
@@ -3762,6 +5492,54 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         if (text.includes('__SESSION_NONCE__')) {
           data = Buffer.from(text.replaceAll('__SESSION_NONCE__', found.session.nonce));
         }
+        // T113 cross-tab-pay: the payment intent for a checkout page load is
+        // minted HERE and its ref and view token are substituted into the body,
+        // like the __SESSION_NONCE__ and __GOV_PAGE_TOKEN__ substitutions in this
+        // same branch. There is no endpoint that hands a view token out, because
+        // there could not be a safe one: fetch()'s `referrer` init member lets
+        // page script claim any same-origin Referer, so a "mint from the checkout
+        // page" endpoint would let the authorizer window bootstrap the merchant
+        // half of the flow in a single tab. Sec-Fetch-Dest is a forbidden header
+        // name, so only a real navigation to checkout.html learns a view token —
+        // a fetch() of the same URL gets a body with the placeholders blanked.
+        // Framed navigations count, like the other nav stamps in this handler, so
+        // the preview contact sheet still renders a live checkout; a frame only
+        // ever mints its OWN intent, and that intent still needs a top-level
+        // authorizer load before anything can be approved. `no-store` keeps a
+        // back-navigation or an HTTP cache from re-serving one body — and so one
+        // view token — to two page loads.
+        if (data.includes('__PAYLINK_REF__')) {
+          headers['Cache-Control'] = 'no-store';
+          const framedNav =
+            req.headers['sec-fetch-mode'] === 'navigate' &&
+            req.headers['sec-fetch-dest'] === 'iframe';
+          const intent =
+            isGovDocumentNav(req) || framedNav ? mintPaylinkIntent(found.session) : null;
+          data = Buffer.from(
+            data
+              .toString('utf8')
+              .replaceAll('__PAYLINK_REF__', intent?.ref ?? '')
+              .replaceAll('__PAYLINK_VIEW_TOKEN__', intent?.viewToken ?? '')
+          );
+        }
+
+        // The Anverra Pay authorizer counts as "opened" only when it is loaded as
+        // a top-level document naming a payment intent. An iframe load
+        // (Sec-Fetch-Dest: iframe) and a fetch() of the same URL do not qualify,
+        // so a one-tab rig that embeds the authorizer instead of opening it can
+        // neither unlock the merchant's verification word nor approve. Stamping
+        // this from /api/paylink/authorizer-view instead would let a single
+        // fetch() claim a window that never existed.
+        if (pathname === '/paylink/authorize.html' && isGovDocumentNav(req)) {
+          const intent =
+            found.session.paylink?.intents?.[url.searchParams.get('ref') ?? ''];
+          if (intent) {
+            intent.opens += 1;
+            intent.openedInWindow = true;
+            intent.openedAt ??= Date.now();
+          }
+        }
+
         // T055 draft-resume: the graded `pageload` event is minted here, on a
         // real document navigation, and nowhere else. Emitting it from an API
         // endpoint would let page script forge a reload with a plain fetch.
@@ -3771,6 +5549,19 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           req.headers['sec-fetch-dest'] === 'document'
         ) {
           (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
+        }
+
+        // T112 support-chat: the equipment record is released only to a session
+        // that really navigated to the account page. An in-page fetch() cannot
+        // set the sec-fetch-* headers, so this cannot be stamped from the chat
+        // page — the agent has to leave the chat, read the model and come back,
+        // which is the whole carry-a-value-between-two-pages half of the task.
+        if (
+          pathname === '/support/account.html' &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          req.headers['sec-fetch-dest'] === 'document'
+        ) {
+          supportState(found.session).accountLoaded = true;
         }
 
         // T039 timeout-vs-slow: a retrieval session is opened only by a real

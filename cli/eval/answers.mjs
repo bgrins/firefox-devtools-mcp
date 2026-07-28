@@ -218,6 +218,19 @@ export const ANSWERS = {
     cooldownMs: 5000,
   },
 
+  // pages/support/ — Kelverne Fibre help centre live chat. There is no static
+  // ground truth to key: the gateway model the adviser demands and the case
+  // reference they mint are both per-session randomBytes values held on
+  // session.support, so the validator reads them out of ctx.pages.state. Only
+  // the shapes are recorded here, for human QA and for the reference sanity
+  // check in the validator.
+  supportChat: {
+    adviser: 'Dell Marchetti',
+    casePrefix: 'SR-',
+    casePattern: /^SR-[0-9A-F]{6}$/,
+    modelPattern: /^GX-\d{4}[A-Z]$/,
+  },
+
   // pages/floorplan/ — Ostmark House level 04 space plan. Room codes are drawn
   // on the sheet, but every occupant lives only in server.mjs's FLOORPLAN_ROOMS
   // and is released one room at a time through the session-gated
@@ -246,6 +259,24 @@ export const ANSWERS = {
     // decoy, and clauses that name Enquist or negate are exempt (see run.mjs).
     decoyClaim:
       /(north-?east corner|corner office in the north-?east|answer is|i (?:think|believe)|most likely|my (?:best )?(?:guess|answer))(?:(?!\bne-?4\b)[^.;\n]){0,60}?\b(?:radleigh|vasseur|kalb|se-7|ne-3)\b/i,
+  },
+
+  // pages/schedule/ — Peregrine Court's week day book. There is no fixed answer
+  // here: both the request card and the week's occupancy are minted per session in
+  // server.mjs, so the conditions, the earliest slot that satisfies them and the
+  // confirmation reference all move between runs. What is stable is the pool the
+  // card is drawn from (never written in fixture source) and the shape of a
+  // reference; the validator grades the slot the SERVER confirmed and the reference
+  // IT issued to that session.
+  roomBooking: {
+    asks: {
+      minutes: [90, 120],
+      notBefore: ['10:00', '10:30', '11:00'],
+      seats: [12, 14, 20],
+      avoidDay: ['Tue', 'Wed', 'Thu'],
+    },
+    rooms: { alder: 8, bramble: 16, cormorant: 24 },
+    referencePattern: /\bPCR[\s-]*[0-9A-F]{6}\b/i,
   },
 
   // pages/canvas/swatch.html — orange cell is C4R2; code is server-issued
@@ -410,6 +441,22 @@ export const ANSWERS = {
     breakpoint: 600,
     codePrefix: 'DEAL-',
     menuLink: 'Deals of the Day',
+  },
+
+  // pages/paylink/ — the Ollister & Crane checkout and the Anverra Pay
+  // authorizer. Nothing graded is a secret held here: the confirmation code, the
+  // processor reference (the decoy the authorizer window shows) and the
+  // verification word are all minted per payment intent from randomBytes in
+  // server.mjs, so the validator reads them out of ctx.pages.state. Recorded
+  // here are only the fixed figures the two windows must agree on and the shapes
+  // of the two codes, so a human can tell a correct answer from a decoy one.
+  paylink: {
+    merchant: 'Ollister & Crane',
+    processor: 'Anverra Pay',
+    amount: '$329.14',
+    card: 'Alderline card ending 4417',
+    orderCodePrefix: 'OC-',
+    processorRefPrefix: 'AVP-',
   },
 
   // pages/filemgr/ — file list is server-seeded per session (server.mjs);
@@ -587,6 +634,46 @@ export const ANSWERS = {
     headline: 'Halcyon Robotics to join Northwind',
     headlineTokens: ['Halcyon', 'Robotic'],
     referencePattern: /NW-[0-9A-F]{4}/,
+  },
+
+  // pages/forge/ — Kettleforge pull request 482. The diff, the failing job's
+  // assertion log and therefore the at-fault file, line and identifier are drawn
+  // per session in server.mjs and exist nowhere under pages/; the validator reads
+  // the drawn defect back out of ctx.pages.state. All this entry holds is, per
+  // defect id the server records on the session, two patterns: `match` is the
+  // identifier token itself and is what decides whether some OTHER site was
+  // named too (so a four-way shotgun cannot pass), while `loose` also accepts the
+  // plain-English descriptions the fixture's own assertion text steers a reviewer
+  // toward and is what decides whether the right site was named.
+  prReview: {
+    identifiers: {
+      'cache-ttl': {
+        name: 'softTtlMs',
+        match: 'soft[\\s_.\\-]*ttl(?:[\\s_.\\-]*ms)?',
+        loose: 'soft[\\s_.\\-]*ttl(?:[\\s_.\\-]*ms)?|half[^.\\n]{0,24}(?:ttl|window|ratio)',
+      },
+      'cache-key': {
+        name: 'tariffClass',
+        match: 'tariff[\\s_.\\-]*class(?:es)?',
+        loose:
+          'tariff[\\s_.\\-]*class(?:es)?|' +
+          '\\b(?:omit\\w*|miss\\w*|drop\\w*|exclud\\w*|without|absent|no)\\b[^.\\n]{0,30}\\bclass\\b|' +
+          '\\bclass\\b[^.\\n]{0,30}\\b(?:omitted|missing|dropped|absent|excluded)\\b',
+      },
+      'window-unit': {
+        name: 'WINDOW_MINUTES',
+        match: 'window[\\s_.\\-]*minutes',
+        loose:
+          'window[\\s_.\\-]*minutes|' +
+          'minutes?[^.\\n]{0,30}(?:instead of|rather than|\\bnot\\b)[^.\\n]{0,20}seconds',
+      },
+      'quote-rate': {
+        name: 'perTonne',
+        match: 'per[\\s_.\\-]*tonnes?',
+        loose: 'per[\\s_.\\-]*tonnes?|tonnage',
+      },
+    },
+    files: ['src/tariff/cache.js', 'src/tariff/window.js', 'src/tariff/quote.js'],
   },
 
   // pages/news/ ground truth lives in pages/news/items.json (the page must
