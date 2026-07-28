@@ -178,6 +178,27 @@ build a task that is unwinnable because of them:
   `detail` so failures are diagnosable.
 - Prefer server-observed gates over answer-text gates; use both where the plan
   says so.
+- **BIND FACTS TOGETHER; never AND independent substring tests.** This is the
+  single most common defect in this suite's history. The 2026-07-28 review found
+  a dozen validators grading a bag of substrings, so: a `news-extract` table with
+  the points column rotated one row scored 20/20; `crm-join` passed an answer
+  naming the wrong winning region; `roster-diff` passed with the added and removed
+  lists completely swapped; `variant-matrix` passed an answer declaring the MOST
+  EXPENSIVE combination the cheapest. In each case every required token appeared
+  somewhere in an otherwise-correct table. Require the facts to co-occur in ONE
+  clause or row — copy `rate-limited-lookups`' `pairOk` or `oos-substitute`'s
+  `namesDecoyAsChoice` rather than inventing a scheme.
+- **Grade what the ask asks for.** Several validators computed a value and then
+  never read it (`price-compare`'s per-store figures, `roster-diff`'s categories,
+  `cross-tab-pay`'s decoy, `locale-notice`'s two conditions), so a third of the
+  requested output was ungraded. If the ask demands it, gate on it or drop it from
+  the ask.
+- **Every validator change ships with regression strings.** `verify.mjs` takes
+  `wrong` as a string OR array (all must FAIL) and `alsoCorrect` as an array (all
+  must PASS) on the task's driver. Add the string FIRST, watch `verify.mjs` go red,
+  then change the validator. A tightening that was never seen to fail has not been
+  shown to do anything — and half the fixes in the first attempt at this either
+  closed nothing or created a new mis-grade.
 
 ## Required spec file: `cli/eval/staging/<ID>.md`
 

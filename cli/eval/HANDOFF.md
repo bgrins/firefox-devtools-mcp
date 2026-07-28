@@ -104,6 +104,44 @@ validators every time. The stages, and why each is there:
 8. **Record** in `task-ideas.md`'s status block and fold tool findings into
    `findings.md`. **Commit** (terse, one line, no AI attribution).
 
+## 4b. Fixing defects — a DIFFERENT process from building a wave
+
+Do not reuse the wave workflow to fix validators. It was tried on 2026-07-28 for
+the review's 42 confirmed defects, and roughly half the patches came back either
+not closing their hole or introducing NEW mis-grades — 12 new false passes and 22
+new false fails, caught only by a late adversarial pass. 18 of ~55 landed. These
+rules exist so nobody repeats it.
+
+1. **Write the failing assertion first.** Add the mis-graded string to the task's
+   driver as `wrong` (must fail) or `alsoCorrect` (must pass), run `verify.mjs`,
+   and confirm it goes **RED** naming that string. Only then fix the validator.
+   A fix whose test never failed first has not been demonstrated to do anything.
+2. **Serialise edits to `run.mjs`, `answers.mjs` and `server.mjs`.** They are a
+   single-writer resource. Parallel agents cannot speed this up — they can only add
+   a spec-then-integrate indirection, and every defect in the failed attempt was a
+   defect of that indirection (wrong line numbers, byte-identical anchors claimed by
+   two groups, patches referencing variables absent from the target file). If you
+   must fan out, partition by FILE, never by topic.
+3. **Batch 3-5 fixes, gate, commit.** Never let a fix pass grow to where nothing
+   can land until all of it is judged. A green `verify.mjs` between increments is
+   what makes a bad fix cheap to abandon.
+4. **The deliverable is a green gate, not a patch.** Any agent touching a validator
+   reports `verify.mjs` output. "I wrote a patch and tested it in my own harness"
+   is not acceptable — the bespoke harnesses were uniformly weaker than the gate.
+5. **One decision per finding.** If you use a schema, do not let a per-item verdict
+   coexist with a separate blockers list; they contradicted each other and three
+   tasks were misread as safe.
+6. **Never loosen a validator to make the suite green.** If a fix causes a failure
+   you cannot resolve inside its own scope, revert it and record it as unlanded.
+7. **Keep the adversarial pass.** It refuted 24 of 64 claims in the review and
+   caught every unsafe patch. The failure was doing it too late and in too large a
+   unit, not doing it at all.
+
+A review that produces N findings produces a QUEUE. Rank it, work it in small
+verified increments, and expect the tail to be wrong: in the 2026-07-28 review, 24
+of 64 severe claims did not survive verification, and the ~100 cosmetic items were
+never verified at all.
+
 ## 5. Reading results honestly
 
 This list is short but every entry cost real confusion to learn.
