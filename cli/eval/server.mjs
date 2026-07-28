@@ -1137,6 +1137,26 @@ function mediaCueText(media, cue) {
 
 const BODY_CAP = 65536;
 
+// POST /api/beacon is the generic page-telemetry route: it accepts whatever `kind`
+// the caller names, so any gate written as beaconsOf('k').length >= N is forgeable
+// by anything holding the page nonce. That is the single root cause behind the
+// forgeable roster-submit and form-progress gates the 2026-07-28 review found, and
+// behind several shell-solvable route signals. So the route is default-deny.
+//
+// This list is EXHAUSTIVE and was derived, not guessed — a default-deny with a
+// missing kind returns 400 on a real page load, which is how a first attempt at
+// this patch would have broken all seven ledger folios. Regenerate it with BOTH
+// of these, because some pages post through a helper so the literal is not in a
+// fetch body:
+//   grep -rhoE "kind: *'[^']*'" cli/eval/pages/
+//   grep -rhoE "beacon\('[^']*'" cli/eval/pages/
+const PAGE_BEACON_KINDS = new Set([
+  'bank-view',       // pages/bank/vera-bank-login/, pages/bank/verabank-online/
+  'consent-layer',   // pages/news/consent.html, via its beacon() helper
+  'ledger-folio',    // pages/ledger/index.html + page-2..7.html
+  'press-published', // pages/press/index.html
+]);
+
 // pages/news/consent.html — the 3-layer consent wall over the Millrace front
 // page. The CMP posts its whole toggle map to /api/consent/save; the submitted
 // map and the accept-all count live on the session, so state.reset() clears
@@ -5497,9 +5517,16 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       }
       const found = requireSession(req, res, payload?.nonce);
       if (!found) return;
+      const kind = String(payload.kind ?? '');
+      // Refused rather than silently dropped, and recorded, so an attempt to mint
+      // a dedicated endpoint's kind is legible instead of invisible.
+      if (!PAGE_BEACON_KINDS.has(kind)) {
+        (found.session.beaconRefusals ??= []).push({ kind, at: Date.now() });
+        return json(res, 400, { ok: false, error: 'unknown beacon kind' });
+      }
       state.beacons.push({
         sid: found.sid,
-        kind: String(payload.kind ?? ''),
+        kind,
         data: payload.data ?? null,
         at: Date.now(),
       });
