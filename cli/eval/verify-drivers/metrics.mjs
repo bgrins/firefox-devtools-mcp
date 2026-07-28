@@ -93,13 +93,37 @@ export const DRIVERS = {
         `${second.label} is my answer, with Active seats at ` +
         `${second.value.toLocaleString('en-GB')}; ${month.label} at ` +
         `${month.value.toLocaleString('en-GB')} is a close second.`;
-      return (
+      const answer =
         `Active seats fell furthest in ${month.label}, to ${month.value.toLocaleString('en-GB')} ` +
         `seats — down ${target.drop.toLocaleString('en-GB')} on ${target.from.label} ` +
         `(${target.from.value.toLocaleString('en-GB')}). The chart cannot settle it: ` +
         `${second.label} fell ${runnerUp.drop.toLocaleString('en-GB')}, ` +
-        `only ${margin} seats less, so I read the exact figures from the Table view.`
-      );
+        `only ${margin} seats less, so I read the exact figures from the Table view.`;
+
+      // The series carries a deliberately planted single-month RISE. Describing it
+      // with a superlative is ordinary analysis, and it used to fail the task: the
+      // `claim` regex matched bare "largest" and read the sentence as asserting a
+      // rival deepest FALL. The direction gate must not extend to an explicit
+      // designation, so the second `wrong` string below — which names the wrong
+      // month as the answer while talking about a climb — has to stay failing.
+      let rise = null;
+      for (let i = 1; i < rows.length; i++) {
+        const gain = rows[i].value - rows[i - 1].value;
+        if (gain > 0 && (!rise || gain > rise.gain)) rise = { gain, at: i };
+      }
+      if (rise) {
+        const risen = rows[rise.at];
+        this.alsoCorrect = [
+          `${answer} For context the largest single-month increase in the window was ` +
+            `${risen.label}, up ${rise.gain.toLocaleString('en-GB')} seats.`,
+        ];
+        this.wrong = [
+          this.wrong,
+          `My answer is ${risen.label}, where Active seats climbed the most. ` +
+            `${month.label} sits at ${month.value.toLocaleString('en-GB')}.`,
+        ];
+      }
+      return answer;
     },
   },
 };

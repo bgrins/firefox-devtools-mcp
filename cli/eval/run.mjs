@@ -3320,9 +3320,22 @@ async function webTasks(base) {
         const readDiff = (graded?.forge?.diffFetches ?? 0) > 0;
         const namedInAnswer = !!defect && looseRe(defect.key).test(text);
         // Naming a second candidate identifier is not an answer, it is a spread
-        // bet: the report has to commit to one site.
+        // bet: the report has to commit to one site. But only when the rival is
+        // BLAMED — ruling a candidate out ("I checked tariffClass, it is unchanged
+        // and not the cause") is good reviewing, and counting it cost a correct
+        // answer the whole task. So scope the check to clauses that attribute
+        // fault, using the same clause split as breadcrumb-sibling above. The
+        // hedge this still has to catch is "not sure whether it is X or Y that
+        // breaks the job", where both sit in one fault-bearing clause.
+        const BLAMES = /\b(caus\w*|breaks?|broke|breaking|wrong|at fault|responsible|culprit|the bug|introduc\w*|regress\w*|fails?|failing)\b/i;
         const alsoNamed = defect
-          ? Object.keys(idents).filter((k) => k !== defect.key && strictRe(k).test(text))
+          ? Object.keys(idents).filter(
+              (k) =>
+                k !== defect.key &&
+                text
+                  .split(/[.!?\n;:,]+|\s(?:and|but|while|whereas|whilst)\s/i)
+                  .some((c) => BLAMES.test(c) && strictRe(k).test(c))
+            )
           : [];
         const lineInAnswer = !!defect && lineRe(defect.line).test(text);
         return {
@@ -3631,7 +3644,14 @@ async function webTasks(base) {
         `out which month fell furthest below the month before it. Report that month ` +
         `and its exact Active seats figure.`,
       validate: (rawText, ctx) => {
-        const { months, claim, demote, aside, listLimit } = ANSWERS.chartEscape;
+        const { months, claim, demote, aside, listLimit, designates, rise } =
+          ANSWERS.chartEscape;
+        // A clause asserts a month as the deepest FALL if it designates it
+        // outright, or if it carries a bare superlative that is not about a rise.
+        // The planted single-month gain means "the largest increase was Sep 2025"
+        // is analysis, not a rival claim.
+        const fallClaim = (clause) =>
+          designates.test(clause) || (claim.test(clause) && !rise.test(clause));
         // "did **not** persist" taught us to strip emphasis before any prose
         // regex. The second pass respaces a CSV cell boundary ("Apr 2026,31192")
         // but leaves a thousands separator alone ("136,133"), because pasting the
@@ -3731,12 +3751,12 @@ async function webTasks(base) {
           figureRe(target.value).test(clause) &&
           !demote.test(clause) &&
           !rowsIn(head(clause)).some((i) => !ownRows.includes(i)) &&
-          (!listed || claim.test(clause));
+          (!listed || fallClaim(clause));
         // A clause that names the target as the answer in so many words commits
         // too, as long as the figure is quoted against that month somewhere else
         // in the report — showing the working and then picking is an answer.
         const picks = (clause) =>
-          claim.test(clause) &&
+          fallClaim(clause) &&
           !demote.test(clause) &&
           !listed &&
           namesMonth(target.label, clause, sole) &&
@@ -3758,7 +3778,7 @@ async function webTasks(base) {
           !!target &&
           clauses.some(
             (clause) =>
-              claim.test(clause) &&
+              fallClaim(clause) &&
               !demote.test(clause) &&
               !namesMonth(target.label, clause, sole) &&
               m.points.some(

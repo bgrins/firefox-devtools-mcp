@@ -826,6 +826,16 @@ export const ANSWERS = {
     // A clause that asserts a month as THE answer.
     claim:
       /\b(?:steepest|sharpest|deepest|largest|biggest|greatest|worst)\b|\b(?:fell|fall|dropped|drop|declined|decline|down)\s+(?:the\s+)?(?:furthest|farthest|most)\b|\bmy\s+answer\b|\banswer\s+is\b|\banswer\s*[:=]|\bi\s+(?:report|pick|chose|choose|conclude|say)\b/i,
+    // The subset of `claim` that names a month as the answer OUTRIGHT. The series
+    // carries a planted single-month rise, so "the largest increase was Sep 2025"
+    // is ordinary analysis and must not read as asserting a rival deepest fall —
+    // but that direction gate applies only to the bare superlatives, never to
+    // these, or an answer designating the wrong month while describing a climb
+    // would launder itself into a pass.
+    designates:
+      /\bmy\s+answer\b|\banswer\s+is\b|\banswer\s*[:=]|\bi\s+(?:report|pick|chose|choose|conclude|say)\b/i,
+    // Words that make a superlative be about a RISE rather than a fall.
+    rise: /\b(?:rise|rises|rose|risen|rising|increase[sd]?|increasing|climb(?:ed|ing|s)?|grew|grow(?:th|ing|s)?|gain(?:ed|s|ing)?|jump(?:ed|s)?|recover(?:ed|y|ing)?|rebound(?:ed)?|up)\b/i,
     // A clause that files a month as an also-ran rather than the answer.
     demote:
       /\b(?:second|2nd|third|3rd|runner[-\s]?up|next|also|another|other|behind|almost|nearly|close|closely|followed|only\s+just|not\s+the|candidates?|shortlist)\b/i,

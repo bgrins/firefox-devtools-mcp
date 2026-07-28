@@ -177,11 +177,26 @@ export const DRIVERS = {
         sleep
       );
 
-      return (
+      const answer =
         `The failing job is caused by ${defect.file} line ${defect.line}, where the new ` +
         `code uses ${defect.identifier}. I left a review comment on that exact line and ` +
-        `submitted the review requesting changes (${result}).`
-      );
+        `submitted the review requesting changes (${result}).`;
+
+      // Ruling a candidate OUT is good reviewing, and it used to fail the task:
+      // alsoNamed counted any rival identifier anywhere in the answer as a spread
+      // bet. The rival is chosen at run time because the defect is drawn per
+      // session. The hedge in `wrong` below is the case that must STILL fail.
+      const rival = SIGNATURES.map(([, id]) => id).find((id) => id !== defect.identifier);
+      this.alsoCorrect = [
+        `${answer} I also checked ${rival}, which is unchanged in this diff and is not the cause.`,
+      ];
+      this.wrong = [
+        this.wrong,
+        `I am not sure whether it is ${defect.identifier} or ${rival} that breaks the job ` +
+          `on ${defect.file} line ${defect.line}, but one of them is at fault.`,
+      ];
+
+      return answer;
     },
   },
 };
