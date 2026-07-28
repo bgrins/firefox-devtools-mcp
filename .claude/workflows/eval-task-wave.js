@@ -73,7 +73,7 @@ state (session-scoped beacons and per-session fields), never trusting page-reada
 The suite measures the value of different TOOL SURFACES, not agent capability.
 
 READ FIRST (mandatory):
-0. cli/eval/staging/BRIEFING.md — the standing rules: per-site design language (5b),
+0. cli/eval/BRIEFING.md — the standing rules: per-site design language (5b),
    no fake-site disclaimers, the anti-cheat lessons section, validator brittleness rules, and
    the required spec sections. It supersedes anything vaguer below.
 1. Your plan section(s): sed -n '/^### <PLANID> /,/^### /p' cli/eval/task-ideas.md

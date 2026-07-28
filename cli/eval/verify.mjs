@@ -173,18 +173,47 @@ try {
       continue;
     }
     const good = task.validate(answer, ctx);
-    // The same server state must REJECT a wrong answer, or the validator is
-    // only checking the interaction and would pass any prose.
-    const bad = task.validate(driver.wrong ?? 'The answer is 42.', ctx);
-    const ok = good.pass === true && bad.pass === false;
+    // The same server state must REJECT every wrong answer, or the validator is
+    // only checking the interaction and would pass any prose. `wrong` may be a
+    // list: the 2026-07-28 suite review proved specific strings that wrongly
+    // PASSED (a region-totals table naming the wrong winner, added/removed lists
+    // swapped, a rotated points column), so each fixed validator carries those
+    // exact strings here as a permanent regression assertion.
+    const wrongs = [driver.wrong ?? 'The answer is 42.'].flat();
+    // `alsoCorrect` is the mirror: strings that MUST pass. The same review found
+    // validators rejecting correct answers for paraphrasing, hedging, or naming a
+    // rival value contrastively ("X, not Y"). Those go here so a future
+    // tightening cannot silently reintroduce the false fail.
+    const alsoCorrect = [driver.alsoCorrect ?? []].flat();
+
+    const badAccepted = wrongs
+      .map((w) => ({ w, r: task.validate(w, ctx) }))
+      .filter(({ r }) => r.pass !== false);
+    const goodRejected = alsoCorrect
+      .map((a) => ({ a, r: task.validate(a, ctx) }))
+      .filter(({ r }) => r.pass !== true);
+
+    const ok = good.pass === true && !badAccepted.length && !goodRejected.length;
     if (ok) {
+      const extra = [
+        driver.canned ? 'canned prose' : null,
+        wrongs.length > 1 ? `${wrongs.length} wrong answers rejected` : null,
+        alsoCorrect.length ? `${alsoCorrect.length} phrasings accepted` : null,
+      ].filter(Boolean);
       pass++;
-      console.log(`ok    ${task.id}${driver.canned ? '  (canned prose)' : ''}`);
+      console.log(`ok    ${task.id}${extra.length ? `  (${extra.join(', ')})` : ''}`);
     } else {
       fail++;
-      const why = good.pass !== true
-        ? `validator REJECTED a correct solution — ${good.detail ?? ''}`
-        : `validator ACCEPTED a wrong answer — ${bad.detail ?? ''}`;
+      let why;
+      if (good.pass !== true) {
+        why = `validator REJECTED a correct solution — ${good.detail ?? ''}`;
+      } else if (badAccepted.length) {
+        const { w, r } = badAccepted[0];
+        why = `validator ACCEPTED a wrong answer ${JSON.stringify(w.slice(0, 70))} — ${r.detail ?? ''}`;
+      } else {
+        const { a, r } = goodRejected[0];
+        why = `validator REJECTED a correct phrasing ${JSON.stringify(a.slice(0, 70))} — ${r.detail ?? ''}`;
+      }
       failures.push(`${task.id}: ${why}`);
       console.log(`FAIL  ${task.id}  ${why}`);
     }

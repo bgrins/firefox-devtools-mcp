@@ -10,6 +10,10 @@ The suite exists to compare **browser tool surfaces**: our own
 improvements to make to ours. `cli/eval/findings.md` is the running output of
 that, split by who owns each fix.
 
+**Picking this up cold?** Read `cli/eval/HANDOFF.md` first — current state, the
+process that works, the roadmap, and the traps that have already cost time. This
+README covers only how to look at the sites and run the suite.
+
 ---
 
 ## Getting the branch
