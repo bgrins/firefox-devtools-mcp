@@ -1581,6 +1581,117 @@ built, then measure both surfaces on it and report the delta.
   carries the real code, not the decoy.
 - Effort: M · Depends: P-1
 
+# Plans 8 — New site genres, round 2 (T114-T118)
+
+Same doctrine as wave 10, which is now validated: build each genre in its natural
+idiom, do NOT route around our snapshot's known gaps, then measure both surfaces
+on the honest fixture and report the delta. Wave 10 got its strongest result
+(playwright has a snapshot-only path on two tasks and we have none) precisely
+because implementers stopped softening fixtures.
+
+Selection criteria this round, learned from wave 10: the useful tasks were the
+ones where the *interaction* was unlike anything else in the suite, not the ones
+with novel-looking chrome. Two of these also deliberately re-probe the two gaps
+wave 10 measured (A32 no wait primitive; A29 no geometry) in a different genre, so
+a corroborating measurement exists rather than a single data point.
+
+### T114 — Spreadsheet Formula Repair (new genre: formula grid)
+- Fixture: new `pages/calc/` — a workbook with a formula bar, A1-style cell refs,
+  a totals row, and one cell whose formula is wrong (a range that omits a row, or
+  an absolute/relative ref that breaks when filled). Editing a cell recalculates
+  dependents live.
+- Why this genre: a cell has a DUAL representation — the grid shows the computed
+  value, the formula exists only in the formula bar once the cell is focused. No
+  existing fixture has a value whose *definition* is only reachable through
+  focus. `grid-edit` tests 2D editing; this tests reading a hidden layer, and it
+  is a genuine snapshot question: does the formula bar's value reach us at all?
+- Server: the sheet's data and which cell is broken come from
+  `GET /api/calc/sheet` per session; recalculation is validated server-side on
+  `POST /api/calc/cell {ref, formula}`, which mints a checksum only once every
+  total agrees with the server's own computation.
+- Ask: find why the quarter total is wrong, fix the formula, report the checksum.
+- Validator: server-observed — the corrected formula is semantically accepted
+  (server recomputes; it does not string-match a single blessed spelling), all
+  totals agree, and the answer carries the session's checksum.
+- Effort: L · Depends: P-1
+
+### T115 — Chart-Only Metric With A Table Escape (new genre: analytics dashboard)
+- Fixture: new `pages/metrics/` — a dashboard whose headline series is drawn to a
+  `<canvas>`, with a "View as table" toggle beside it that reveals the same data
+  as real markup, plus a CSV download. The graded value is legible ONLY from the
+  table or the CSV, never from the canvas pixels.
+- Why this genre: it inverts the usual probe. Every other fixture measures whether
+  a tool can see something; this measures whether the AGENT stops trying to read
+  pixels and goes looking for the alternate representation that real dashboards
+  always provide. A pass is resourcefulness, a fail is an agent squinting at a
+  canvas. It rewards good behaviour instead of punishing a known tool gap, which
+  is a category the suite currently lacks entirely.
+- Server: series generated per session by `GET /api/metrics/series`; the canvas is
+  drawn from it client-side, and the value is never in the page source.
+- Ask: report the month with the steepest month-over-month drop and its value.
+- Validator: answer matches the session's series (computed server-side), plus
+  server-observed evidence of how it was obtained (table toggle beacon vs CSV
+  fetch vs neither) reported in `detail` so the *route* is visible even though
+  only the answer is graded.
+- Effort: M · Depends: P-1
+
+### T116 — Live Auction (new genre: server-pushed moving target)
+- Fixture: new `pages/auction/` — a lot page whose current bid RISES on its own
+  every few seconds from other bidders. The agent must place a winning bid that
+  satisfies a rule (at least one increment above current, under a stated maximum),
+  and the target moves while it reads.
+- Why this genre: nothing in the suite has state that changes without the agent
+  acting. `flaky/slow` waits for a known duration; `support-chat` waits for a
+  scripted reply; this one *invalidates the agent's information* while it thinks.
+  It also re-probes A32 (no wait primitive) in a second genre — if the +41% token
+  gap reproduces here, it is a property of our surface and not of one fixture.
+- Server: the price ladder advances on a per-session clock server-side (never
+  client-side, so it cannot be frozen by stopping JS). `POST /api/auction/bid`
+  rejects a stale or under-increment bid with the CURRENT price, so a rejection is
+  informative rather than fatal; winning mints a paddle code.
+- Ask: win the lot without exceeding the stated maximum, report the paddle code.
+- Validator: server-observed — the session holds the winning bid, never exceeded
+  the maximum, and the answer carries the paddle code. `detail` reports bid
+  attempts and how many were stale, which is the actual measurement.
+- Effort: M · Depends: P-1
+
+### T117 — Canvas-Rendered Log Console (new genre: web terminal)
+- Fixture: new `pages/console/` — a deploy-log viewer that renders streaming text
+  to a `<canvas>` the way xterm.js does, with a text-selection overlay, a search
+  box, and a "download raw log" link. One log line carries the graded value.
+- Why this genre: cloud consoles genuinely work this way, and NO tool surface can
+  read canvas text. VERIFY-FIRST is mandatory and the honest outcome may be that
+  neither surface can solve it from the snapshot — in which case the finding is
+  "agents cannot use web terminals without an escape hatch", which is worth
+  knowing and is not currently recorded anywhere. Ship it only if a legitimate
+  non-pixel route exists (the search box scrolls to a hit and exposes it as real
+  text, or the raw-log link is fetchable); if no such route exists the task is
+  unwinnable and must be reported rather than shipped.
+- Server: the log is streamed from `GET /api/console/log` per session; the graded
+  line's value is server-minted so it is not on disk.
+- Ask: find the failing step's error id in the deploy log and report it.
+- Validator: answer carries the session's error id; `detail` reports whether the
+  search box, the raw-log fetch, or neither was used.
+- Effort: L · Depends: P-1, and a VERIFY-FIRST spike that must be allowed to
+  conclude "do not ship this".
+
+### T118 — Partially Translated Site (new genre: i18n / RTL)
+- Fixture: new `pages/intl/` — a travel-advisory site in English, Arabic (RTL) and
+  Japanese, where the notice the agent needs was only ever published in the
+  non-English versions. Locale switching via a real language menu.
+- Why this genre: the suite is 100% English LTR ASCII. This asks concrete new
+  questions: does the 27-char text cap (A1) cut mid-codepoint or mangle combining
+  characters; does an RTL layout confuse the snapshot's ordering; is `lang`/`dir`
+  carried at all; does the agent notice content differs by locale rather than
+  assuming the English page is complete.
+- Server: the advisory reference is minted per session and injected only into the
+  translated pages; `GET /api/intl/notice` is locale-gated so fetching the English
+  one yields nothing.
+- Ask: report the advisory reference for the stated destination.
+- Validator: answer carries the session's reference; `detail` reports which
+  locales were served, so an agent that never left English is visible.
+- Effort: M · Depends: P-1
+
 ## Graveyard
 
 Killed or merged in adversarial review round 1 (32 ids):
