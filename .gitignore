@@ -176,3 +176,6 @@ docker-compose.override.yml
 # Test snapshots
 snapshot-*.txt
 temp/
+
+# playwright-mcp scratch output (ARIA snapshot dumps from eval dual-surface runs)
+.playwright-mcp/
