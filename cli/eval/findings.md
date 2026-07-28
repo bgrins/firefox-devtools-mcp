@@ -499,6 +499,84 @@ out of reach of `find` entirely (A6/B3 compounding). The fixture reorders its ow
 DOM to keep the task winnable — a concession that would not be available on a
 real site.
 
+## A37. `drag_by_uid_to_uid` reports success while doing nothing, on 5 of 6 drag idioms
+**The most serious defect found so far, and the tool had never been exercised.**
+Before wave 12, no task and no golden-path driver had ever called
+`drag_by_uid_to_uid` — verified by grep across all 70 tasks. The first
+measurement found it broken in the worst possible way: it *silently succeeds*.
+
+Probed against six drag implementations (probe page kept at
+`staging/scratch-T001-probe.html`). It works only against canonical HTML5
+drag-and-drop. Against a **pointer-events** implementation and against a
+**mouse-events** (`mousedown`/`mousemove`/`mouseup`) implementation it fires no
+events at all **and still reports success**. It also:
+
+- delivers `clientX`/`clientY` of **0**, so any handler computing a drop position
+  from coordinates gets the wrong answer rather than an error — this is what makes
+  an ordering-sensitive board (drop *between* two cards) unwinnable for us;
+- **skips hit-testing entirely**, so it will drop onto a covered element and fire
+  `drop` on a target that never called `preventDefault()` on `dragover` — i.e. it
+  fires drops a real user could not perform.
+
+playwright-mcp's `browser_drag` is correct in all six cells.
+
+Consequence for an agent: on the two most common modern idioms it has no way to
+learn the drag did not happen. It will report the board as triaged. Since a
+false success is indistinguishable from a real one without re-reading the DOM,
+this is worse than a hard failure. Fix should cover both event models, deliver
+real coordinates, and hit-test the drop point.
+
+Note what this means for the `kanban-triage` fixture: it is winnable by dragging
+on our surface **only** because its drop handler appends to the lane instead of
+computing an insertion index from `clientY`. That was the natural idiom for "move
+this card to that lane", not a concession — but ordering-sensitive drops, covered
+drop targets and pointer-events dragging are all still unmeasured and need a
+second fixture.
+
+**The eval would never have caught this, and that is a finding about the method.**
+Across all six `kanban-triage` agent runs, on BOTH surfaces, the route telemetry
+reported `route=button` — not one agent dragged anything, including playwright,
+whose drag works correctly. Agents reach for an explicit control whenever a site
+offers one. So a tool can be entirely broken while pass rates and token counts
+show nothing, because agents route around it. Only a deliberate capability spike
+found it.
+
+Two things follow. First, keep commissioning verify-first spikes against tools
+that no task exercises, independently of whether a task needs them — the value is
+in the probe, not the fixture. Second, the real-world exposure is **drag-only
+UIs**: boards, page builders and schedulers frequently ship no button fallback,
+and there the silent failure bites with nothing to reveal it.
+
+## A38. WebVTT cues reach neither accessibility tree
+A `<track>`'s cues are invisible to our snapshot and to playwright's ARIA
+snapshot alike, so captions and subtitles are unreadable through either surface.
+A caption-only task would be unwinnable for everyone, which is why `media/`
+ships a DOM transcript panel instead and the finding is recorded here.
+Not a competitive gap — a shared blind spot, and a real accessibility-surface
+hole given captions are a primary accessibility affordance.
+
+## A39. Clipboard works on both surfaces, but ours needs a user gesture and theirs does not
+Both surfaces can reach the clipboard headless, and `http://127.0.0.1` is a
+secure context (`isSecureContext === true` on both), so the clipboard is usable.
+Neither MCP exposes a clipboard affordance of its own; both go through page JS.
+The asymmetry is **user activation**:
+
+- Ours requires a `click_by_uid` immediately before the `evaluate_script`
+  `readText()` — a window measured at roughly 5 seconds, and verified *failing*
+  at 9 seconds. So a slow turn silently loses clipboard access.
+- playwright's `browser_evaluate` is always treated as gestured and needs no
+  click at all.
+- playwright also has `browser_press_key`, so `Meta+V` performs a real paste. We
+  have no key-press tool (A8), so we cannot paste as a user would — only assign
+  the value.
+
+Positive result worth recording against a common assumption: **headless Firefox
+decodes everything tried** — PCM WAV, WebM/Opus, MP4/AAC, WebM/VP9 and
+MP4/H.264 all reach `readyState 4` with correct duration and a full buffered
+range, playback advances at wall-clock rate on both surfaces, and a
+`click_by_uid` on an `<audio>` element fires `play`. Media decode was never the
+blocker; the blockers are A38 and the absence of a key-press tool.
+
 ---
 
 ## The devtools surface (A15-A21)
@@ -587,10 +665,13 @@ an emoji in the header of every `list_network_requests` response (lines 241, 257
 Re-run `node eval/verify.mjs` plus a `--repeat 3` acceptance pass after each, so
 every change has a measured before/after.
 
-0. **A23** (a page calling `window.close()` destroys our view of the browser) and
-   **A24** (`close_page` on the last tab bricks the instance). Promoted above A0
-   because between them they mean an ordinary OAuth or payment popup can end a
-   session outright, and no fixture can design around a real site's close button.
+0. **A37** (`drag_by_uid_to_uid` silently succeeds while doing nothing on 5 of 6
+   drag idioms), **A23** (a page calling `window.close()` destroys our view of the
+   browser) and **A24** (`close_page` on the last tab bricks the instance).
+   A37 leads because a *false success* is the worst failure mode a tool can have —
+   the agent cannot detect it and will report work it did not do. A23/A24 sit here
+   because between them an ordinary OAuth or payment popup can end a session
+   outright, and no fixture can design around a real site's close button.
 1. **A0** (SVG anchor crashes the snapshot) — a one-line coercion, and it is the
    only finding that disables the tool surface outright rather than degrading it.
 2. **A4** (state behind a non-default flag) — now known to be a defaults change,

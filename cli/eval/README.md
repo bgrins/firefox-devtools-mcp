@@ -1,6 +1,6 @@
 # Browser-agent eval suite
 
-73 tasks (70 "web" + 3 smoke) that run an AI agent against 34 locally served
+77 tasks (74 "web" + 3 smoke) that run an AI agent against 38 locally served
 simulated websites and grade it on what the site's server actually observed —
 not on what the agent claims it did. Everything is invented content served from
 loopback; no task ever touches the live web.
@@ -97,7 +97,7 @@ npm install
 node cli/eval/run.mjs --help
 ```
 
-- `node cli/eval/verify.mjs` — the cheap gate. Solves all 70 tasks
+- `node cli/eval/verify.mjs` — the cheap gate. Solves all 74 tasks
   deterministically through our own MCP server and checks that each validator
   accepts a correct answer and rejects a wrong one. ~2 minutes, no API spend.
   Run this after touching any fixture.

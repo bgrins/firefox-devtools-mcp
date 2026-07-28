@@ -3825,6 +3825,368 @@ async function webTasks(base) {
         return { pass: true, detail };
       },
     },
+    {
+      id: 'kanban-triage',
+      ask:
+        `Open ${base}/kanban/ — the Coppermast Dispatch shift triage board for ` +
+        `Terminal 3. Move every work order tagged Urgent into the Done lane and every ` +
+        `work order tagged Blocked into the Backlog lane; leave the Routine ones where ` +
+        `they are. Then click Save board. Report the board revision the page shows once ` +
+        `it has saved, and say whether you moved the cards by dragging them between ` +
+        `lanes or by using the move buttons on each card.`,
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        const LANES = ['backlog', 'doing', 'done'];
+        // The board is minted per session, so a curl probe and the browser run
+        // carry different tag assignments and different revisions. Grade the
+        // session the report is actually about.
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.kanban);
+        const placement = (layout) => {
+          const where = new Map();
+          for (const lane of LANES) for (const id of layout.columns[lane] ?? []) where.set(id, lane);
+          return where;
+        };
+        const triaged = (s) => {
+          const last = s.kanban.layouts.at(-1);
+          if (!last) return false;
+          const where = placement(last);
+          return (
+            s.kanban.urgent.every((id) => where.get(id) === 'done') &&
+            s.kanban.blocked.every((id) => where.get(id) === 'backlog')
+          );
+        };
+        // Any revision the server issued to that session counts: saving twice and
+        // quoting the first one is still a report of a save that happened. The
+        // separator is loose because "CM 8D5495" and "cm-8d5495" are the same id,
+        // and the `CM` prefix is optional because "returned revision 8D5495" quotes
+        // the minted value exactly, minus a constant the fixture chose.
+        const quoted = (s) =>
+          s.kanban.layouts.filter((l) =>
+            new RegExp(`\\b(?:CM[\\s\\-‐-―_]*)?${l.revision.slice(3)}\\b`, 'i').test(text)
+          );
+        const graded =
+          sessions.find((s) => triaged(s) && quoted(s).length) ??
+          sessions.find((s) => quoted(s).length) ??
+          sessions.find(triaged) ??
+          sessions.filter((s) => s.kanban.layouts.length).at(-1) ??
+          sessions.at(-1) ??
+          null;
+        const kb = graded?.kanban ?? null;
+        const last = kb?.layouts.at(-1) ?? null;
+        const where = last ? placement(last) : new Map();
+        const misplacedUrgent = (kb?.urgent ?? []).filter((id) => where.get(id) !== 'done');
+        const misplacedBlocked = (kb?.blocked ?? []).filter((id) => where.get(id) !== 'backlog');
+        const savedOk = !!last && !misplacedUrgent.length && !misplacedBlocked.length;
+        const revisionOk = !!kb && quoted(graded).length > 0;
+        // Route telemetry: which affordance actually produced the moves. The page
+        // reports it, so it is diagnostic only and never part of the decision —
+        // `drag_by_uid_to_uid` has no task anywhere else in the suite, and this is
+        // the line that says whether an agent ever reaches for it.
+        const vias = new Set((kb?.layouts ?? []).flatMap((l) => l.moves).map((m) => m.via));
+        const route = !vias.size ? 'none' : vias.size > 1 ? 'mixed' : [...vias][0];
+        const moved = new Set((kb?.layouts ?? []).flatMap((l) => l.moves).map((m) => m.card));
+        const tagged = new Set([...(kb?.urgent ?? []), ...(kb?.blocked ?? [])]);
+        const movedRoutine = [...moved].filter((id) => !tagged.has(id));
+        const detail =
+          `route=${route}; saves=${kb?.layouts.length ?? 0}; ` +
+          `moves=${(kb?.layouts ?? []).flatMap((l) => l.moves).length}; ` +
+          `layoutOk=${savedOk}; revisionQuoted=${revisionOk}; ` +
+          `urgentOffTarget=${misplacedUrgent.join(',') || 'none'}; ` +
+          `blockedOffTarget=${misplacedBlocked.join(',') || 'none'}; ` +
+          `routineMoved=${movedRoutine.join(',') || 'none'}; ` +
+          `boardReads=${kb?.reads ?? 0}; offPageReads=${kb?.offPageReads ?? 0}; ` +
+          `sessions=${sessions.length}`;
+        return { pass: savedOk && revisionOk, detail };
+      },
+    },
+    {
+      id: 'token-rotate',
+      ask:
+        `Stavelock, at ${base}/vault/, is the credential vault for the Platform ` +
+        `Delivery team. The production deploy token for sluicegate-api is due for its ` +
+        `90-day rotation. Rotate it, giving "Scheduled 90-day rotation" as the reason, ` +
+        `and report the rotation receipt the vault issues.`,
+      validate: (text, ctx) => {
+        // Strip markdown emphasis and fold the unicode dash family onto '-', so a
+        // prettified receipt still reads as the receipt it is.
+        const clean = String(text)
+          .replace(/[*_~`]+/g, '')
+          .replace(/[‐-―−]/g, '-');
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const vaults = sessions.map((s) => s.vault).filter(Boolean);
+        const totals = vaults.reduce(
+          (acc, v) => ({
+            issues: acc.issues + v.issues,
+            offPageIssues: acc.offPageIssues + v.offPageIssues,
+            copyOk: acc.copyOk + v.copyOk,
+            copyFail: acc.copyFail + v.copyFail,
+            rejected: acc.rejected + v.rejected,
+          }),
+          { issues: 0, offPageIssues: 0, copyOk: 0, copyFail: 0, rejected: 0 }
+        );
+        // A receipt exists only where /api/vault/rotate was given that session's
+        // exact stored value, so this list IS the server-observed pass condition;
+        // everything else below only decides which rotation is being reported.
+        const rotations = vaults
+          .flatMap((v) => v.receipts.map((r) => ({ ...r, vault: v })))
+          .sort((a, b) => b.at - a.at);
+        if (!rotations.length) {
+          return {
+            pass: false,
+            detail:
+              `no session rotated sluicegate-api/deploy — sessions=${sessions.length} ` +
+              `vaultSessions=${vaults.length} tokenIssues=${totals.issues} ` +
+              `offConsoleIssues=${totals.offPageIssues} clipboardWrites=${totals.copyOk} ` +
+              `clipboardRefusals=${totals.copyFail} refusedRotations=${totals.rejected}`,
+          };
+        }
+        const carries = (r) => new RegExp(`\\bRCP[-\\s]*${r.receipt.slice(4)}\\b`, 'i').test(clean);
+        // Grade the rotation the ANSWER names, not merely the newest one: an agent
+        // that solves it in the browser and then replays the flow with curl to check
+        // its work leaves a newer rotation carrying a different receipt, and that
+        // must not fail a correct answer. Fall back to the newest so an answer with
+        // no receipt at all still reports one.
+        const record = rotations.find(carries) ?? rotations[0];
+        const receiptOk = carries(record);
+        const v = record.vault;
+        // How the token got out of the vault. Every counter here is forgeable with
+        // the page nonce, so this is reporting, never a pass condition — and the
+        // clipboard readings are the page's own word for it (the server cannot see
+        // a writeText), so they are labelled as self-reported wherever they appear.
+        const route =
+          v.offPageIssues > 0
+            ? 'shell'
+            : v.copyOk > 0
+              ? 'clipboard(page-reported)'
+              : v.copyFail > 0
+                ? 'clipboard-refused(page-reported)'
+                : v.issues > 0
+                  ? 'page-fetch'
+                  : 'unknown';
+        const detail =
+          `receipt=${record.receipt} route=${route} rotatedFrom=${record.from.slice(0, 13)}... ` +
+          `copyButtonClipboardWrites=${v.copyOk} clipboardRefusals=${v.copyFail} ` +
+          `tokenIssues=${v.issues} offConsoleIssues=${v.offPageIssues} ` +
+          `refusedRotations=${v.rejected} formEntry=${record.entry} ` +
+          `reason=${JSON.stringify(record.reason ?? '')} ` +
+          `rotateFromConsole=${record.fromPage} secFetchSite=${record.secFetchSite ?? 'none'} ` +
+          `ua=${/Firefox/.test(record.ua) ? 'firefox' : JSON.stringify(record.ua.slice(0, 48))} ` +
+          `rotations=${rotations.length} sessions=${sessions.length} ` +
+          `answerCarriesReceipt=${receiptOk}`;
+        if (!receiptOk) {
+          return { pass: false, detail: `answer does not carry the rotation receipt — ${detail}` };
+        }
+        return { pass: true, detail };
+      },
+    },
+    {
+      id: 'media-transcript',
+      // Playing the bulletin from the top costs 26 seconds of real time before
+      // chapter 3 is reached, and an agent that polls the transcript while it
+      // runs spends turns on top of that. The chapter jump makes it instant, so
+      // the quick tier would grade impatience rather than capability.
+      tier: 'standard',
+      ask:
+        `Skerrow Coastal Radio publishes a recording of every coastal forecast at ` +
+        `${base}/media/ . Open the most recent recording the station is still ` +
+        `holding and report the log reference announced in its third chapter, ` +
+        `Station reports.`,
+      validate: (text, ctx) => {
+        const clean = text.replace(/[*_~`]+/g, '');
+        const upper = clean.toUpperCase();
+        // SKW- plus 6 hex is 16.7M values, so case, whitespace and the unicode
+        // dash family fold away without losing any discrimination: the code is
+        // matched character by character with any of them allowed between. The
+        // trailing lookahead is what stops a mistranscribed seventh hex digit
+        // ("SKW-F6450FF" for SKW-F6450F) from reading as the reference.
+        const SEP = '[\\s\\u2010-\\u2015\\u2212-]*';
+        const said = (code, hay = upper) =>
+          Boolean(code) &&
+          new RegExp(
+            code.toUpperCase().replace(/[^0-9A-Z]/g, '').split('').join(SEP) + '(?![0-9A-F])'
+          ).test(hay);
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.media);
+        // Grade the session whose server-minted reference the answer actually
+        // carries; a curl probe or a re-minted cookie must not shadow the run
+        // that played the recording. Falling back to the most recent session to
+        // have unlocked keeps the detail line useful when the answer is wrong.
+        const graded =
+          sessions.find((s) => s.media.unlockedAt && said(s.media.reference)) ??
+          sessions.find((s) => said(s.media.reference)) ??
+          sessions
+            .filter((s) => s.media.unlockedAt)
+            .sort((a, b) => b.media.unlockedAt - a.media.unlockedAt)[0] ??
+          sessions[0];
+        const media = graded?.media;
+        // Which way chapter 3 was reached: played straight through from the top,
+        // taken by the chapter jump, arrived at by scripting currentTime, or
+        // claimed by a client that never loaded the player page (`off-page`,
+        // which is what a shell solve looks like). Route telemetry only — a page
+        // nonce and a forged header are enough to claim any of them.
+        const route = !media
+          ? 'none'
+          : (media.unlockRoute ??
+            (media.cueReads > 0 ? 'never-reached-chapter-3' : 'no-page-load'));
+        const decoys = media
+          ? ['supersedes', 'identifier'].filter((key) => said(media[key]))
+          : [];
+        // Quoting a decoy is not an error: both ship in the cue payload, a
+        // contrastive answer names one, and an answer that pastes the transcript
+        // it played names both. The graded reference cannot be quoted at all
+        // without the server releasing it, so counting decoys would only reject
+        // thoroughness. What is wrong is asserting a decoy AS the log reference,
+        // so the check is bound to the claim sentence the way rename-rollback
+        // binds its failure verbs, and sentences that mark the code as something
+        // else (a contrast, the superseded bulletin, the closing identifier) are
+        // skipped.
+        const claim =
+          /\b(log\s+)?references?\b[^.\n]{0,40}?(:|\b(is|was|are|were|reads?|read out|announced|given as)\b)|\banswer\b\s*(:|\bis\b)/i;
+        const elsewhere =
+          /\b(not|isn'?t|never|no|supersed\w*|identifier|previous|earlier|prior|closing|final|last|first|instead|rather|decoy|wrong|2335|chapter\s*(1|4|one|four))\b/i;
+        const misattributed =
+          Boolean(media) &&
+          decoys.length > 0 &&
+          clean.split(/[.!?\n]+/).some((sentence) => {
+            const hay = sentence.toUpperCase();
+            return (
+              claim.test(sentence) &&
+              !elsewhere.test(sentence) &&
+              !said(media.reference, hay) &&
+              decoys.some((key) => said(media[key], hay))
+            );
+          });
+        return {
+          pass: Boolean(media) && said(media.reference) && Boolean(media.unlockedAt) &&
+            media.audioServed > 0 && !misattributed,
+          detail:
+            `sessions=${sessions.length} route=${route} ` +
+            `audioServed=${media?.audioServed ?? 0} cueReads=${media?.cueReads ?? 0} ` +
+            `offPage=${media?.offPageReports ?? 0} ` +
+            `maxPlayhead=${(media?.maxTime ?? 0).toFixed(1)}s ` +
+            `cuesHeard=${media?.heard.length ?? 0}/14 jumps=${media?.chapterJumps ?? 0} ` +
+            `unlocks=${media?.unlocks ?? 0} ` +
+            `decoysQuoted=${decoys.join('/') || 'none'} misattributed=${misattributed}`,
+        };
+      },
+    },
+    {
+      id: 'faceted-search',
+      ask:
+        `Open ${base}/roles/ — the Alderpost vacancy desk. The Live brief panel on ` +
+        `that page sets out what one client is looking for, and exactly one vacancy ` +
+        `on the desk meets every line of it. Work out which one and report its ` +
+        `Alderpost reference. Every value in the Refine panel carries the number of ` +
+        `vacancies it would leave, and a reference is only ever shown on a vacancy's ` +
+        `own record.`,
+      validate: (rawText, ctx) => {
+        // Emphasis marks stripped and the Unicode dash family folded, because a
+        // reported reference turns up as **AR-4149B7** and AR–4149B7 alike.
+        const text = rawText
+          .replace(/[*_~`\\]+/g, '')
+          .replace(/[\u2010-\u2015\u2212\u00ad]/g, '-')
+          .replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+        const { otherRefLimit, refListLimit } = ANSWERS.facetedSearch;
+        const refRe = (ref) => new RegExp(ref.replace('-', '[\\s-]*'), 'i');
+        const cites = (ref) => !!ref && refRe(ref).test(text);
+        const lastIndexOfRef = (ref) => {
+          let at = -1;
+          for (const found of text.matchAll(new RegExp(refRe(ref).source, 'gi'))) at = found.index;
+          return at;
+        };
+        const desks = [...ctx.pages.state.sessions.values()].map((s) => s.roles).filter(Boolean);
+        // Every session mints its OWN catalogue, brief and references, so a curl
+        // probe and the browser run are graded against different ground truth.
+        // Grade the session whose reference the answer actually quotes, then the
+        // one that opened its own target record, then the one that worked the
+        // refine panel hardest — so a run that never got there still reports its
+        // route instead of an empty detail line.
+        const graded =
+          desks.find((d) => cites(d.targetRef)) ??
+          desks.filter((d) => d.opened.includes(d.targetId)).at(-1) ??
+          [...desks].sort((a, b) => b.searches.length - a.searches.length)[0] ??
+          null;
+        // `opened` is written only by GET /api/roles/posting, which is the only
+        // place a reference exists at all: it is minted from randomBytes, is not
+        // derivable from the page nonce, and appears in no fixture file. A
+        // forged /api/beacon cannot set it.
+        const openedTarget = !!graded && graded.opened.includes(graded.targetId);
+        const reported = !!graded && cites(graded.targetRef);
+        // Quoting rejected candidates alongside the answer is normal reviewing
+        // prose and must not fail; a bare list of references with no conclusion
+        // is a dump of the catalogue rather than an answer. So the count alone
+        // does not decide it: an answer that DESIGNATES its target — quotes it
+        // last, or writes "reference is X" — may work through as many
+        // candidates as it likes, and only an undesignated pile of references
+        // is failed on the count.
+        const others = graded
+          ? graded.postings.filter((p) => p.id !== graded.targetId && cites(p.ref)).map((p) => p.ref)
+          : [];
+        const targetAt = reported ? lastIndexOfRef(graded.targetRef) : -1;
+        const targetLast = reported && others.every((ref) => lastIndexOfRef(ref) < targetAt);
+        const designated =
+          reported &&
+          new RegExp(
+            `\\bref(?:erence)?\\b[^.\\n]{0,24}?[:\\s]${graded.targetRef.replace('-', '[\\s-]*')}`,
+            'i'
+          ).test(text);
+        const shotgun =
+          others.length > refListLimit ||
+          (others.length > otherRefLimit && !targetLast && !designated);
+        const searches = graded?.searches ?? [];
+        const route = !graded
+          ? 'none'
+          : graded.facetApplies > 0 && graded.urlLoads > 0
+            ? 'facets+url'
+            : graded.facetApplies > 0
+              ? 'facets'
+              : graded.urlLoads > 0
+                ? 'url-edited'
+                : graded.offPageSearches >= searches.length && searches.length > 0
+                  ? 'api-only'
+                  : searches.length > 0
+                    ? 'unfiltered'
+                    : 'no-search';
+        const brief = graded?.brief ?? null;
+        // The drill-down counts show what a value would leave BEFORE it is
+        // ticked, so a careful run never has to enter the salary dead end. This
+        // separates "read the counts and stepped around the trap" from "never
+        // reached the salary facet at all", which deadEnds=0 alone conflates.
+        const bandSearches = searches.filter((s) => s.filters.band.length > 0);
+        const trapTicked = bandSearches.some((s) => s.filters.band.includes(graded?.trapBand));
+        const avoidedTrap = bandSearches.length > 0 && !trapTicked;
+        const lastEmpty = searches
+          .filter((s) => s.total === 0)
+          .slice(-3)
+          .map((s) =>
+            Object.entries(s.filters)
+              .filter(([, values]) => values.length)
+              .map(([key, values]) => `${key}=${values.join('+')}`)
+              .join(',')
+          );
+        return {
+          pass: openedTarget && reported && !shotgun,
+          detail:
+            `sessions=${desks.length} ` +
+            `brief=${brief ? `${brief.discipline}/${brief.location}/${brief.contract}/${brief.floor}-${brief.ceiling} (also ${brief.secondary})` : 'none'} ` +
+            `bands=${graded?.targetBand ?? 'none'}/trap=${graded?.trapBand ?? 'none'} ` +
+            `target=${graded?.targetId ?? 'none'} ref=${graded?.targetRef ?? 'none'} ` +
+            `openedTarget=${openedTarget} reported=${reported} ` +
+            `otherRefsQuoted=${others.length}${others.length ? `[${others.slice(0, 4).join(',')}]` : ''} ` +
+            `targetLast=${targetLast} designated=${designated} shotgun=${shotgun} ` +
+            `route=${route} searches=${searches.length} ` +
+            `facetApplies=${graded?.facetApplies ?? 0} urlLoads=${graded?.urlLoads ?? 0} ` +
+            `historyLoads=${graded?.historyLoads ?? 0} ` +
+            `offPageSearches=${graded?.offPageSearches ?? 0} ` +
+            `urlNavFilters=${graded?.urlNavFilters ?? 0} ` +
+            `deadEnds=${graded?.deadEnds ?? 0} recoveries=${graded?.recoveries ?? 0} ` +
+            `salaryFacet=${bandSearches.length} avoidedTrap=${avoidedTrap} ` +
+            `maxFacets=${graded?.maxSelected ?? 0} deepestPage=${graded?.deepestPage ?? 1} ` +
+            `recordsOpened=${graded?.opened.length ?? 0}/${graded?.detailOpens ?? 0} ` +
+            `offPageOpens=${graded?.offPageOpens ?? 0} ` +
+            `lastEmpty=[${lastEmpty.join(' | ')}]`,
+        };
+      },
+    },
   ];
 }
 

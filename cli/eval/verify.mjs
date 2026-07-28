@@ -22,9 +22,10 @@
 // canned — those are marked `canned: true` and prove the validator accepts a
 // correct answer, not that composing one is possible.
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { launch, listInstances, stop } from '../lib/instances.mjs';
 import { callTool } from '../lib/mcp.mjs';
 import { startPagesServer } from './server.mjs';
@@ -81,6 +82,34 @@ if (args.includes('--list')) {
   console.log('  --   = no golden path yet');
   process.exit(0);
 }
+
+// Headless Firefox on macOS still plays to the machine's speakers, so an unmuted
+// fixture beeps at whoever runs the suite. Muting costs no measurement: a muted
+// element still decodes, currentTime still advances, and cues still fire.
+function assertFixtureMediaMuted() {
+  const root = join(dirname(fileURLToPath(import.meta.url)), 'pages');
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith('.html')) {
+        const html = readFileSync(full, 'utf8');
+        for (const [tag] of html.matchAll(/<(?:audio|video)\b[^>]*>/gi)) {
+          if (!/\bmuted\b/i.test(tag)) offenders.push(`${relative(root, full)}: ${tag.trim()}`);
+        }
+      }
+    }
+  };
+  walk(root);
+  if (offenders.length) {
+    console.error('unmuted media element(s) in fixtures (see BRIEFING hard rule 7):');
+    for (const o of offenders) console.error(`  ${o}`);
+    process.exit(1);
+  }
+}
+
+assertFixtureMediaMuted();
 
 const pages = await startPagesServer();
 const stateDir = mkdtempSync(join(tmpdir(), 'ffcli-verify-'));

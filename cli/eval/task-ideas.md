@@ -323,6 +323,69 @@
 > table view. Every one of the six runs found it (`route=table`), which is a useful
 > baseline — if a future model regresses on that, this task will show it.
 >
+> **Wave 12 (2026-07-28): picked by untested CAPABILITY, not by genre. Best wave yet
+> for findings, worthless for efficiency numbers — and that contrast is the lesson.**
+> T001 (`kanban-triage`, revived from P2 and reframed), T130 (`token-rotate`,
+> clipboard), T131 (`media-transcript`), T132 (`faceted-search`). Suite is now 74 web
+> tasks across 38 sites; golden paths 74/74 green twice. Acceptance 24/24.
+>
+> SELECTION CHANGED: waves 10-11 picked genres by novelty of interaction and the
+> findings converged hard on A32 and the table family. Round 3 instead picked by
+> which TOOL CAPABILITY had zero coverage, verified by grep: `drag_by_uid_to_uid`
+> (never called by any of 70 tasks or any driver), the clipboard (untouched), and
+> time-based media (no `<video>`/`<audio>` in 34 sites).
+>
+> Output-token medians are a WASH — `token-rotate` 1,758 vs 1,769 (-1%),
+> `kanban-triage` 1,897 vs 1,686 (+13%), `media-transcript` 906 vs 786 (+15%),
+> `faceted-search` 1,567 vs 1,840 (-15%, but ours is UNSTABLE at 2.7x spread so it
+> is not a conclusion). Totals 20,177 vs 19,075 (+6%). Nothing here separates the
+> surfaces on efficiency, and that is fine: this wave's value is entirely in what
+> the verify-first spikes found.
+>
+> **A37, the most serious defect in the document: `drag_by_uid_to_uid` reports
+> success while doing nothing, on 5 of 6 drag idioms.** It works only against
+> canonical HTML5 DnD; against pointer-events and mouse-events implementations it
+> fires NOTHING and still reports success. It also delivers clientX/clientY=0 (so
+> coordinate-derived drop positions are wrong rather than erroring) and skips
+> hit-testing entirely (dropping onto covered elements, firing drop where dragover
+> was never prevented). playwright's browser_drag is correct in all six cells.
+> A false success is the one failure mode an agent cannot detect — it will report a
+> board as triaged when nothing moved. Promoted to the top of the Part A fix order.
+>
+> **THE METHODOLOGICAL FINDING, and it is worth more than the numbers: the eval's
+> own agent runs would never have found A37.** All six `kanban-triage` runs, on BOTH
+> surfaces, reported `route=button` — not one agent dragged anything, even
+> playwright, whose drag works correctly. Agents reach for an explicit control
+> whenever a site offers one. So a tool can be completely broken and a
+> pass-rate-and-tokens eval will show nothing, because agents route around it. Only
+> the deliberate capability spike found it. Two consequences: (1) keep commissioning
+> verify-first spikes on tools nothing exercises, independent of any task; (2) the
+> real-world exposure is drag-ONLY UIs (many boards, builders and schedulers have no
+> button fallback), where the silent failure would bite invisibly.
+>
+> Other findings: **A38** WebVTT cues reach NEITHER accessibility tree, so captions
+> are unreadable on both surfaces — a shared blind spot and a real accessibility
+> hole. **A39** the clipboard works on both, but ours needs a `click_by_uid`
+> immediately before the read (user-activation window measured at ~5s, verified
+> failing at 9s) where playwright's `browser_evaluate` is always gestured; playwright
+> also has `browser_press_key` for a real Meta+V paste and we still have no key-press
+> tool (A8). Assumption disproved: headless Firefox decodes EVERYTHING tried (PCM
+> WAV, WebM/Opus, MP4/AAC, WebM/VP9, MP4/H.264) — decode was never the media blocker,
+> which is why T131 shipped rather than taking its authorised do-not-ship option.
+>
+> HARNESS: an eval fixture that plays audible sound is a defect, not an annoyance —
+> the media spike's synthesised sine tone played through the machine's speakers
+> during development, and would have beeped at anyone running the 74-task sweep.
+> `verify.mjs` now runs `assertFixtureMediaMuted()` before anything else and fails
+> the gate on any `<audio>`/`<video>` lacking `muted`; BRIEFING hard rule 7 requires
+> `muted` + `volume = 0`. Muting costs no measurement — a muted element still
+> decodes, `currentTime` still advances, cues still fire (re-verified: the muted
+> golden path still reaches `maxPlayhead=26.4s`).
+>
+> Route telemetry from the real runs, all 6/6 on both surfaces: `route=button`
+> (kanban), `route=clipboard` (vault), `route=chapter-jump` (media — nobody played
+> through), `route=facets` (roles — nobody hand-edited the URL despite it working).
+>
 > **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
 > deterministically through our own MCP and asserts each validator accepts a correct
 > answer and rejects a plausible wrong one: 77 seconds, no API spend, 51/51 green
@@ -1746,6 +1809,96 @@ a corroborating measurement exists rather than a single data point.
 - Ask: report the advisory reference for the stated destination.
 - Validator: answer carries the session's reference; `detail` reports which
   locales were served, so an agent that never left English is visible.
+- Effort: M · Depends: P-1
+
+# Plans 9 — New site genres, round 3 (T001 revived, T130-T132)
+
+Same doctrine as waves 10 and 11: natural idiom, no routing around known gaps,
+mandatory dual-surface measurement.
+
+Selection criterion CHANGED for this round, and it is the point. Waves 10-11
+picked genres by novelty of interaction, and the findings converged fast — every
+loss traced back to A32 (no wait primitive) or the table family (A2/A29/A34/A35).
+Picking more genres the same way mostly re-confirms those. So round 3 picks by
+**which TOOL CAPABILITY has zero coverage in the suite**, verified by grep:
+- `drag_by_uid_to_uid` — we ship the tool; NO task and NO golden-path driver has
+  ever called it. Entirely unmeasured.
+- the clipboard — no fixture, no driver, no task touches it, on either surface.
+- time-based media — no `<video>`/`<audio>` anywhere in 34 sites.
+Faceted search is the one genre-novelty pick, included because filter-state
+combinatorics is a common real interaction with no analogue here.
+
+### T001 — Kanban Triage (REVIVED from P2, reframed)
+The original plan made drag-and-drop the OPTIONAL path and a per-card select the
+primary one, "because DnD flake". That framing is now exactly backwards: the
+select makes the task winnable without ever exercising the one tool nobody has
+tested. Reframed: keep both routes so the task stays winnable, grade the OUTCOME,
+and REPORT which route was used (the T115 pattern). If no agent ever completes it
+by dragging, that is the finding.
+- Everything else as originally specified (columns, tagged cards, layout POST,
+  server-observed grading).
+- ADDED: `detail` must report route (drag vs select vs mixed) per session, and the
+  implementer must VERIFY-FIRST whether `drag_by_uid_to_uid` works headless at all
+  against HTML5 DnD, and what playwright's equivalent does.
+- Effort: M · Depends: P-1
+
+### T130 — Credential Vault Copy-Out (new capability: clipboard)
+- Fixture: new `pages/vault/` — a team secrets manager. An access token is
+  displayed MASKED and truncated with an ellipsis (which is what real vaults do),
+  and the only way to obtain the whole value is the "Copy" button. The agent must
+  paste it into a rotation form on another page of the same site.
+- Why this genre: nothing in the suite touches the clipboard, and this is the
+  realistic case where a value genuinely cannot be read from the page. It also
+  interacts with A1 honestly rather than artificially — the displayed value is
+  ellipsised by the SITE, not by our snapshot, so both surfaces face the same wall
+  and the question is purely whether either can get at the clipboard.
+- Server: token minted per session, never in the page source in full; the mask is
+  rendered server-side. `POST /api/vault/rotate {token}` accepts only the exact
+  value and mints a rotation receipt.
+- Ask: rotate the deploy token and report the rotation receipt.
+- Validator: server-observed — the rotation POST carried the session's exact
+  token, and the answer carries the receipt. `detail` reports whether the copy
+  button was clicked and whether a clipboard read was observed.
+- Effort: M · Depends: P-1, and a VERIFY-FIRST spike on clipboard access from both
+  surfaces (permissions, `navigator.clipboard.readText`, what each tool offers).
+  If NEITHER surface can reach the clipboard, that is a shared blind spot worth
+  recording — but then the fixture must offer a legitimate second route (a
+  "reveal" toggle behind a confirmation) so the task is not unwinnable.
+
+### T131 — Timed Media Transcript (new capability: time-based media)
+- Fixture: new `pages/media/` — a recorded-briefing page with a real `<audio>` or
+  `<video>` element, chapter markers, and a transcript that reveals cues as
+  playback passes them. The graded line is only revealed once playback reaches it,
+  or by using the chapter jump.
+- Why this genre: 34 sites and not one time-based medium. Concrete unknowns: can
+  either surface start playback, read `currentTime`, or seek; does headless
+  Firefox decode at all; do WebVTT cues reach the accessibility tree.
+- Server: the media is generated/served by the endpoint; cue text and the graded
+  reference come from `GET /api/media/cues` per session, so nothing is on disk.
+- Ask: report the reference given in the briefing's third chapter.
+- Validator: answer carries the session's reference; `detail` reports whether
+  playback advanced, whether a chapter jump was used, or whether the cues were
+  fetched directly.
+- Effort: L · Depends: P-1, and a VERIFY-FIRST spike that is EXPLICITLY ALLOWED to
+  conclude "do not ship" (the T117 precedent). If headless Firefox cannot decode
+  the media, or neither surface can drive playback, the finding is the deliverable.
+
+### T132 — Faceted Job Search (new genre: filter combinatorics)
+- Fixture: new `pages/roles/` — a job board with four independent facets
+  (discipline, location, contract type, salary band), live result counts per
+  facet value, URL-encoded filter state, and a "no results" state that requires
+  backing a facet off. Exactly one combination yields the target posting.
+- Why this genre: the suite has no multi-facet filtering. It probes whether an
+  agent can manage combinatorial state, read counts to prune, and RECOVER from an
+  over-filtered dead end rather than restarting. The counts make it a search
+  problem rather than a click-everything problem.
+- Server: postings and the winning combination generated per session; the posting
+  reference is minted server-side. Facet counts computed server-side so they
+  cannot be derived from the page.
+- Ask: find the posting matching the stated brief and report its reference.
+- Validator: answer carries the session's reference; `detail` reports facet
+  applications, how many dead ends were hit, and whether the URL was hand-edited
+  rather than driven through the controls.
 - Effort: M · Depends: P-1
 
 ## Graveyard

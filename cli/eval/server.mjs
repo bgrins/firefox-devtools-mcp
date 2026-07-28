@@ -1011,6 +1011,130 @@ function scheduleParseRoom(raw) {
   return room ? room.id : null;
 }
 
+// pages/media/ — Skerrow Coastal Radio, the 0535 coastal forecast recording
+// (media-transcript). The audio is SYNTHESISED here (a per-chapter sine tone in
+// a PCM WAV container) rather than shipped as a file, and the transcript text is
+// released per session through /api/media/cues, so no fixture file under pages/
+// carries a line of the bulletin. The chapter-3 line is withheld from that
+// payload entirely: it is only ever returned by /api/media/heard, and only to a
+// session that has both been served the recording and reported a playhead at or
+// past the cue. The three SKW references are minted from randomBytes, not from
+// the page nonce, so none of them is reproducible from anything the page shows.
+const MEDIA_DURATION = 48;
+const MEDIA_SAMPLE_RATE = 8000;
+
+const MEDIA_BULLETIN = {
+  station: 'SKW',
+  name: 'Skerrow Coastal Radio',
+  title: 'Coastal forecast, 0535 UTC',
+  issued: '0535 UTC, 26 July',
+};
+
+const MEDIA_CHAPTERS = [
+  { n: 1, title: 'General synopsis', start: 0, end: 12, tone: 320 },
+  { n: 2, title: 'Sea area forecast', start: 12, end: 26, tone: 400 },
+  { n: 3, title: 'Station reports', start: 26, end: 38, tone: 262 },
+  { n: 4, title: 'Inshore waters', start: 38, end: 48, tone: 480 },
+];
+
+// `locked` marks the graded line. Its text never leaves this module except
+// through the unlock branch of /api/media/heard.
+const MEDIA_SCRIPT = [
+  { chapter: 1, start: 0.6, text: 'Skerrow Coastal Radio, coastal forecast.' },
+  { chapter: 1, start: 4, text: 'Low 986 west of Talvig, deepening.' },
+  { chapter: 1, start: 8, text: 'Supersedes __SUPERSEDES__ from 2335.' },
+  { chapter: 2, start: 12.4, text: 'Braithe, Munroe Bank: southwest 5 to 7.' },
+  { chapter: 2, start: 16, text: 'Calder Deep: veering west, gale 8 later.' },
+  { chapter: 2, start: 20, text: 'Talvig, Orrin Sound: rain then showers.' },
+  { chapter: 2, start: 23, text: 'Fetlan: moderate becoming rough.' },
+  { chapter: 3, start: 26, locked: true, text: 'Log reference __REFERENCE__ for these reports.' },
+  { chapter: 3, start: 29, text: 'Skerrow Head: west 6, 1009 falling.' },
+  { chapter: 3, start: 32, text: 'Braithe Light: southwest 5, 1007 falling.' },
+  { chapter: 3, start: 35, text: 'Munroe Bank buoy: west 7, 1004 falling.' },
+  { chapter: 4, start: 38.4, text: 'Cape Ardnoy to Fetlan Point, 12 miles.' },
+  { chapter: 4, start: 42, text: 'Wind southwest 4 to 6, 7 later.' },
+  { chapter: 4, start: 45, text: 'Identifier __IDENTIFIER__ ends transmission.' },
+];
+
+// Did this request come from the player page, or from a shell? Same idiom as
+// the console fixture's `offPageReads`: Sec-Fetch-Site is a forbidden header
+// name for fetch()/XHR and the media element sets it too, but `curl -H` sets it
+// freely, so this is a counter and a route label, never a gate.
+const mediaFromPage = (req) =>
+  req.headers['sec-fetch-site'] === 'same-origin' ||
+  /\/media\//.test(req.headers.referer ?? '');
+
+// One tone per chapter with a short gap at each boundary, so the recording is
+// audible in QA and the chapter edges can be heard. Built once and reused: the
+// bytes are identical for every session, and nothing about them is graded.
+let MEDIA_WAV = null;
+function mediaWav() {
+  if (MEDIA_WAV) return MEDIA_WAV;
+  const samples = MEDIA_DURATION * MEDIA_SAMPLE_RATE;
+  const pcm = Buffer.alloc(samples * 2);
+  for (const chapter of MEDIA_CHAPTERS) {
+    const from = Math.round(chapter.start * MEDIA_SAMPLE_RATE);
+    const to = Math.min(samples, Math.round(chapter.end * MEDIA_SAMPLE_RATE));
+    const gap = from + Math.round(0.35 * MEDIA_SAMPLE_RATE);
+    for (let i = from; i < to; i++) {
+      const level = i < gap ? 0 : 0.11 * Math.sin((2 * Math.PI * chapter.tone * i) / MEDIA_SAMPLE_RATE);
+      pcm.writeInt16LE(Math.round(level * 32767), i * 2);
+    }
+  }
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(MEDIA_SAMPLE_RATE, 24);
+  header.writeUInt32LE(MEDIA_SAMPLE_RATE * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  MEDIA_WAV = Buffer.concat([header, pcm]);
+  return MEDIA_WAV;
+}
+
+// The two decoy references are minted alongside the graded one and are always
+// released, so "quoted the superseded bulletin" is distinguishable from "never
+// reached chapter three" — a lazily minted decoy would leave that check
+// vacuously false for a session that never played the rest of the recording.
+function mediaState(session) {
+  if (!session.media) {
+    const codes = [];
+    while (codes.length < 3) {
+      const code = 'SKW-' + randomBytes(3).toString('hex').toUpperCase();
+      if (!codes.includes(code)) codes.push(code);
+    }
+    session.media = {
+      reference: codes[0],
+      supersedes: codes[1],
+      identifier: codes[2],
+      audioServed: 0,
+      cueReads: 0,
+      offPageReports: 0,
+      heard: [],
+      chapterJumps: 0,
+      maxTime: 0,
+      unlocks: 0,
+      unlockedAt: null,
+      unlockRoute: null,
+    };
+  }
+  return session.media;
+}
+
+function mediaCueText(media, cue) {
+  return cue.text
+    .replace('__SUPERSEDES__', media.supersedes)
+    .replace('__IDENTIFIER__', media.identifier)
+    .replace('__REFERENCE__', media.reference);
+}
+
 const BODY_CAP = 65536;
 
 // pages/news/consent.html — the 3-layer consent wall over the Millrace front
@@ -3100,6 +3224,73 @@ function consoleFromPage(req) {
   );
 }
 
+// pages/kanban/ — Coppermast Dispatch's Terminal 3 shift triage board
+// (kanban-triage). Which work orders carry the Urgent and Blocked tags, and which
+// lane each one starts in, are drawn per session from randomBytes and released
+// only through the gated board read below, so the two sets the validator grades
+// exist nowhere under pages/. Every tagged card is dealt into a lane it does not
+// belong in, so a correct board is never handed out for free. The saved layout is
+// the graded fact; the `moves` list is page-reported route telemetry (drag vs the
+// per-card move buttons) and is deliberately not part of the pass decision, since
+// a page nonce is enough to forge it.
+const KANBAN_ORDERS = [
+  { id: 'c1', ref: 'WO-1042', title: 'Winch relay trips under load', berth: 'Berth 4', raised: '07:15' },
+  { id: 'c2', ref: 'WO-1043', title: 'Gantry rail packing worn at joint 6', berth: 'Berth 2', raised: '07:40' },
+  { id: 'c3', ref: 'WO-1047', title: 'Quay lighting column 12 dark', berth: 'Berth 5', raised: '08:05' },
+  { id: 'c4', ref: 'WO-1051', title: 'Conveyor 3 overload trip repeating', berth: 'Berth 2', raised: '08:22' },
+  { id: 'c5', ref: 'WO-1054', title: 'Bollard 9 grout cracked', berth: 'Berth 1', raised: '09:10' },
+  { id: 'c6', ref: 'WO-1058', title: 'Hose reel leaking at coupling', berth: 'Berth 4', raised: '09:48' },
+  { id: 'c7', ref: 'WO-1063', title: 'Crane anemometer reading low', berth: 'Berth 1', raised: '10:26' },
+  { id: 'c8', ref: 'WO-1069', title: 'Gate barrier slow to lift', berth: 'Gate 2', raised: '11:03' },
+];
+const KANBAN_COLS = ['backlog', 'doing', 'done'];
+const KANBAN_TAG_LABEL = { urgent: 'Urgent', blocked: 'Blocked', routine: 'Routine' };
+
+function kanbanState(session) {
+  if (!session.kanban) {
+    let seed = randomBytes(4).readUInt32BE(0);
+    const rand = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const shuffle = (list) => {
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    };
+    const dealt = shuffle(KANBAN_ORDERS.map((o) => ({ ...o })));
+    // Two urgent, two blocked, four routine. The urgent pair starts split across
+    // Backlog and Doing and the blocked pair across Doing and Done, so exactly
+    // four cards have to move and both drag directions are exercised.
+    const tags = ['urgent', 'urgent', 'blocked', 'blocked', 'routine', 'routine', 'routine', 'routine'];
+    const starts = [
+      'backlog',
+      'doing',
+      'doing',
+      'done',
+      'backlog',
+      'doing',
+      'done',
+      KANBAN_COLS[Math.floor(rand() * KANBAN_COLS.length)],
+    ];
+    dealt.forEach((card, i) => {
+      card.tag = tags[i];
+      card.col = starts[i];
+    });
+    session.kanban = {
+      cards: shuffle(dealt),
+      urgent: dealt.filter((c) => c.tag === 'urgent').map((c) => c.id).sort(),
+      blocked: dealt.filter((c) => c.tag === 'blocked').map((c) => c.id).sort(),
+      reads: 0,
+      offPageReads: 0,
+      layouts: [],
+    };
+  }
+  return session.kanban;
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     let body = '';
@@ -3620,6 +3811,530 @@ function intlState(session) {
   });
 }
 
+// pages/vault/ — Stavelock, a team credential vault (token-rotate). Every secret's
+// value is minted per session from randomBytes and exists nowhere under pages/: the
+// console renders only the mask the server computes, and the full value leaves the
+// server exactly once per copy, in the response to the Copy button's own request.
+// Rotation is graded on what the server SAW — a rotation POST carrying that session's
+// exact stored value — and the receipt it issues is minted here too, so neither the
+// token nor the receipt can be read off disk or derived from the page nonce.
+// NOT a clipboard gate: /api/vault/copy answers any request carrying the page
+// nonce, so an evaluate_script fetch reaches the value without the Copy button.
+// The clipboard is the human affordance, and `route=` reports which was used.
+const VAULT_ROTATED_ON = '27 July 2026';
+const VAULT_AUDIT_DAY = '27 Jul';
+
+const VAULT_SECRETS = [
+  {
+    id: 'sluicegate-deploy',
+    name: 'sluicegate-api/deploy',
+    environment: 'production',
+    purpose: 'Release pipeline deploy token',
+    scope: 'deploy:write, artifact:read',
+    owner: 'Platform Delivery',
+    issued: '14 February 2026',
+    lastRotated: '14 February 2026',
+    policy: 'Rotate every 90 days',
+    fingerprint: 'a4:1c:9e:33:07:bd',
+    copyable: true,
+    rotatable: true,
+  },
+  {
+    id: 'sluicegate-dbro',
+    name: 'sluicegate-api/db-ro',
+    environment: 'staging',
+    purpose: 'Read-only reporting connection',
+    scope: 'db:read',
+    owner: 'Platform Delivery',
+    issued: '03 January 2026',
+    lastRotated: '19 June 2026',
+    policy: 'Rotate every 180 days',
+    fingerprint: '7c:20:b8:41:ee:09',
+    copyable: false,
+    rotatable: false,
+  },
+  {
+    id: 'northmoor-purge',
+    name: 'northmoor-cdn/purge',
+    environment: 'production',
+    purpose: 'Edge cache purge key',
+    scope: 'cache:purge',
+    owner: 'Edge Platform',
+    issued: '22 November 2025',
+    lastRotated: '11 May 2026',
+    policy: 'Rotate every 180 days',
+    fingerprint: 'd1:6f:34:aa:52:97',
+    copyable: false,
+    rotatable: false,
+  },
+  {
+    id: 'ledgerwright-hook',
+    name: 'ledgerwright/webhook',
+    environment: 'staging',
+    purpose: 'Settlement callback signing secret',
+    scope: 'webhook:sign',
+    owner: 'Payments',
+    issued: '08 April 2026',
+    lastRotated: '08 April 2026',
+    policy: 'Rotate every 90 days',
+    fingerprint: '2b:95:c7:18:6d:40',
+    copyable: false,
+    rotatable: false,
+  },
+  {
+    id: 'stavelock-smtp',
+    name: 'stavelock/smtp-relay',
+    environment: 'production',
+    purpose: 'Outbound notification relay password',
+    scope: 'smtp:send',
+    owner: 'Security Engineering',
+    issued: '30 September 2025',
+    lastRotated: '02 March 2026',
+    policy: 'Rotate every 365 days',
+    fingerprint: '5e:83:0c:79:b1:2f',
+    copyable: false,
+    rotatable: false,
+  },
+];
+
+const VAULT_AUDIT_BASE = [
+  { at: '26 Jul 16:41', what: 'Policy PD-04 reviewed, no change', actor: 'k.arbuthnot' },
+  { at: '24 Jul 09:12', what: 'sluicegate-api/deploy read by pipeline lease', actor: 'svc-release' },
+  { at: '21 Jul 14:03', what: 'Break-glass request 4471 declined, no ticket', actor: 'security-eng' },
+  { at: '19 Jun 08:55', what: 'sluicegate-api/db-ro rotated', actor: 'm.tarleton' },
+  { at: '11 May 10:26', what: 'northmoor-cdn/purge rotated', actor: 'edge-platform' },
+];
+
+const VAULT_MASK = (token) => token.slice(0, 13) + '…' + token.slice(-4);
+
+// Audit rows the server writes have to read like the seeded ones ('26 Jul 16:41'),
+// so a generated row is the rotation day plus the clock time of the record itself.
+const VAULT_STAMP = (at) => {
+  const when = new Date(at);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${VAULT_AUDIT_DAY} ${pad(when.getHours())}:${pad(when.getMinutes())}`;
+};
+
+// Did this read come from the console, or from a shell? Sec-Fetch-Site is a
+// forbidden header name for fetch()/XHR but `curl -H` sets it freely, so this is
+// route telemetry for `detail`, never a pass condition.
+function vaultFromPage(req) {
+  return (
+    req.headers['sec-fetch-site'] === 'same-origin' || /\/vault\//.test(req.headers.referer ?? '')
+  );
+}
+
+function vaultState(session) {
+  return (session.vault ??= {
+    tokens: VAULT_SECRETS.reduce((acc, s) => {
+      acc[s.id] = 'stv_live_' + randomBytes(16).toString('hex');
+      return acc;
+    }, {}),
+    // id -> { receipt, from, at, entry, reason, fromPage }
+    rotated: {},
+    receipts: [],
+    issues: 0,
+    offPageIssues: 0,
+    copyOk: 0,
+    copyFail: 0,
+    copyAt: 0,
+    rejected: 0,
+  });
+}
+
+// pages/roles/ — the Alderpost vacancy desk (faceted-search). The catalogue,
+// the client brief and every vacancy reference are minted per session from
+// randomBytes and hang off session.roles, so state.reset() clears them and no
+// fixture file on disk carries a vacancy, a facet count or a reference. The
+// draw guarantees the properties the task rests on: exactly one vacancy carries
+// all four of the brief's facet values; NO vacancy carries the brief's
+// discipline, base and contract in the salary band ABOVE the brief's ceiling,
+// so an agent that over-reads the ceiling lands in a genuinely empty result
+// set; no vacancy at all sits in the brief's secondary town on that discipline
+// and contract, which is the second dead end; and the winning
+// discipline/location/contract cluster is one of FOUR clusters of the same
+// shape and size, so the brief — not the shape of the catalogue — is the only
+// thing that picks the answer out. Facet counts are computed here, drill-down
+// style (a facet's own selection is excluded from its own counts), so they
+// cannot be derived from the page.
+const ROLES_PAGE_SIZE = 10;
+const ROLES_CATALOGUE_SIZE = 86;
+const ROLES_DECOY_CLUSTERS = 3;
+const ROLES_VIA = ['initial', 'url', 'facet', 'page', 'clear', 'history'];
+
+const ROLES_FACETS = {
+  discipline: [
+    { value: 'structural', label: 'Structural', noun: 'Structural' },
+    { value: 'geotechnical', label: 'Geotechnical', noun: 'Geotechnical' },
+    { value: 'highways', label: 'Highways and transport', noun: 'Highways' },
+    { value: 'services', label: 'Building services', noun: 'Building Services' },
+    { value: 'environmental', label: 'Environmental', noun: 'Environmental' },
+    { value: 'fire', label: 'Fire engineering', noun: 'Fire Safety' },
+  ],
+  location: [
+    { value: 'leeds', label: 'Leeds' },
+    { value: 'manchester', label: 'Manchester' },
+    { value: 'bristol', label: 'Bristol' },
+    { value: 'glasgow', label: 'Glasgow' },
+    { value: 'cardiff', label: 'Cardiff' },
+    { value: 'newcastle', label: 'Newcastle' },
+  ],
+  contract: [
+    { value: 'permanent', label: 'Permanent', canBrief: true },
+    { value: 'fixed', label: 'Fixed term', canBrief: true },
+    { value: 'interim', label: 'Interim', canBrief: true },
+    // Never drawn as a brief's contract: a part-time advert is quoted pro rata
+    // and would make the salary lines of the brief ambiguous.
+    { value: 'parttime', label: 'Part time', canBrief: false },
+  ],
+  // `low` is where the band's LABEL starts and `floors`/`cap` are what is
+  // actually advertised inside it. Every band leaves a gap between its label
+  // start and its cheapest advert, which is what lets the brief's ceiling sit
+  // inside the label of the band above the winning one while still being under
+  // every advert in it. `cap` keeps every advertised range inside its own band,
+  // so no vacancy below the winning band can be read as paying the brief's
+  // floor and none above it as fitting the ceiling.
+  band: [
+    { value: 'b1', label: '£30,000 to £40,000', low: 30000, floors: [32000, 34000, 36000], cap: 39000 },
+    { value: 'b2', label: '£40,000 to £50,000', low: 40000, floors: [42000, 44000, 46000], cap: 48000 },
+    { value: 'b3', label: '£50,000 to £60,000', low: 50000, floors: [52000, 54000, 56000], cap: 58000 },
+    { value: 'b4', label: '£60,000 to £75,000', low: 60000, floors: [62000, 64000, 66000, 68000], cap: 74000 },
+    { value: 'b5', label: '£75,000 and above', low: 75000, floors: [80000, 82000, 85000, 88000], cap: 0 },
+  ],
+};
+
+// Which bands may be drawn as the brief's target: b1 is too junior to be a
+// client brief and b5 has no band above it to act as the trap.
+const ROLES_TARGET_BANDS = [1, 2, 3];
+
+const ROLES_TITLES = {
+  b1: ['Graduate {d} Engineer', 'Assistant {d} Engineer'],
+  b2: ['{d} Engineer', '{d} Design Engineer'],
+  b3: ['Senior {d} Engineer', '{d} Project Engineer'],
+  b4: ['Principal {d} Engineer', 'Lead {d} Engineer'],
+  b5: ['Associate Director, {d}', 'Head of {d}'],
+};
+
+const ROLES_EMPLOYERS = [
+  'Brackenhall Consulting', 'Wraysbury Group', 'Denholm and Pike', 'Astley Verge',
+  'Kirkstall Partners', 'Ordsall Technical', 'Falgrove Engineers', 'Merrick Dane',
+  'Penhaligon Works', 'Southwell Rivett', 'Tarnbrook Associates', 'Vellacourt Group',
+  'Ashby Meredith', 'Corstorphine Ltd', 'Drumcree Engineering', 'Elmsfield Partnership',
+  'Sedgemoor Consulting', 'Thurlow Technical', 'Inverleith Group', 'Jarrow Kemp',
+  'Lowther Bramwell', 'Nithsdale Works', 'Oakhampton Rowe', 'Padstow Ellery',
+];
+
+const ROLES_CLIENTS = [
+  'Norbeck Water', 'Culverdale Estates', 'Pennine Rail Partnership',
+  'Harrowfield Health Trust', 'Stanegate Ports', 'Lyddington Energy',
+];
+
+const ROLES_SUMMARIES = {
+  structural: 'Frame design and assessment across a mixed commercial and civic workload.',
+  geotechnical: 'Ground investigation, slope stability and foundation advice on live sites.',
+  highways: 'Junction improvement and active travel schemes from feasibility to handover.',
+  services: 'Mechanical and electrical design for refurbishment and new-build schemes.',
+  environmental: 'Discharge permitting, flood risk and consenting for infrastructure clients.',
+  fire: 'Fire strategy, means of escape and smoke control on complex existing buildings.',
+};
+
+function rolesInt(n) {
+  return randomBytes(4).readUInt32BE(0) % n;
+}
+
+function rolesPick(list) {
+  return list[rolesInt(list.length)];
+}
+
+function rolesSalary(bandValue) {
+  const band = ROLES_FACETS.band.find((b) => b.value === bandValue);
+  const min = rolesPick(band.floors);
+  const spread = band.cap ? rolesPick([4000, 5000, 6000, 7000]) : 14000;
+  const top = band.cap ? Math.min(min + spread, band.cap) : min + spread;
+  return [min, top];
+}
+
+// The client's ceiling always overshoots the winning band and lands inside the
+// LABEL of the band above it without reaching that band's cheapest advert, so
+// the trap is tempting to read off the brief and holds nothing that fits it.
+function rolesCeilings(target, trap) {
+  const out = [];
+  const highest = Math.min(...trap.floors) - 1000;
+  for (let v = Math.max(trap.low, target.cap) + 1000; v <= highest; v += 1000) out.push(v);
+  return out;
+}
+
+function rolesBuildDesk() {
+  const facets = ROLES_FACETS;
+  const dT = rolesPick(facets.discipline).value;
+  const lT = rolesPick(facets.location).value;
+  const cT = rolesPick(facets.contract.filter((c) => c.canBrief)).value;
+  const lAdj = rolesPick(facets.location.filter((l) => l.value !== lT)).value;
+  // The winning band, the brief's salary line and therefore the trap are drawn
+  // per session: nothing about the salary facet is constant across mints, so a
+  // model that has seen the task before still has to read the brief.
+  const bandAt = rolesPick(ROLES_TARGET_BANDS);
+  const targetBand = facets.band[bandAt];
+  const trapBand = facets.band[bandAt + 1];
+  const ceiling = rolesPick(rolesCeilings(targetBand, trapBand));
+  const floor = targetBand.low;
+  const months = cT === 'fixed' ? rolesPick([12, 14, 18]) : rolesPick([6, 9, 12]);
+
+  const forbidden = (d, l, c, b) =>
+    (d === dT && l === lT && c === cT && (b === targetBand.value || b === trapBand.value)) ||
+    (d === dT && l === lAdj && c === cT);
+
+  const postings = [];
+  const add = (d, l, c, b) => {
+    const disc = facets.discipline.find((x) => x.value === d);
+    const [salaryMin, salaryMax] = rolesSalary(b);
+    const posting = {
+      id: '',
+      ref: '',
+      title: rolesPick(ROLES_TITLES[b]).replace('{d}', disc.noun),
+      employer: rolesPick(ROLES_EMPLOYERS),
+      discipline: d,
+      location: l,
+      contract: c,
+      band: b,
+      salaryMin,
+      salaryMax,
+      posted: 1 + rolesInt(27),
+      summary: ROLES_SUMMARIES[d],
+    };
+    postings.push(posting);
+    return posting;
+  };
+
+  // A cluster is one vacancy in the winning band plus 7-10 more on the same
+  // discipline/location/contract in bands that cannot meet the brief's salary
+  // line. The brief's own triple is one such cluster and ROLES_DECOY_CLUSTERS
+  // others are drawn to the same shape and the same size range, so "group the
+  // catalogue by the three labels, take the biggest group, take its dearest
+  // advert" — the heuristic that needs no brief at all — returns four
+  // candidates that only the brief can tell apart.
+  const fillerBands = facets.band
+    .map((b) => b.value)
+    .filter((b) => b !== targetBand.value && b !== trapBand.value);
+  // Each cluster also gets a halo: two more vacancies in the winning band one
+  // facet off it on each of the three axes. Dropping any ONE of a cluster's
+  // three facets therefore still leaves several rows — the answer cannot be
+  // reached on two facets plus the salary band — and the halo is not a
+  // signature of the winning cluster, because every cluster has one.
+  const halo = (d, l, c) => {
+    const axes = [
+      () => [rolesPick(facets.discipline.filter((x) => x.value !== d)).value, l, c],
+      () => [d, rolesPick(facets.location.filter((x) => x.value !== l)).value, c],
+      () => [d, l, rolesPick(facets.contract.filter((x) => x.value !== c)).value],
+    ];
+    for (const axis of axes) {
+      for (let i = 0; i < 2; i++) {
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const [nd, nl, nc] = axis();
+          if (forbidden(nd, nl, nc, targetBand.value)) continue;
+          add(nd, nl, nc, targetBand.value);
+          break;
+        }
+      }
+    }
+  };
+  const cluster = (d, l, c) => {
+    const head = add(d, l, c, targetBand.value);
+    const rest = 7 + rolesInt(4);
+    for (let i = 0; i < rest; i++) add(d, l, c, rolesPick(fillerBands));
+    halo(d, l, c);
+    return head;
+  };
+
+  const target = cluster(dT, lT, cT);
+  const tripleKey = (d, l, c) => `${d}/${l}/${c}`;
+  const seeded = new Set([tripleKey(dT, lT, cT), tripleKey(dT, lAdj, cT)]);
+  for (let n = 0; n < ROLES_DECOY_CLUSTERS; n++) {
+    let d;
+    let l;
+    let c;
+    do {
+      d = rolesPick(facets.discipline).value;
+      l = rolesPick(facets.location).value;
+      c = rolesPick(facets.contract).value;
+    } while (seeded.has(tripleKey(d, l, c)));
+    seeded.add(tripleKey(d, l, c));
+    cluster(d, l, c);
+  }
+
+  // Every facet value must carry at least one vacancy overall, or a value
+  // reading 0 would be a hole in the draw rather than a real dead end.
+  for (const key of Object.keys(facets)) {
+    for (const value of facets[key].map((v) => v.value)) {
+      if (postings.some((p) => p[key] === value)) continue;
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const draw = {
+          discipline: rolesPick(facets.discipline).value,
+          location: rolesPick(facets.location).value,
+          contract: rolesPick(facets.contract).value,
+          band: rolesPick(facets.band).value,
+        };
+        draw[key] = value;
+        if (forbidden(draw.discipline, draw.location, draw.contract, draw.band)) continue;
+        add(draw.discipline, draw.location, draw.contract, draw.band);
+        break;
+      }
+    }
+  }
+
+  let guard = 0;
+  while (postings.length < ROLES_CATALOGUE_SIZE && guard++ < 20000) {
+    const d = rolesPick(facets.discipline).value;
+    const l = rolesPick(facets.location).value;
+    const c = rolesPick(facets.contract).value;
+    const b = rolesPick(facets.band).value;
+    if (forbidden(d, l, c, b)) continue;
+    add(d, l, c, b);
+  }
+
+  // Ids and references are handed out AFTER the shuffle, so neither sequence
+  // betrays which vacancy was seeded first. Both are minted from randomBytes
+  // rather than from the index: an id cannot be guessed or walked, so the
+  // catalogue is only reachable through the paged search, and an id lifted out
+  // of one session 404s in another instead of quietly resolving to a different
+  // session's vacancy.
+  for (let i = postings.length - 1; i > 0; i--) {
+    const j = rolesInt(i + 1);
+    [postings[i], postings[j]] = [postings[j], postings[i]];
+  }
+  const ids = new Set();
+  const refs = new Set();
+  for (const posting of postings) {
+    let id;
+    do {
+      id = 'alp-' + randomBytes(3).toString('hex');
+    } while (ids.has(id));
+    ids.add(id);
+    posting.id = id;
+    let ref;
+    do {
+      ref = 'AR-' + randomBytes(3).toString('hex').toUpperCase();
+    } while (refs.has(ref));
+    refs.add(ref);
+    posting.ref = ref;
+  }
+  postings.sort((a, b) => a.posted - b.posted);
+
+  const labelOf = (key, value) =>
+    ROLES_FACETS[key].find((v) => v.value === value)?.label ?? value;
+
+  return {
+    brief: {
+      client: rolesPick(ROLES_CLIENTS),
+      discipline: dT,
+      disciplineLabel: labelOf('discipline', dT),
+      location: lT,
+      locationLabel: labelOf('location', lT),
+      secondary: lAdj,
+      secondaryLabel: labelOf('location', lAdj),
+      contract: cT,
+      contractLabel:
+        cT === 'permanent' ? 'Permanent' : `${labelOf('contract', cT)}, ${months} months`,
+      floor,
+      ceiling,
+      salaryLabel: `£${floor.toLocaleString('en-GB')} to £${ceiling.toLocaleString('en-GB')}`,
+    },
+    targetId: target.id,
+    targetRef: target.ref,
+    targetBand: targetBand.value,
+    targetBandLabel: targetBand.label,
+    trapBand: trapBand.value,
+    trapBandLabel: trapBand.label,
+    postings,
+    searches: [],
+    facetApplies: 0,
+    urlLoads: 0,
+    historyLoads: 0,
+    offPageSearches: 0,
+    urlNavFilters: 0,
+    deadEnds: 0,
+    recoveries: 0,
+    maxSelected: 0,
+    deepestPage: 1,
+    opened: [],
+    detailOpens: 0,
+    offPageOpens: 0,
+  };
+}
+
+function rolesState(session) {
+  return (session.roles ??= rolesBuildDesk());
+}
+
+function rolesCleanFilters(raw) {
+  const out = {};
+  for (const key of Object.keys(ROLES_FACETS)) {
+    const allowed = ROLES_FACETS[key].map((v) => v.value);
+    const given = Array.isArray(raw?.[key]) ? raw[key] : [];
+    out[key] = [...new Set(given.filter((v) => allowed.includes(v)))].slice(0, 8);
+  }
+  return out;
+}
+
+function rolesMatches(postings, filters) {
+  return postings.filter((p) =>
+    Object.keys(ROLES_FACETS).every(
+      (key) => filters[key].length === 0 || filters[key].includes(p[key])
+    )
+  );
+}
+
+// Drill-down counts: a facet's own selection is lifted before its values are
+// counted, which is what real refine panels show and what lets an agent see
+// that "£75,000 and above" would leave nothing before clicking it.
+function rolesFacetCounts(postings, filters) {
+  const out = {};
+  for (const key of Object.keys(ROLES_FACETS)) {
+    const pool = rolesMatches(postings, { ...filters, [key]: [] });
+    out[key] = ROLES_FACETS[key].map((v) => ({
+      value: v.value,
+      label: v.label,
+      count: pool.filter((p) => p[key] === v.value).length,
+    }));
+  }
+  return out;
+}
+
+function rolesRow(posting) {
+  return {
+    id: posting.id,
+    title: posting.title,
+    employer: posting.employer,
+    location: ROLES_FACETS.location.find((l) => l.value === posting.location).label,
+    contract: ROLES_FACETS.contract.find((c) => c.value === posting.contract).label,
+    salary: `£${posting.salaryMin.toLocaleString('en-GB')} to £${posting.salaryMax.toLocaleString('en-GB')}`,
+    discipline: ROLES_FACETS.discipline.find((d) => d.value === posting.discipline).label,
+    posted: posting.posted,
+    summary: posting.summary,
+  };
+}
+
+// Same shape as consoleFromPage: a fetch the desk itself made carries a
+// same-origin Sec-Fetch-Site or a /roles/ Referer, so a shell call that holds a
+// cookie it minted is separable in the telemetry.
+function rolesFromPage(req) {
+  return (
+    req.headers['sec-fetch-site'] === 'same-origin' || /\/roles\//.test(req.headers.referer ?? '')
+  );
+}
+
+// A hand-edited address bar is a real document load, so the Referer the BROWSER
+// puts on the desk's first fetch carries the filters. Corroborates the
+// page-reported `via`, which page script could otherwise say anything about.
+function rolesRefererFiltered(req) {
+  try {
+    const referer = new URL(req.headers.referer ?? '', 'http://localhost');
+    return ['d', 'l', 'c', 's'].some((k) => (referer.searchParams.get(k) ?? '') !== '');
+  } catch {
+    return false;
+  }
+}
+
 export async function startPagesServer({ port = 0, preview = false, modes = {} } = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const root = join(here, 'pages');
@@ -3689,6 +4404,467 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       res.writeHead(200, { 'Content-Type': TYPES['.html'] });
       res.end(await readFile(join(here, file)));
       return;
+    }
+
+    // Coppermast Dispatch triage board. The tag assignment and the starting lanes
+    // are minted here, so the board is the only place they exist; `src=board` marks
+    // the read the page itself makes, which separates an agent's own fetch from it.
+    if (req.method === 'GET' && pathname0 === '/api/kanban/board') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const kb = kanbanState(found.session);
+      kb.reads += 1;
+      if (url.searchParams.get('src') !== 'board') kb.offPageReads += 1;
+      return json(res, 200, {
+        terminal: 'Terminal 3',
+        shift: '08:00 to 16:00',
+        lanes: KANBAN_COLS,
+        // An accepted save is written back onto the cards, so a reload repaints the
+        // saved board; these two let it repaint the saved STATUS as well, instead of
+        // telling an agent that reloaded to check its work that nothing was saved.
+        saves: kb.layouts.length,
+        lastRevision: kb.layouts.at(-1)?.revision ?? null,
+        cards: kb.cards.map((c) => ({
+          id: c.id,
+          ref: c.ref,
+          title: c.title,
+          berth: c.berth,
+          raised: c.raised,
+          tag: c.tag,
+          tagLabel: KANBAN_TAG_LABEL[c.tag],
+          col: c.col,
+        })),
+      });
+    }
+
+    // Save board. The layout is the graded fact, so it is validated as a whole
+    // board: every work order exactly once, across the three known lanes. Each
+    // accepted save gets its own randomBytes revision, which the board prints.
+    if (req.method === 'POST' && pathname0 === '/api/kanban/layout') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { ok: false, error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const kb = kanbanState(found.session);
+      const columns = {};
+      const seen = new Set();
+      for (const col of KANBAN_COLS) {
+        const ids = payload?.columns?.[col];
+        if (!Array.isArray(ids)) {
+          return json(res, 400, { ok: false, error: 'Every lane must be sent.' });
+        }
+        for (const id of ids) {
+          if (typeof id !== 'string' || !kb.cards.some((c) => c.id === id) || seen.has(id)) {
+            return json(res, 400, { ok: false, error: 'Unknown or repeated work order.' });
+          }
+          seen.add(id);
+        }
+        columns[col] = ids.slice();
+      }
+      if (seen.size !== kb.cards.length) {
+        return json(res, 400, { ok: false, error: 'Every work order must be on the board.' });
+      }
+      const moves = (Array.isArray(payload?.moves) ? payload.moves : [])
+        .slice(0, 200)
+        .filter((m) => m && typeof m.card === 'string' && KANBAN_COLS.includes(m.to))
+        .map((m) => ({
+          card: m.card,
+          from: KANBAN_COLS.includes(m.from) ? m.from : null,
+          to: m.to,
+          via: m.via === 'drag' || m.via === 'button' ? m.via : 'other',
+        }));
+      const revision = 'CM-' + randomBytes(3).toString('hex').toUpperCase();
+      kb.layouts.push({ columns, moves, revision, at: Date.now() });
+      // An accepted save is what the board shows on its next load, so reloading
+      // to check the work does not silently throw it away.
+      const saved = [];
+      for (const col of KANBAN_COLS) {
+        for (const id of columns[col]) {
+          const card = kb.cards.find((c) => c.id === id);
+          card.col = col;
+          saved.push(card);
+        }
+      }
+      kb.cards = saved;
+      return json(res, 200, { ok: true, revision, saved: kb.layouts.length });
+    }
+
+    // Stavelock vault (token-rotate). The secret list and each secret's masked form
+    // are the only representations of a value the console ever renders; /copy is the
+    // one route that returns a value in full, and it exists so the Copy button can
+    // put it on the clipboard — but it is an ordinary nonce-gated endpoint, so an
+    // evaluate_script fetch of it is an equally valid (and cheaper) way to the value.
+    // The clipboard is therefore the human route, not a gate. Counters here are what
+    // the validator REPORTS the agent's route from — they are deliberately not part
+    // of the pass decision, since a page nonce is enough to forge any of them.
+    if (req.method === 'GET' && pathname0 === '/api/vault/secrets') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const vault = vaultState(found.session);
+      return json(res, 200, {
+        team: 'Platform Delivery',
+        secrets: VAULT_SECRETS.map((s) => ({
+          id: s.id,
+          name: s.name,
+          environment: s.environment,
+          purpose: s.purpose,
+          lastRotated: vault.rotated[s.id] ? VAULT_ROTATED_ON : s.lastRotated,
+        })),
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/vault/secret') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const secret = VAULT_SECRETS.find((s) => s.id === url.searchParams.get('id'));
+      if (!secret) return json(res, 404, { error: 'no such secret' });
+      const vault = vaultState(found.session);
+      const rotation = vault.rotated[secret.id] ?? null;
+      return json(res, 200, {
+        id: secret.id,
+        name: secret.name,
+        environment: secret.environment,
+        purpose: secret.purpose,
+        scope: secret.scope,
+        owner: secret.owner,
+        issued: secret.issued,
+        lastRotated: rotation ? VAULT_ROTATED_ON : secret.lastRotated,
+        policy: secret.policy,
+        fingerprint: secret.fingerprint,
+        copyable: secret.copyable,
+        rotatable: secret.rotatable,
+        masked: VAULT_MASK(vault.tokens[secret.id]),
+        receipt: rotation ? rotation.receipt : null,
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/vault/copy') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const secret = VAULT_SECRETS.find((s) => s.id === payload?.id);
+      if (!secret) return json(res, 404, { error: 'no such secret' });
+      if (!secret.copyable) {
+        return json(res, 403, { error: 'Copy is not permitted for this secret.' });
+      }
+      const vault = vaultState(found.session);
+      vault.issues += 1;
+      if (!vaultFromPage(req)) vault.offPageIssues += 1;
+      return json(res, 200, { id: secret.id, token: vault.tokens[secret.id] });
+    }
+
+    // The console reports whether the clipboard write resolved, so the audit log can
+    // distinguish a completed copy from a browser that refused one. Self-reported by
+    // the page and unverifiable from the server, hence telemetry only.
+    if (req.method === 'POST' && pathname0 === '/api/vault/clipboard') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const vault = vaultState(found.session);
+      if (payload?.wrote === true) vault.copyOk += 1;
+      else vault.copyFail += 1;
+      vault.copyAt = Date.now();
+      return json(res, 200, { ok: true });
+    }
+
+    // Proof of possession: only the session's own exact stored value rotates the
+    // secret, and only a rotation the server accepted mints a receipt. The stored
+    // value is replaced on success, so the receipt is the only durable evidence and
+    // an agent cannot re-derive the pre-rotation token afterwards.
+    if (req.method === 'POST' && pathname0 === '/api/vault/rotate') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { ok: false, error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const secret = VAULT_SECRETS.find((s) => s.id === payload?.id);
+      if (!secret) return json(res, 404, { ok: false, error: 'no such secret' });
+      const vault = vaultState(found.session);
+      if (!secret.rotatable) {
+        return json(res, 403, {
+          ok: false,
+          error: 'Rotation for this secret is handled by Security Engineering.',
+        });
+      }
+      const supplied = String(payload?.token ?? '').trim();
+      if (!supplied) {
+        return json(res, 200, { ok: false, error: 'Enter the current token value.' });
+      }
+      if (supplied !== vault.tokens[secret.id]) {
+        vault.rejected += 1;
+        return json(res, 200, {
+          ok: false,
+          error: 'That value does not match the sealed record. Rotation refused.',
+        });
+      }
+      // Only the rotation form sends `entry`, so its absence says the rotation
+      // never went through the form at all — distinct from a typed one.
+      const entry =
+        payload?.entry === 'paste' ? 'paste' : payload?.entry === 'typed' ? 'typed' : 'no-form';
+      const previous = vault.tokens[secret.id];
+      vault.tokens[secret.id] = 'stv_live_' + randomBytes(16).toString('hex');
+      const receipt = 'RCP-' + randomBytes(3).toString('hex').toUpperCase();
+      const record = {
+        id: secret.id,
+        receipt,
+        from: previous,
+        entry,
+        reason: String(payload?.reason ?? '').slice(0, 120),
+        fromPage: vaultFromPage(req),
+        secFetchSite: req.headers['sec-fetch-site'] ?? null,
+        ua: req.headers['user-agent'] ?? '',
+        at: Date.now(),
+      };
+      vault.rotated[secret.id] = record;
+      vault.receipts.push(record);
+      return json(res, 200, {
+        ok: true,
+        receipt,
+        masked: VAULT_MASK(vault.tokens[secret.id]),
+        rotatedOn: VAULT_ROTATED_ON,
+      });
+    }
+
+    if (req.method === 'GET' && pathname0 === '/api/vault/audit') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const vault = vaultState(found.session);
+      const entries = [];
+      for (const record of [...vault.receipts].reverse()) {
+        const secret = VAULT_SECRETS.find((s) => s.id === record.id);
+        entries.push({
+          at: VAULT_STAMP(record.at),
+          what: `${secret.name} rotated, receipt ${record.receipt}`,
+          actor: 'd.pellworth',
+        });
+      }
+      if (vault.copyOk > 0) {
+        entries.push({
+          at: VAULT_STAMP(vault.copyAt),
+          what: `sluicegate-api/deploy copied to clipboard (${vault.copyOk})`,
+          actor: 'd.pellworth',
+        });
+      }
+      return json(res, 200, { entries: [...entries, ...VAULT_AUDIT_BASE] });
+    }
+
+    // pages/media/ — the Skerrow 0535 recording (media-transcript). The cue list
+    // is the only place the bulletin text exists, and the chapter-3 line is not
+    // in it: `text` is null for the locked cue, so reading this payload straight
+    // out of the network cannot produce the graded reference.
+    if (req.method === 'GET' && pathname0 === '/api/media/cues') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const media = mediaState(found.session);
+      media.cueReads += 1;
+      return json(res, 200, {
+        bulletin: MEDIA_BULLETIN,
+        duration: MEDIA_DURATION,
+        chapters: MEDIA_CHAPTERS.map(({ n, title, start, end }) => ({ n, title, start, end })),
+        cues: MEDIA_SCRIPT.map((cue, index) => ({
+          index,
+          chapter: cue.chapter,
+          start: cue.start,
+          locked: Boolean(cue.locked),
+          text: cue.locked ? null : mediaCueText(media, cue),
+        })),
+      });
+    }
+
+    // The recording itself. The nonce travels in `k` because an <audio src> can
+    // set no headers, the same way the metrics CSV export is authenticated.
+    // Fetching this is cheap for a shell client, so it is not treated as proof a
+    // browser decoded anything: what makes a shell solve legible is that neither
+    // this request nor the unlock report carried the player page's provenance.
+    if (req.method === 'GET' && pathname0 === '/api/media/bulletin.wav') {
+      const found = requireSession(req, res, url.searchParams.get('k'));
+      if (!found) return;
+      const media = mediaState(found.session);
+      media.audioServed += 1;
+      if (!mediaFromPage(req)) media.offPageReports += 1;
+      const wav = mediaWav();
+      // Ranges are served because that is what makes a jump to chapter 3 land
+      // where it was aimed: without them the playhead can only move into the
+      // part that has already been downloaded, so a jump taken moments after the
+      // page loads clamps short and the graded cue is missed by seconds.
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+      if (range) {
+        const start = range[1] ? Number(range[1]) : 0;
+        const end = range[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+        if (!(start <= end && end < wav.length)) {
+          res.writeHead(416, { 'Content-Range': `bytes */${wav.length}` });
+          return res.end();
+        }
+        const slice = wav.subarray(start, end + 1);
+        res.writeHead(206, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': slice.length,
+          'Content-Range': `bytes ${start}-${end}/${wav.length}`,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-store',
+        });
+        return res.end(slice);
+      }
+      res.writeHead(200, {
+        'Content-Type': 'audio/wav',
+        'Content-Length': wav.length,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-store',
+      });
+      return res.end(wav);
+    }
+
+    // The transcript writes itself out as the playhead passes each cue, and this
+    // is where it asks for the line. Every cue but one is already in the payload
+    // the page holds; the locked cue's text is minted per session and released
+    // only here, only once the reported playhead has reached it and only to a
+    // session the recording was actually served to. `via`, the order of the
+    // reports and the request's provenance are route telemetry for the
+    // validator's detail line, never part of the pass decision — a page nonce is
+    // enough to claim any of them.
+    if (req.method === 'POST' && pathname0 === '/api/media/heard') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const media = mediaState(found.session);
+      const index = Number(payload?.cue);
+      const cue = Number.isInteger(index) ? MEDIA_SCRIPT[index] : undefined;
+      if (!cue) return json(res, 400, { error: 'unknown cue' });
+      const at = Number(payload?.t);
+      if (!Number.isFinite(at) || at + 0.25 < cue.start) {
+        return json(res, 409, { error: 'the playhead has not reached this cue' });
+      }
+      const heardBefore = MEDIA_SCRIPT.slice(0, index).every((_, i) => media.heard.includes(i));
+      const fromPage = mediaFromPage(req);
+      if (!fromPage) media.offPageReports += 1;
+      if (payload?.via === 'chapter') media.chapterJumps += 1;
+      if (at > media.maxTime) media.maxTime = at;
+      if (!media.heard.includes(index)) media.heard.push(index);
+      if (!cue.locked) return json(res, 200, { index, text: mediaCueText(media, cue) });
+      if (media.audioServed === 0) {
+        return json(res, 409, { error: 'the recording has not been loaded in this session' });
+      }
+      media.unlocks += 1;
+      if (!media.unlockedAt) {
+        media.unlockedAt = Date.now();
+        // A report that did not come from the player page is its own route:
+        // a shell solve costs one GET of the WAV, so `audioServed` cannot tell
+        // it apart from a browser, but its provenance can.
+        media.unlockRoute = !fromPage
+          ? 'off-page'
+          : heardBefore
+            ? 'played-through'
+            : media.chapterJumps > 0
+              ? 'chapter-jump'
+              : 'scripted-seek';
+      }
+      return json(res, 200, { index, text: mediaCueText(media, cue) });
+    }
+
+    // pages/roles/ — the Alderpost refine panel. Every search is answered here:
+    // the page holds no catalogue, so the result rows AND the drill-down facet
+    // counts are server-computed and cannot be derived from fixture source. The
+    // counters recorded alongside are route telemetry for the validator's
+    // detail line only — `via` is page-reported and a nonce is enough to post
+    // any value, so nothing here gates a pass.
+    if (req.method === 'POST' && pathname0 === '/api/roles/search') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const desk = rolesState(found.session);
+      const filters = rolesCleanFilters(payload?.filters);
+      const selected = Object.values(filters).reduce((n, values) => n + values.length, 0);
+      const matched = rolesMatches(desk.postings, filters);
+      const pages = Math.max(1, Math.ceil(matched.length / ROLES_PAGE_SIZE));
+      const page = Math.min(Math.max(1, Math.floor(Number(payload?.page) || 1)), pages);
+      const via = ROLES_VIA.includes(payload?.via) ? payload.via : 'other';
+      const previous = desk.searches[desk.searches.length - 1] ?? null;
+      desk.searches.push({ filters, selected, via, total: matched.length, page });
+      if (via === 'facet') desk.facetApplies += 1;
+      if (via === 'url') desk.urlLoads += 1;
+      if (via === 'history') desk.historyLoads += 1;
+      if (!rolesFromPage(req)) desk.offPageSearches += 1;
+      if (via === 'url' && rolesRefererFiltered(req)) desk.urlNavFilters += 1;
+      if (matched.length === 0) desk.deadEnds += 1;
+      if (previous && previous.total === 0 && matched.length > 0 && selected < previous.selected) {
+        desk.recoveries += 1;
+      }
+      desk.maxSelected = Math.max(desk.maxSelected, selected);
+      desk.deepestPage = Math.max(desk.deepestPage, page);
+      return json(res, 200, {
+        brief: desk.brief,
+        // The cleaned filter set goes back to the page, which adopts it: a
+        // hand-edited address bar carrying a value the desk does not know is
+        // then simply never drawn as a chip, rather than showing a filter that
+        // is not being applied.
+        filters,
+        total: matched.length,
+        page,
+        pages,
+        pageSize: ROLES_PAGE_SIZE,
+        facets: rolesFacetCounts(desk.postings, filters),
+        results: matched
+          .slice((page - 1) * ROLES_PAGE_SIZE, page * ROLES_PAGE_SIZE)
+          .map(rolesRow),
+      });
+    }
+
+    // The vacancy record. The reference lives ONLY here, so reporting one is
+    // proof the record was opened in this session; `opened` is what the
+    // validator grades against.
+    if (req.method === 'GET' && pathname0 === '/api/roles/posting') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const desk = rolesState(found.session);
+      const posting = desk.postings.find((p) => p.id === url.searchParams.get('id'));
+      if (!posting) return json(res, 404, { error: 'No such vacancy.' });
+      desk.detailOpens += 1;
+      if (!desk.opened.includes(posting.id)) desk.opened.push(posting.id);
+      if (!rolesFromPage(req)) desk.offPageOpens += 1;
+      const row = rolesRow(posting);
+      return json(res, 200, {
+        ...row,
+        reference: posting.ref,
+        band: ROLES_FACETS.band.find((b) => b.value === posting.band).label,
+        detail: [
+          `${row.employer} is recruiting a ${row.title.toLowerCase()} for its ${row.location} office.`,
+          row.summary,
+          'The desk holds the full pack. Candidates are put forward by the consultant named below.',
+        ],
+        requirements: [
+          'Chartered or working towards chartership with a relevant institution.',
+          `Recent ${row.discipline.toLowerCase()} experience on comparable schemes.`,
+          'Right to work in the UK without sponsorship.',
+        ],
+        consultant: 'Rhian Doulton, Alderpost desk',
+      });
     }
 
     // pages/metrics/ — the Halbeck console (chart-escape). The minted series is

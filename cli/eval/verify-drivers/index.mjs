@@ -26,6 +26,10 @@ import { DRIVERS as calc } from './calc.mjs';
 import { DRIVERS as metrics } from './metrics.mjs';
 import { DRIVERS as consoleLog } from './console.mjs';
 import { DRIVERS as intl } from './intl.mjs';
+import { DRIVERS as roles } from './roles.mjs';
+import { DRIVERS as kanban } from './kanban.mjs';
+import { DRIVERS as vault } from './vault.mjs';
+import { DRIVERS as media } from './media.mjs';
 
 const modules = {
   probes,
@@ -49,7 +53,11 @@ const modules = {
   calc,
   consoleLog,
   intl,
+  kanban,
   metrics,
+  roles,
+  vault,
+  media,
 };
 
 export const DRIVERS = {};

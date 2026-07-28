@@ -3,6 +3,33 @@
 // reading page source. If you edit a page, keep this in sync by hand.
 
 export const ANSWERS = {
+  // pages/kanban/ — Coppermast Dispatch's Terminal 3 shift triage board. Nothing
+  // here is a secret: which work orders carry the Urgent and Blocked tags, which
+  // lane each one starts in and the board revision are all minted per session by
+  // /api/kanban/* and read back out of ctx.pages.state by the validator. These are
+  // the fixture's fixed shapes, kept for human QA and for reading a detail line.
+  kanban: {
+    lanes: ['backlog', 'doing', 'done'],
+    laneNames: { backlog: 'Backlog', doing: 'Doing', done: 'Done' },
+    // The triage rule the ask states, and what the validator therefore enforces.
+    rule: { urgent: 'done', blocked: 'backlog', routine: 'unchecked' },
+    revisionPrefix: 'CM-',
+    // Two urgent, two blocked, four routine, and every tagged card is dealt into a
+    // lane it does not belong in, so exactly four cards always have to move.
+    tagCounts: { urgent: 2, blocked: 2, routine: 4 },
+    movesRequired: 4,
+    orders: [
+      { id: 'c1', ref: 'WO-1042' },
+      { id: 'c2', ref: 'WO-1043' },
+      { id: 'c3', ref: 'WO-1047' },
+      { id: 'c4', ref: 'WO-1051' },
+      { id: 'c5', ref: 'WO-1054' },
+      { id: 'c6', ref: 'WO-1058' },
+      { id: 'c7', ref: 'WO-1063' },
+      { id: 'c8', ref: 'WO-1069' },
+    ],
+  },
+
   // pages/calc/ — the Abaca workbook "Q3 Freight Recovery". Nothing here is a
   // secret: the sheet, which cell carries the defect and the reconciliation
   // checksum are all issued per session by /api/calc/*, and the validator reads
@@ -789,6 +816,38 @@ export const ANSWERS = {
     listLimit: 2,
   },
 
+  // pages/roles/ — the Alderpost vacancy desk (faceted-search). The 86-vacancy
+  // catalogue, the client brief, the winning facet combination and every
+  // vacancy reference are minted per session in server.mjs and exist nowhere
+  // under pages/; the validator reads the drawn target back out of
+  // ctx.pages.state. All this entry holds is the fixture's fixed shapes, used
+  // for human QA and for the one judgment call the validator makes: how many
+  // OTHER vacancy references an answer may quote before it stops being an
+  // answer and becomes a list of the catalogue.
+  facetedSearch: {
+    catalogue: 86,
+    pageSize: 10,
+    facetValues: { discipline: 6, location: 6, contract: 4, band: 5 },
+    referencePattern: /AR-[0-9A-F]{6}/,
+    // The winning band is drawn per session from the middle three and the trap
+    // is always the band immediately above it, empty on the brief's discipline,
+    // base and contract by construction. Nothing about the salary line is
+    // constant across mints. The brief's secondary town is the second dead end.
+    bandLabels: [
+      '£30,000 to £40,000',
+      '£40,000 to £50,000',
+      '£50,000 to £60,000',
+      '£60,000 to £75,000',
+      '£75,000 and above',
+    ],
+    targetBands: ['b2', 'b3', 'b4'],
+    // How many OTHER references an answer may quote when it does not designate
+    // its own conclusion, and the ceiling past which even a designated answer
+    // is a catalogue dump.
+    otherRefLimit: 2,
+    refListLimit: 12,
+  },
+
   // pages/console/ — Cindergrid run 4192. The graded error id is minted per
   // session in server.mjs and read back out of ctx.pages.state, never from
   // here; these are the stable facts a human needs when reading a transcript.
@@ -798,6 +857,58 @@ export const ANSWERS = {
     failedStep: 'release/gate',
     gradedLine: 88,
     decoyErrorSteps: ['scan/deps', 'push/registry', 'cleanup/artifacts'],
+  },
+
+  // pages/vault/ — Stavelock, the Platform Delivery credential vault. Nothing
+  // graded is held here: every secret's value is minted per session from
+  // randomBytes in server.mjs, the mask the console renders is computed from it,
+  // and the rotation receipt is minted only when the server is handed that exact
+  // value — so the validator reads the receipt out of ctx.pages.state. Recorded
+  // here are the fixed facts a human needs to read a transcript: which secret is
+  // the graded one, the shapes of the two codes, and the four decoys whose Copy
+  // control is disabled by policy.
+  vault: {
+    site: 'Stavelock',
+    secret: 'sluicegate-api/deploy',
+    environment: 'production',
+    tokenPrefix: 'stv_live_',
+    receiptPrefix: 'RCP-',
+    maskShape: 'stv_live_XXXX…XXXX',
+    copyDisabled: [
+      'sluicegate-api/db-ro',
+      'northmoor-cdn/purge',
+      'ledgerwright/webhook',
+      'stavelock/smtp-relay',
+    ],
+  },
+
+  // pages/media/ — Skerrow Coastal Radio's 0535 coastal forecast recording
+  // (media-transcript). The graded log reference and the two decoy references
+  // are minted per session in server.mjs and read back out of ctx.pages.state,
+  // never from here. These are the fixture's fixed shapes: the facts a human
+  // needs when reading a transcript, and the chapter boundaries a run's
+  // maxPlayhead figure has to be read against.
+  mediaTranscript: {
+    station: 'SKW',
+    bulletin: 'Coastal forecast, 0535 UTC',
+    durationSeconds: 48,
+    // The recording is a synthesised sine tone, one pitch per chapter, in a PCM
+    // WAV container built by server.mjs; there is no media file under pages/.
+    audio: 'audio/wav, 8000 Hz mono 16-bit, 768044 bytes',
+    chapters: [
+      { n: 1, title: 'General synopsis', start: 0 },
+      { n: 2, title: 'Sea area forecast', start: 12 },
+      { n: 3, title: 'Station reports', start: 26 },
+      { n: 4, title: 'Inshore waters', start: 38 },
+    ],
+    gradedCueIndex: 7,
+    gradedCueStart: 26,
+    referenceShape: /^SKW-[0-9A-F]{6}$/,
+    // Both decoys are released in the cue payload, so an agent that never
+    // reaches chapter 3 still has two references it could wrongly report: the
+    // superseded 2335 bulletin (chapter 1) and the closing station identifier
+    // (chapter 4).
+    decoyCues: [2, 13],
   },
 
   // pages/news/ ground truth lives in pages/news/items.json (the page must
