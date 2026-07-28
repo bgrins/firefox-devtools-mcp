@@ -267,6 +267,62 @@
 > `pr-review`'s four defect variants are not equally hard while the draw is random per
 > session — compare variants before reading its token delta.
 >
+> **Wave 11 (2026-07-28): five more new-genre sites, and A32 is now corroborated.**
+> T114 (`formula-repair`, a spreadsheet), T115 (`chart-escape`, an analytics
+> dashboard), T116 (`live-auction`), T117 (`canvas-log`, a web terminal), T118
+> (`locale-notice`, a partially translated advisory site). Suite is now 70 web tasks
+> across 34 sites; golden paths 70/70 green twice, integrated clean on the first pass.
+> Acceptance 30/30, zero failures, every cell stable (max spread 2.0x).
+>
+> Output-token medians, us vs playwright-mcp:
+> `canvas-log` 604 vs 910 (**-34%**), `formula-repair` 2,013 vs 2,481 (**-19%**),
+> `locale-notice` 1,538 vs 1,463 (+5%), `live-auction` 4,130 vs 2,759 (**+50%**),
+> `chart-escape` 1,365 vs 821 (**+66%**). Totals 29,578 vs 26,567 (+11% for us).
+>
+> THE RESULT THIS WAVE WAS BUILT FOR: `live-auction` was commissioned partly to
+> re-probe A32 (no wait primitive) in a second genre. It did. Wave 10's
+> `support-chat` was +41% output tokens; `live-auction` is +50%. Two unrelated
+> genres, same direction, same cause — waiting means re-snapshotting the whole page.
+> **A32 is a property of our surface, not of one fixture**, and it is the largest
+> repeatable loss in the suite. The fix is purely additive (a new tool).
+>
+> Read together with wave 10, the picture is now consistent enough to state plainly:
+> - We LOSE on wait-for-state (`support-chat` +41%, `live-auction` +50%) and where
+>   reading a table needs non-default options (`chart-escape` +66% — playwright gets
+>   the table in one default call; we need two options together).
+> - We WIN where playwright's verbose snapshot is pure overhead and we can skip
+>   straight to the answer (`pr-review` -66%, `canvas-log` -34%, `formula-repair`
+>   -19%, `room-booking` -38%).
+> `formula-repair` is the sharpest illustration: our snapshot shows 0 of 70 grid
+> cells, so we solve it BLIND via the formula bar — and that is 19% CHEAPER than
+> playwright carrying all 70 cells in context. Being unable to see the grid cost us
+> nothing on tokens here. What it costs is robustness, the same caveat as `pr-review`.
+>
+> New findings (findings.md): **A33** the 27-char cut slices at a UTF-16 CODE UNIT
+> index — it splits surrogate pairs and emits a LONE HIGH SURROGATE into the MCP
+> payload (U+FFFD on the wire) on an ordinary Japanese sentence, and silently eats
+> combining marks *inside* the surviving text (Arabic shadda/tanween drop, "é"
+> becomes "e", no ellipsis to mark it). Truncation is language-dependent: 32% of
+> Arabic text nodes vs 18% of Japanese, so the same sentence is findable in one
+> language and invisible in another. **A33b** neither surface carries `lang`/`dir`.
+> **A34** `includeAll` returns 10 of 18 table rows with NO marker, and because the
+> series is per-session an agent computes a confidently WRONG answer in ~30% of
+> mints — the first time a snapshot gap has been measured as wrong answers rather
+> than extra tokens. **A35** the `<table>` grid is invisible (0/70 cells) but an
+> `<input>`'s `value` property IS read, which is why the blind solve works at all.
+> **A36** neither surface reads canvas text and we do not even emit the `<canvas>`
+> element, so web terminals need an escape hatch; `opacity: 0` is the one divergence
+> (we drop, playwright keeps).
+>
+> T117 was explicitly authorised to conclude "do not ship". Its verify-first spike
+> instead established that a server-side search box and a cookie-gated raw log are
+> both reachable by both surfaces, so it shipped — and `route=search` in the real
+> runs confirms agents take that path rather than pixel-guessing.
+> T115 is the suite's first task that REWARDS resourcefulness rather than probing a
+> tool gap: the value is unreadable from the canvas and the ask never mentions the
+> table view. Every one of the six runs found it (`route=table`), which is a useful
+> baseline — if a future model regresses on that, this task will show it.
+>
 > **Golden-path suite (2026-07-27).** `node eval/verify.mjs` solves all 51 web tasks
 > deterministically through our own MCP and asserts each validator accepts a correct
 > answer and rejects a plausible wrong one: 77 seconds, no API spend, 51/51 green

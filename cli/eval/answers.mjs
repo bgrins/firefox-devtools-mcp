@@ -3,6 +3,35 @@
 // reading page source. If you edit a page, keep this in sync by hand.
 
 export const ANSWERS = {
+  // pages/calc/ — the Abaca workbook "Q3 Freight Recovery". Nothing here is a
+  // secret: the sheet, which cell carries the defect and the reconciliation
+  // checksum are all issued per session by /api/calc/*, and the validator reads
+  // them out of ctx.pages.state. These are the fixture's fixed shapes, used for
+  // diagnostics (which flagged-but-correct cell a run wrongly blamed) and for
+  // human QA of the spec.
+  calc: {
+    workbook: 'Q3 Freight Recovery',
+    owner: 'Marchmont Haulage',
+    // Every defect the server can draw, and the repair the task is asking for.
+    // Grading is semantic, so any formula producing the same totals also passes.
+    defects: [
+      { ref: 'E14', broken: '=SUM(E2:E12)', canonicalFix: '=SUM(E2:E13)' },
+      { ref: 'E14', broken: '=SUM(E3:E13)', canonicalFix: '=SUM(E2:E13)' },
+      { ref: 'E2', broken: '=SUM(B2:C2)', canonicalFix: '=SUM(B2:D2)' },
+      { ref: 'E5', broken: '=SUM(C5:D5)', canonicalFix: '=SUM(B5:D5)' },
+      { ref: 'E6', broken: '=SUM(B6:C6)', canonicalFix: '=SUM(B6:D6)' },
+      { ref: 'E8', broken: '=B8+C8', canonicalFix: '=SUM(B8:D8)' },
+      { ref: 'E10', broken: '=SUM(C10:D10)', canonicalFix: '=SUM(B10:D10)' },
+      { ref: 'E10', broken: '=B10+D10', canonicalFix: '=SUM(B10:D10)' },
+      { ref: 'E11', broken: '=SUM(C11:D11)', canonicalFix: '=SUM(B11:D11)' },
+      { ref: 'E13', broken: '=SUM(B13:C13)', canonicalFix: '=SUM(B13:D13)' },
+    ],
+    // Cells the formula audit also flags because their formula is unlike its
+    // neighbours', all seven of which are arithmetically correct.
+    auditDecoys: ['C14', 'D14', 'E3', 'E4', 'E7', 'E9', 'E12'],
+    checksumFormat: 'RC-<6 uppercase hex>',
+  },
+
   // pages/basic/*.html — smoke-test pages.
   basic: {
     title: 'Zephyr Quartz 8412',
@@ -229,6 +258,50 @@ export const ANSWERS = {
     casePrefix: 'SR-',
     casePattern: /^SR-[0-9A-F]{6}$/,
     modelPattern: /^GX-\d{4}[A-Z]$/,
+  },
+
+  // pages/auction/ — Marlstone Salerooms sale 1174, lot 418. The opening bid,
+  // the room's limit and the paddle code are drawn per session from randomBytes
+  // in server.mjs, so nothing here and nothing under pages/ fixes the hammer
+  // price: the validator reads it back out of ctx.pages.state. What lives here
+  // is the published rule set an agent has to apply — the increment, the 22%
+  // buyer's premium from conditions.html, and the all-in limit the ask states.
+  auction: {
+    sale: 1174,
+    lot: 418,
+    increment: 100,
+    premium: 0.22,
+    limitTotal: 2200,
+    // Highest hammer price whose premium-inclusive total is inside the limit,
+    // rounded down onto the 100 ladder: 1800 * 1.22 = 2196, where the next rung
+    // up is 1900 * 1.22 = 2318 and over. The room's ceiling reaches 1800 on its
+    // top draw, so the limit really can be the binding constraint and the
+    // correct answer there is to let the lot go.
+    maxHammer: 1800,
+    paddlePattern: /^MS-[0-9A-F]{6}$/,
+  },
+
+  // pages/intl/ — Qandara Travel Advisory Authority, published as three editions
+  // (English, Arabic, Japanese) that are updated independently. The supplementary
+  // notices live only in server.mjs and only the Arabic and Japanese editions ever
+  // carried them, so the English edition is genuinely incomplete rather than
+  // merely harder to read. Each reference is a per-session randomBytes value on
+  // session.intl, which is what the validator reads out of ctx.pages.state; only
+  // the shapes and the human-readable facts are recorded here, for QA.
+  localeNotice: {
+    dest: 'port-vasiri',
+    publishedIn: ['ar', 'ja'],
+    referencePattern: /^QTA-2026-[0-9A-F]{4}$/,
+    restriction:
+      'north quay closed to passengers for dredging until 14 August 2026; arrivals by ' +
+      'sea need an entry permit from the harbour office at least 72 hours before ' +
+      'arrival (arrivals by air exempt); Port Vasiri to Ashkar Coast ferry suspended',
+    issued: '24 July 2026',
+    standingLevel: 'Level 2 — Exercise increased caution (unchanged by the notice)',
+    // A second per-session reference, on the notice for a different destination, so
+    // an agent that switches edition but reads the wrong destination is wrong for a
+    // realistic reason rather than by guessing.
+    decoyDest: 'ashkar-coast',
   },
 
   // pages/floorplan/ — Ostmark House level 04 space plan. Room codes are drawn
@@ -674,6 +747,57 @@ export const ANSWERS = {
       },
     },
     files: ['src/tariff/cache.js', 'src/tariff/window.js', 'src/tariff/quote.js'],
+  },
+
+  // pages/metrics/ — the Halbeck console's Active seats series (chart-escape).
+  // The eighteen monthly figures are minted per session in server.mjs from
+  // randomBytes and released only through the gated series/CSV reads, so the
+  // graded month and figure exist nowhere under pages/ and move between runs;
+  // the validator reads the drawn target back out of ctx.pages.state. All this
+  // entry holds is the month-name spellings a report might use, so "March 2026",
+  // "Mar 2026", "2026-03", "03/2026" and "Mar'26" are all accepted, and the
+  // phrase sets that decide whether a clause COMMITS to a month, files it as an
+  // also-ran, or has already moved on to what the answer is not.
+  chartEscape: {
+    months: [
+      ['Jan', 'jan(?:uary)?'],
+      ['Feb', 'feb(?:ruary)?'],
+      ['Mar', 'mar(?:ch)?'],
+      ['Apr', 'apr(?:il)?'],
+      ['May', 'may'],
+      ['Jun', 'jun(?:e)?'],
+      ['Jul', 'jul(?:y)?'],
+      ['Aug', 'aug(?:ust)?'],
+      ['Sep', 'sep(?:t|tember)?'],
+      ['Oct', 'oct(?:ober)?'],
+      ['Nov', 'nov(?:ember)?'],
+      ['Dec', 'dec(?:ember)?'],
+    ],
+    // A clause that asserts a month as THE answer.
+    claim:
+      /\b(?:steepest|sharpest|deepest|largest|biggest|greatest|worst)\b|\b(?:fell|fall|dropped|drop|declined|decline|down)\s+(?:the\s+)?(?:furthest|farthest|most)\b|\bmy\s+answer\b|\banswer\s+is\b|\banswer\s*[:=]|\bi\s+(?:report|pick|chose|choose|conclude|say)\b/i,
+    // A clause that files a month as an also-ran rather than the answer.
+    demote:
+      /\b(?:second|2nd|third|3rd|runner[-\s]?up|next|also|another|other|behind|almost|nearly|close|closely|followed|only\s+just|not\s+the|candidates?|shortlist)\b/i,
+    // Everything after one of these is what the clause is ruling OUT, so a month
+    // quoted there is not the clause's assertion: "Apr 2026 (31,192), not Aug
+    // 2025 (30,551)" commits to April.
+    aside: /\b(?:not|rather than|instead of|as opposed to|whereas|versus|vs\.?)\b/i,
+    // Quoting this many series rows that are neither the answer nor the month
+    // before it turns a report into a list of the table, and a list has to say
+    // in so many words which row it means.
+    listLimit: 2,
+  },
+
+  // pages/console/ — Cindergrid run 4192. The graded error id is minted per
+  // session in server.mjs and read back out of ctx.pages.state, never from
+  // here; these are the stable facts a human needs when reading a transcript.
+  consoleLog: {
+    run: 4192,
+    totalLines: 161,
+    failedStep: 'release/gate',
+    gradedLine: 88,
+    decoyErrorSteps: ['scan/deps', 'push/registry', 'cleanup/artifacts'],
   },
 
   // pages/news/ ground truth lives in pages/news/items.json (the page must

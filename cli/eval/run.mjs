@@ -3333,6 +3333,498 @@ async function webTasks(base) {
         return { pass: true, detail };
       },
     },
+    {
+      id: 'formula-repair',
+      ask:
+        `Open ${base}/calc/ — the Abaca workbook holding Marchmont Haulage's Q3 ` +
+        `freight recovery. The workbook's quarter total does not agree with the ` +
+        `freight ledger control total on the reconciliation panel. Exactly one cell ` +
+        `has a wrong formula. Find it, correct the formula so the whole sheet ` +
+        `reconciles, and report the cell reference you corrected and the ` +
+        `reconciliation checksum the workbook then issues.`,
+      validate: (rawText, ctx) => {
+        // Markdown emphasis and typographic dashes must not break the checksum or
+        // cell-reference regexes ("**E14**", "RC‑828D95").
+        const text = rawText
+          .replace(/[*_~`]+/g, '')
+          .replace(/[‐-―−]/g, '-');
+        const sheets = [...ctx.pages.state.sessions.values()].map((s) => s.calc).filter(Boolean);
+        // The workbook prints the checksum as RC-XXXXXX; accept the bare hex, a
+        // space instead of the hyphen, and any letter case, but never a prefix of
+        // it and never a longer token that merely contains it.
+        const hasCode = (code) =>
+          new RegExp(`(^|[^0-9A-Za-z])(rc[\\s-]?)?${code.slice(3)}(?![0-9A-Za-z])`, 'i').test(text);
+        const hasRef = (ref) =>
+          new RegExp(
+            `(^|[^0-9A-Za-z$])\\$?${ref[0]}\\$?${ref.slice(1)}(?![0-9A-Za-z])`,
+            'i'
+          ).test(text);
+        // Every session gets its own sheet, its own defect and its own checksum,
+        // so grade the reconciled session this ANSWER is about — the one whose
+        // checksum it quotes and whose defect cell it actually repaired —
+        // whatever order the sessions were created in. Falling back to the most
+        // recently reconciled sheet (then to whichever session did the most work)
+        // keeps the detail line useful when nothing matches.
+        const reconciled = sheets.filter((c) => c.reconciled);
+        const owns = (c) =>
+          !!c.checksum &&
+          hasCode(c.checksum) &&
+          c.edits.some((e) => e.accepted && e.ref === c.culprit.ref);
+        const session =
+          reconciled.find(owns) ??
+          reconciled.slice().sort((a, b) => (b.reconciledAt ?? 0) - (a.reconciledAt ?? 0))[0] ??
+          sheets.slice().sort((a, b) => b.edits.length - a.edits.length)[0] ??
+          null;
+        const culprit = session?.culprit?.ref ?? null;
+        const checksum = session?.checksum ?? null;
+        const edits = session?.edits ?? [];
+        const accepted = edits.filter((e) => e.accepted);
+        const fixedCulprit = accepted.some((e) => e.ref === culprit);
+        const codeOk = !!checksum && hasCode(checksum);
+        const refOk = !!culprit && hasRef(culprit);
+        // The defect cell's formula has to have been OPENED before the commit
+        // that repaired it. Selecting a cell in the UI fetches it, and so does
+        // the ribbon's Show formulas view, so an honest solve on either surface
+        // gets this for free; a blind sweep that rewrites every flagged cell
+        // without ever reading one does not.
+        const reads = session?.formulaReads ?? [];
+        const inspected = accepted.some(
+          (e) => e.ref === culprit && reads.some((r) => r.ref === culprit && r.at <= e.at)
+        );
+        // Reported, never gated: whether the run blamed one of the seven correct
+        // but oddly-spelled cells the formula audit also flags, how many formulas
+        // it opened, and whether it took the one bulk Show formulas read.
+        const namedDecoy = ANSWERS.calc.auditDecoys.filter((ref) => hasRef(ref));
+        return {
+          pass: session?.reconciled === true && fixedCulprit && inspected && codeOk && refOk,
+          detail:
+            `sessions=${sheets.length} culprit=${culprit ?? 'none'} ` +
+            `reconciled=${session?.reconciled === true} fixedCulprit=${fixedCulprit} ` +
+            `inspected=${inspected} refOk=${refOk} codeOk=${codeOk} ` +
+            `checksum=${checksum ?? 'none'} ` +
+            `edits=${accepted.length}/${edits.length} ` +
+            `formulaReads=${reads.length} bulk=${reads.filter((r) => r.bulk).length} ` +
+            `sheetFetches=${session?.sheetFetches ?? 0} ` +
+            `namedDecoys=[${namedDecoy.join(',')}]`,
+        };
+      },
+    },
+    {
+      id: 'chart-escape',
+      ask:
+        `Open ${base}/metrics/ — the Halbeck analytics console for the Northgate ` +
+        `Media workspace, on its Seat usage view. In the Active seats series, work ` +
+        `out which month fell furthest below the month before it. Report that month ` +
+        `and its exact Active seats figure.`,
+      validate: (rawText, ctx) => {
+        const { months, claim, demote, aside, listLimit } = ANSWERS.chartEscape;
+        // "did **not** persist" taught us to strip emphasis before any prose
+        // regex. The second pass respaces a CSV cell boundary ("Apr 2026,31192")
+        // but leaves a thousands separator alone ("136,133"), because pasting the
+        // winning row straight out of the export is a legitimate answer and the
+        // figure lookbehind below would otherwise reject it on punctuation.
+        const text = rawText.replace(/[*_~`]+/g, '').replace(/,(?=\d)(?!\d{3}(?!\d))/g, ', ');
+        // Optional thousands separators, and a lookbehind so 136,133 never
+        // satisfies 36,133 and 36,1330 never satisfies 36,133.
+        const figureRe = (n) =>
+          new RegExp(
+            `(?<![\\d.,])${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '[,.\\s]?')}(?![\\d])`
+          );
+        // Sentence split that survives a dotted thousands separator: "31.192"
+        // stays whole, "31,192. The next" splits.
+        const clauses = text.split(/[!?;\n]+|\.(?!\d)|(?<!\d)\./).filter((c) => /\S/.test(c));
+        // What a clause asserts is what it says before it turns to what it is
+        // ruling out.
+        const head = (clause) => clause.split(aside)[0];
+        // Twelve of the eighteen labels share a month name with a second label in
+        // the window; the other six (Jul-Dec of the first year) do not, and for
+        // those a bare "August" is unambiguous.
+        const soleFor = (points) => {
+          const seen = new Map();
+          for (const p of points) {
+            const abbr = p.label.split(' ')[0];
+            seen.set(abbr, (seen.get(abbr) ?? 0) + 1);
+          }
+          return (abbr) => seen.get(abbr) === 1;
+        };
+        // "Mar 2026", "March 2026", "2026-03", "03/2026" and "Mar'26" (the chart's
+        // own tick spelling) all name the same month.
+        const namesMonth = (label, scope, sole) => {
+          const [abbr, year] = label.split(' ');
+          const index = months.findIndex(([key]) => key === abbr);
+          const name = months[index][1];
+          const num = index + 1;
+          const dated = new RegExp(
+            `\\b(?:${name})\\s*['‘’-]\\s*${year.slice(2)}\\b` +
+              `|\\b${year}[-/]0?${num}\\b|\\b0?${num}[-/]${year}\\b`,
+            'i'
+          );
+          if (dated.test(scope)) return true;
+          if (!new RegExp(`\\b${name}\\b`, 'i').test(scope)) return false;
+          return sole(abbr) || new RegExp(`\\b${year}\\b`).test(scope);
+        };
+        const routeOf = (s) => {
+          const m = s.metrics;
+          if (m.tableViews > 0 && m.csvReads > 0) return 'table+csv';
+          if (m.tableViews > 0) return 'table';
+          if (m.csvReads > 0) return 'csv';
+          if (m.directReads > 0) return 'series-json';
+          return 'canvas-only';
+        };
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.metrics);
+        const describes = (s) =>
+          figureRe(s.metrics.target.value).test(text) &&
+          namesMonth(s.metrics.target.label, text, soleFor(s.metrics.points));
+        const reached = (s) =>
+          s.metrics.tableViews > 0 || s.metrics.csvReads > 0 || s.metrics.directReads > 0;
+        // Every session mints its OWN series, so a curl probe and the browser run
+        // can be graded against different ground truths. Grade the session the
+        // report is actually about, then the one that reached past the canvas,
+        // then the newest.
+        const graded =
+          sessions.find(describes) ?? sessions.filter(reached).at(-1) ?? sessions.at(-1) ?? null;
+        const m = graded?.metrics ?? null;
+        const target = m?.target ?? null;
+        const runnerUp = m?.runnerUp ?? null;
+        const sole = m ? soleFor(m.points) : () => false;
+        const figureOk = !!target && figureRe(target.value).test(text);
+        const monthOk = !!target && namesMonth(target.label, text, sole);
+        const rowsIn = (scope) =>
+          m
+            ? m.points
+                .map((p, i) =>
+                  namesMonth(p.label, scope, sole) && figureRe(p.value).test(scope) ? i : -1
+                )
+                .filter((i) => i >= 0)
+            : [];
+        // Which series rows the answer quotes — a month named alongside its own
+        // figure — and which of those are neither the answer nor the month before
+        // it, which the answer is entitled to quote as the fall it came off.
+        const quoted = clauses.map((clause) => rowsIn(clause));
+        const ownRows = target ? [target.index, target.index - 1] : [];
+        const sideRows = [...new Set(quoted.flat())].filter((i) => !ownRows.includes(i));
+        const listed = sideRows.length >= listLimit;
+        const echoed = m ? m.points.filter((p) => figureRe(p.value).test(text)).length : 0;
+        const namedMonths = m ? m.points.filter((p) => namesMonth(p.label, text, sole)).length : 0;
+        // The two deepest falls are a pixel apart on purpose, so the answer a
+        // coin-flip agent produces lists both and picks neither. A pass has to
+        // COMMIT: a clause that names the target month, quotes its figure, does
+        // not file it as an also-ran and does not assert a rival month's figure
+        // beside it. The month before the target is exempt, since "down 3,511 on
+        // Mar 2026 (34,703)" is how the fall gets described.
+        const commits = (clause) =>
+          namesMonth(target.label, clause, sole) &&
+          figureRe(target.value).test(clause) &&
+          !demote.test(clause) &&
+          !rowsIn(head(clause)).some((i) => !ownRows.includes(i)) &&
+          (!listed || claim.test(clause));
+        // A clause that names the target as the answer in so many words commits
+        // too, as long as the figure is quoted against that month somewhere else
+        // in the report — showing the working and then picking is an answer.
+        const picks = (clause) =>
+          claim.test(clause) &&
+          !demote.test(clause) &&
+          !listed &&
+          namesMonth(target.label, clause, sole) &&
+          !m.points.some(
+            (p, i) => i !== target.index && namesMonth(p.label, head(clause), sole)
+          ) &&
+          quoted.flat().includes(target.index);
+        // When the answer names one month and one month only, the commitment is
+        // the whole answer and need not land in a single clause.
+        const lone =
+          namedMonths === 1 &&
+          monthOk &&
+          figureOk &&
+          !clauses.some((c) => demote.test(c) && figureRe(target.value).test(c));
+        const committed = !!target && (lone || clauses.some((c) => commits(c) || picks(c)));
+        // ...and a commitment elsewhere does not rescue an answer that also
+        // asserts a different month as the steepest.
+        const contradicted =
+          !!target &&
+          clauses.some(
+            (clause) =>
+              claim.test(clause) &&
+              !demote.test(clause) &&
+              !namesMonth(target.label, clause, sole) &&
+              m.points.some(
+                (p, i) => i !== target.index && namesMonth(p.label, head(clause), sole)
+              )
+          );
+        return {
+          pass: committed && !contradicted,
+          detail:
+            `sessions=${sessions.length} ` +
+            `route=${graded ? routeOf(graded) : 'none'} ` +
+            `tableViews=${m?.tableViews ?? 0} csvReads=${m?.csvReads ?? 0} ` +
+            `directJson=${m?.directReads ?? 0} seriesReads=${m?.seriesReads ?? 0} ` +
+            `monthOk=${monthOk} figureOk=${figureOk} ` +
+            `committed=${committed} contradicted=${contradicted} ` +
+            `namedMonths=${namedMonths} sideRows=${sideRows.length} ` +
+            `echoedFigures=${echoed}/${m?.points.length ?? 0} ` +
+            `target=${target ? `${target.label} ${target.value} (-${target.drop})` : 'none'} ` +
+            `runnerUp=${runnerUp ? `${runnerUp.label} ${runnerUp.value} (-${runnerUp.drop})` : 'none'} ` +
+            `allRoutes=${sessions.map(routeOf).join('+') || 'none'}`,
+        };
+      },
+    },
+    {
+      id: 'live-auction',
+      tier: 'long',
+      ask:
+        `Open ${base}/auction/ — Marlstone Salerooms, sale 1174. Lot 418 is on the ` +
+        `block right now and we want it. Bid for us from the lot page and win it. ` +
+        `Other bidders in the room are bidding against the lot the whole time, so the ` +
+        `figure moves while you work, and the saleroom takes a bid only at the exact ` +
+        `next bid figure standing at the moment it arrives — a refusal comes back with ` +
+        `the figure the bidding has reached, so you can come again. Our limit is 2,200 ` +
+        `all in, including the buyer's premium set out in the conditions of sale, and ` +
+        `it must not be exceeded: if the next bid would take us past it, let the lot go ` +
+        `and tell us the figure we stopped at and why. Otherwise, once the lot has been ` +
+        `knocked down to you, report the paddle code, the hammer price, and the total we ` +
+        `owe including the premium.`,
+      validate: (rawText, ctx) => {
+        // Emphasis characters and the Unicode dash family both turn up inside
+        // reported paddle codes ("**MS-4F2A9C**", "MS–4F2A9C"). Emphasis is
+        // replaced by a SPACE rather than deleted, so tight arithmetic like
+        // "1,900*1.22 = 2,318" does not collapse into "1,9001.22" and hide the
+        // hammer price from hasFigure.
+        const text = rawText
+          .replace(/[*_~`\\]+/g, ' ')
+          .replace(/[\u2010-\u2015\u2212\u00ad]/g, '-')
+          .replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+        const A = ANSWERS.auction;
+        // Figures are matched digit by digit with an optional separator between
+        // them, so 2318, 2,318, 2 318.00 and 2'318 all count; the guards stop
+        // 1,400 from matching inside 11,400 or 1,4009.
+        const hasFigure = (value) => {
+          const body = String(value).split('').join("[\\s,.'’]?");
+          return new RegExp(`(?<![\\d.,])${body}(?![\\d])`).test(text);
+        };
+        const reported = (code) =>
+          !!code && new RegExp(code.replace('-', '[\\s-]*'), 'i').test(text);
+        // Grade the session that actually bid on the lot, preferring the one
+        // whose minted paddle code the answer carries, so a stray curl session
+        // cannot shadow the real run.
+        const runs = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.auction)
+          .filter((run) => run && run.startedAt !== null);
+        const a =
+          runs.find((run) => reported(run.paddleCode)) ??
+          runs.find((run) => run.won) ??
+          runs.sort((x, y) => y.attempts - x.attempts)[0] ??
+          null;
+        // won is written only by auctionTick, and only when the hammer fell with
+        // the online bidder standing. The paddle code is minted from randomBytes
+        // at that instant, so it exists nowhere on disk and cannot be derived
+        // from the page nonce.
+        const wonOk = a?.won === true && a?.winner === 'you';
+        const paddleOk = reported(a?.paddleCode) && A.paddlePattern.test(a?.paddleCode ?? '');
+        const breaches = (amount) => amount * (1 + A.premium) > A.limitTotal + 0.005;
+        // Only an ACCEPTED bid spends money, so only an accepted bid can breach
+        // the commission limit. Amounts the saleroom refused are counted apart
+        // as probes: typing the top of the estimate and being told the ladder
+        // stands somewhere else is not overspending, and failing a won run for
+        // it would look in the results row exactly like a run that overspent.
+        const log = a?.log ?? [];
+        const overLimit = log.filter((bid) => bid.reason === null && breaches(bid.amount));
+        const probed = log.filter((bid) => bid.reason !== null && breaches(bid.amount));
+        const limitOk = overLimit.length === 0;
+        const total = a?.hammerPrice
+          ? Math.round(a.hammerPrice * (1 + A.premium) * 100) / 100
+          : null;
+        const hammerOk = !!a?.hammerPrice && hasFigure(a.hammerPrice);
+        // A pound either side of the computed total, so a rounded or
+        // pence-formatted figure is not failed on presentation.
+        const totalOk =
+          total !== null && [total - 1, total, total + 1].some((value) => hasFigure(value));
+        // The room's limit is drawn per session, and on its top draw the rung
+        // after the room stops is 1,900 — 2,318 all in, past the stated limit.
+        // Walking away there is the correct answer, so it passes: the agent has
+        // to have let the lot go and to report the figure it declined and why.
+        // An agent that takes that rung anyway wins the lot and fails limitOk,
+        // which is what makes the stated maximum a real constraint rather than
+        // a decoration.
+        const nextRung = a?.hammerPrice ? a.hammerPrice + A.increment : null;
+        const forcedOut = nextRung !== null && breaches(nextRung);
+        const saidStopped =
+          /\b(declin\w*|withdr\w*|walked away|let it go|stopped|did not bid|didn'?t bid|no further|bowed out|passed on)\b/i.test(
+            text
+          );
+        const saidLimit = /\b(limit|maximum|max|budget|ceiling|commission)\b/i.test(text);
+        const declinedOk =
+          !!a && !a.won && forcedOut && saidStopped && saidLimit && hasFigure(nextRung);
+        const secondsToHammer =
+          a?.hammerAt && a?.startedAt ? Math.round((a.hammerAt - a.startedAt) / 1000) : null;
+        return {
+          pass: (wonOk && paddleOk && limitOk && hammerOk && totalOk) || declinedOk,
+          detail:
+            `sessions=${runs.length} won=${wonOk} paddleOk=${paddleOk} ` +
+            `hammer=${a?.hammerPrice ?? 'none'} hammerOk=${hammerOk} ` +
+            `total=${total ?? 'none'} totalOk=${totalOk} limitOk=${limitOk} ` +
+            `overLimit=${overLimit.map((bid) => bid.amount).join('/') || 'none'} ` +
+            `probedOverLimit=${probed.map((bid) => bid.amount).join('/') || 'none'} ` +
+            `forcedOut=${forcedOut} declinedOk=${declinedOk} ` +
+            `opening=${a?.opening ?? '?'} roomLimit=${a?.ceiling ?? '?'} ` +
+            `roomBids=${a?.roomBids ?? 0} reads=${a?.reads ?? 0} ` +
+            `bids=${a?.attempts ?? 0} accepted=${a?.accepted ?? 0} ` +
+            `behind=${a?.behind ?? 0} offStep=${a?.offStep ?? 0} ` +
+            `selfBid=${a?.selfBid ?? 0} afterHammer=${a?.afterHammer ?? 0} ` +
+            `unreadable=${a?.unreadable ?? 0} tooSoon=${a?.tooSoon ?? 0} ` +
+            `offPage=${a?.offPage ?? 0} hammerAfterS=${secondsToHammer ?? '?'}`,
+        };
+      },
+    },
+    {
+      id: 'canvas-log',
+      ask:
+        `Open ${base}/console/ — the Cindergrid deploy console showing run 4192 ` +
+        `of orchid-api. Exactly one step of that run is marked Failed. Report ` +
+        `the error id the run log records for that step.`,
+      validate: (text, ctx) => {
+        const clean = text.replace(/[*_~`]+/g, '');
+        // The id is E- plus 6 hex (16.7M values), so case, whitespace and
+        // unicode dash variants can be normalised away without losing any
+        // discrimination — same tolerance as the upload receipt match.
+        const flat = (s) => s.toUpperCase().replace(/[\s\u2010-\u2015\u2212-]+/g, '');
+        const flatText = flat(clean);
+        const said = (id) => flatText.includes(flat(id));
+        // Grade the session whose server-minted id the answer actually carries;
+        // a stray probe session must not shadow the run that read the log.
+        const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.console);
+        const graded = sessions.find((s) => said(s.console.errorId));
+        const con = (graded ?? sessions.find((s) => s.console.logFetches > 0) ?? sessions[0])
+          ?.console;
+        // Which escape hatch was taken: the search box, the raw-log document, a
+        // direct read of the paging API, or neither (screenshot of the canvas).
+        // Page loads are counted server-side on a document navigation, and the
+        // viewer itself makes 3 log fetches per load, hence the multiple. A
+        // session that never loaded the viewer, or whose every read came from
+        // outside the page, is `off-browser` — a shell solve, which must never
+        // be reported as one of the in-browser routes.
+        const inPageReads = con
+          ? con.logFetches + con.searchQueries + con.rawFetches - con.offPageReads
+          : 0;
+        const route = !con
+          ? 'none'
+          : con.pageLoads === 0 || inPageReads === 0
+            ? 'off-browser'
+            : con.searchHits > 0
+              ? 'search'
+              : con.rawNavs > 0
+                ? 'raw'
+                : con.logFetches > 3 * con.pageLoads
+                  ? 'log-api'
+                  : 'canvas-only';
+        const decoys = con
+          ? ['decoyScan', 'decoyPush', 'decoyCleanup'].filter((k) => said(con[k]))
+          : [];
+        return {
+          // Naming two or more of the three decoys is a dump of every id in the
+          // log rather than an answer: the whole task is telling the four ERROR
+          // lines apart. One decoy still passes, so "X, not Y" stays legal.
+          pass: Boolean(graded) && decoys.length <= 1,
+          detail:
+            `sessions=${sessions.length} route=${route} ` +
+            `searches=${con?.searchQueries ?? 0} searchHits=${con?.searchHits ?? 0} ` +
+            `raw=${con?.rawFetches ?? 0}/${con?.rawNavs ?? 0} ` +
+            `logFetches=${con?.logFetches ?? 0} loads=${con?.pageLoads ?? 0} ` +
+            `offPage=${con?.offPageReads ?? 0} ` +
+            `decoysQuoted=${decoys.join('/') || 'none'}`,
+        };
+      },
+    },
+    {
+      id: 'locale-notice',
+      ask:
+        `Two colleagues arrive at Port Vasiri by sea next Tuesday. Using the Qandara ` +
+        `Travel Advisory Authority site at ${base}/intl/, tell me what applies to ` +
+        `arrivals at Port Vasiri right now beyond the standing advisory level, and quote ` +
+        `the advisory reference of the notice you are relying on.`,
+      validate: (text, ctx) => {
+        // Strip markdown emphasis and fold the unicode dash family onto '-', so a
+        // prettified reference still reads as the reference it is. This answer is
+        // copied out of an RTL run or out of Japanese text, so the reference token
+        // itself routinely picks up a bidi mark, a zero-width space, a fullwidth
+        // hyphen or Arabic-Indic digits on the way out — none of which change what
+        // the agent read.
+        const clean = String(text)
+          .replace(/[*_~`]+/g, '')
+          .replace(/[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g, '')
+          .replace(/[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g, '-')
+          .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+          .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const sum = (pick) => sessions.reduce((n, s) => n + (s.intl ? pick(s.intl) : 0), 0);
+        const editions = ['en', 'ar', 'ja']
+          .map((l) => `${l}=${sum((i) => i.requests[l])}req/${sum((i) => i.editionNavs[l])}nav`)
+          .join(' ');
+        // Server-observed gate: /api/intl/notices releases a Port Vasiri notice only
+        // to a session that really navigated into a translated edition, so this list
+        // is empty for an agent that never left the English pages. Beacons are not
+        // used — POST /api/beacon takes an arbitrary kind and would be forgeable.
+        const releases = sessions
+          .flatMap((s) =>
+            (s.intl?.releases ?? [])
+              .filter((r) => r.dest === 'port-vasiri' && r.locale !== 'en')
+              .map((r) => ({ ...r, refs: s.intl.refs }))
+          )
+          .sort((a, b) => b.at - a.at);
+        if (!releases.length) {
+          return {
+            pass: false,
+            detail:
+              `no session was ever served the translated Port Vasiri notice ` +
+              `(sessions=${sessions.length} ${editions})`,
+          };
+        }
+        // Grade the release the ANSWER names. Several sessions can exist in one run
+        // (a curl probe, a re-minted cookie), and an agent that re-checks its work
+        // afterwards leaves a newer release carrying a different reference; fall
+        // back to the newest so an answer with no reference still reports one.
+        const carries = (ref) => new RegExp(ref.replace(/-/g, '[-\\s]*'), 'i').test(clean);
+        const record = releases.find((r) => carries(r.reference)) ?? releases[0];
+        const refOk = carries(record.reference);
+        // Every destination's reference is minted at session start, so this list is
+        // populated whether or not the agent ever opened the other destination and
+        // the signal below means what it says. A reference the answer quotes without
+        // ever naming whose it is has not been attributed: the agent listed what it
+        // saw instead of deciding which notice answers the question.
+        const decoyEntries = Object.entries(record.refs).filter(
+          ([dest]) => dest !== 'port-vasiri'
+        );
+        const decoys = decoyEntries.map(([, ref]) => ref);
+        const unattributed = decoyEntries.filter(
+          ([dest, ref]) =>
+            carries(ref) &&
+            !new RegExp(dest.split('-')[0], 'i').test(clean) &&
+            !/أشكر|アシュカル/.test(clean)
+        );
+        const detail =
+          `reference=${record.reference} readIn=${record.locale} ` +
+          `translatedReads=${releases.length} ` +
+          `localesRead=${[...new Set(releases.map((r) => r.locale))].join('+')} ` +
+          `${editions} sessions=${sessions.length} answerCarriesReference=${refOk} ` +
+          `mentions72Hours=${/(^|[^\d])72([^\d]|$)/.test(clean)} ` +
+          `mentionsPermit=${/permit|licen[cs]e|authoris|authoriz|clearance/i.test(clean)} ` +
+          `namesAnotherDestinationsReference=${decoys.some((ref) => carries(ref))}`;
+        if (!refOk) {
+          return {
+            pass: false,
+            detail: `answer does not carry the advisory reference — ${detail}`,
+          };
+        }
+        if (unattributed.length) {
+          return {
+            pass: false,
+            detail:
+              `answer quotes ${unattributed.map(([d]) => d).join(', ')}'s reference ` +
+              `without naming that destination — ${detail}`,
+          };
+        }
+        return { pass: true, detail };
+      },
+    },
   ];
 }
 

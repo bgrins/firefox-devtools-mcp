@@ -364,12 +364,140 @@ unlike the driver micro-benchmark we lose the clock too, once a real agent is
 choosing when to poll (44-50 thread polls for us against 27-43). The run is about
 as clean as this suite gets: our output spread across repeats was 1.01x.
 
+**Corroborated in wave 11, in an unrelated genre.** `live-auction` (a saleroom
+whose price advances on a server clock) was commissioned partly to re-test this,
+and it reproduced: **4,130 output tokens for us vs 2,759 for playwright, +50%**,
+medians of 3 repeats. Two different genres, same direction, same cause. This is
+therefore a property of our surface rather than of one fixture — the strongest
+repeatable loss the suite has measured.
+
 That makes A32 the most actionable item in Part A. It is purely **additive** — a
-new tool, no behaviour change to anything existing — and it is worth 41% of output
-tokens on async pages, which real sites are full of. Note playwright's
+new tool, no behaviour change to anything existing — and it is worth 41-50% of
+output tokens on async pages, which real sites are full of. Note playwright's
 `browser_wait_for` has its own hard 5000ms default with no extension, so a slower
 queue would make their ergonomic tool the fragile one; we could ship a better
 version rather than a copy.
+
+## A33. The 27-char cut is not Unicode-safe: it emits lone surrogates and eats combining marks
+A sibling of A1, and a straightforward product bug rather than a design tradeoff.
+`formatter.ts`'s `truncate()` slices at UTF-16 index 27 — a **code-unit** index,
+not a codepoint index, and with no grapheme awareness. Two consequences, both
+measured against `pages/intl/` (the Qandara advisory site, `locale-notice`) and
+cross-checked against playwright-mcp, which is intact in every case.
+
+**It splits surrogate pairs.** The Japanese edition's translator credit
+(`この日本語版は、アラビア語で公表された原文をもとに、𠮷田海運株式会社が翻訳しています。` — an
+ordinary sentence; `𠮷` U+20BB7 is a common surname character) has its pair at
+units 26-27, so our snapshot returns
+`text="この日本語版は、アラビア語で公表された原文をもとに、\ud842..."`. That is a **lone high
+surrogate in the MCP JSON payload**; encoded to UTF-8 for a terminal or a log it
+becomes `ef bf bd` (U+FFFD).
+
+**It drops combining marks silently, with no ellipsis to mark the loss.** A
+controlled probe (seven strings with the interesting codepoint placed at exactly
+UTF-16 index 26 or 27):
+
+| probe | ours | playwright-mcp |
+| --- | --- | --- |
+| `ア`×26 + `𠮷田海運` (pair straddles the cut) | `…ア\ud842...` → U+FFFD on the wire | intact |
+| `ア`×25 + `𠮷田海運` (30 units, at the cap) | intact | intact |
+| `ア`×26 + `か`+U+3099 (dakuten at 27) | intact, not truncated | intact |
+| `ب`×26 + `دّة الميناء` (shadda U+0651 at 27) | `…د...` — shadda dropped | intact |
+| `ب`×26 + `رًا الحصول` (tanween U+064B at 27) | `…ر...` — tanween dropped | intact |
+| `x`×26 + `e`+U+0301 + `clair` | `…e...` — **"é" silently becomes "e"** | intact |
+
+To a reader of the language `د` and `دّ` are different words, and the truncation
+is invisible: the mark falls off *inside* the surviving text, before the `...`.
+
+**The cut is also not language-neutral.** Arabic averages ~1 unit per character
+but ~6 characters per word, so 27 units is 4-5 Arabic words: 16 of 50 text nodes
+(32%) truncate on the Arabic advisory page, versus 13/45 (29%) English and 9/51
+(18%) Japanese — CJK is *least* affected because it packs more meaning per unit.
+The knock-on for `find`, which only searches what the snapshot returned: the same
+sentence is findable in one language and invisible in another
+(`find "72時間"` matches, `find "72 ساعة"` finds nothing, same sentence).
+
+Fix: slice on codepoints (or graphemes) rather than code units, and never emit an
+unpaired surrogate. Cheap, and independent of whatever happens to the 27-char cap
+itself.
+
+Confidence: high (source-verified in `truncate()`, reproduced through both
+surfaces on a controlled probe page).
+
+## A33b. Nothing on either surface says a page is RTL, and `lang`/`dir` never reach the snapshot
+Measured on the same site, and true of playwright-mcp too, so it is a gap rather
+than a competitive loss. Neither surface carries `lang` or `dir` — not in the
+default snapshot, not with `includeAll: true`, not in playwright's ARIA snapshot
+(`grep -ciE 'lang=|dir=|rtl'` over the full `includeAll` output: 0). The only
+signal that `/intl/ar/` is Arabic is that the text is Arabic, and `<p lang="ar"
+dir="rtl">` inside an otherwise English page is indistinguishable from an
+untagged Arabic string.
+
+Both surfaces also emit **DOM (logical) order** on an RTL page, correctly — but
+that means the snapshot's first-to-last order is not the left-to-right order a
+screenshot shows, so a snapshot and a screenshot disagree about which of two
+inline items comes "first", and nothing warns the agent. Accessible names built
+from non-ASCII text are fine on both surfaces (`nav "النسخ"`,
+`heading "北桟橋の閉鎖と入港許可の取得義務"`).
+
+## A34. `includeAll` truncates a long table silently, and that is worse than seeing nothing
+The dangerous state is not blindness, it is **partial data that looks complete**.
+Measured on `pages/metrics/` (`chart-escape`): the honest way to read an 18-row
+data table on our surface needs two non-default options together. With
+`includeAll: true` alone the table arrives cut to **10 of 18 rows with no marker
+that rows are missing**, and because the series is generated per session the
+truncated window contains the true answer only sometimes — in ~30% of mints an
+agent reading that state computes a **confidently wrong** steepest-drop month and
+has no reason to doubt it. playwright-mcp returns the table in one default call.
+
+This is the same failure mode as A29 (grid cells without geometry) and A19
+(`isXHR` matching nothing): we do not say "there is more". A2/A6 describe the
+mechanism; this entry exists because it is the first time the cost was measured
+as *wrong answers* rather than extra tokens.
+
+## A35. A `<table>` grid is invisible, but an `<input>`'s `value` comes through
+Two halves of one measurement on `pages/calc/` (`formula-repair`), and the split
+is the opposite of what we assumed when the fixture was commissioned.
+
+- **Value layer, invisible.** The sheet is a semantic `<table>`; our snapshot
+  returns one childless `main` node and **0 of 70 cells**. `find` misses every
+  depot name. (A2 again, now on the canonical spreadsheet layout.)
+- **Definition layer, visible.** The formula bar comes through as
+  `input "Formula bar" value="=SUM(E3:E13)"`, because `treeWalker.ts` reads the
+  `value` DOM *property*. Focusing a different cell is the one action that
+  changes what we can see.
+
+So the task is solvable on our surface, but only as a **blind solve**: the agent
+never sees a number in the grid and must navigate by name box, formula bar and
+status bar. Cost: **19-23 tool calls (12-14 of them snapshots) against
+playwright's 8**, which sees both layers and all 16 formulas in a single snapshot
+once "Show formulas" is on. Worth keeping as the clearest single illustration
+that `value`-property reads are the one place our walker is *more* useful than it
+looks — extending that treatment to more of the DOM is a cheap direction.
+
+## A36. Canvas text is unreachable on both surfaces; `opacity: 0` is the one divergence
+From the `canvas-log` verify-first spike, which was authorised to conclude "do
+not ship" and instead established a legitimate route.
+
+Neither our snapshot nor playwright's ARIA snapshot reads a single character
+painted to a `<canvas>` — and our walker does not even emit the `<canvas>`
+element in standard mode, so an agent gets no hint that a large region of the
+page exists. Since real cloud consoles render logs exactly this way (xterm.js),
+**a web terminal is unusable through either tool surface without an escape
+hatch** (a search box that scrolls a real text hit into the DOM, or a fetchable
+raw log). That is now recorded rather than assumed.
+
+Offscreen DOM mirrors ARE reachable by both: `sr-only` clip-rect,
+`left: -9999px`, transparent colour, `aria-live`, below-fold and
+scrolled-out-of-overflow all snapshot fine. **The single divergence: an
+`opacity: 0` element is dropped by us and kept by playwright.** Minor, but it
+means a page using opacity for a fade-in shows them content it does not show us.
+
+Also measured here, and a concrete cost for the default: with the log panel below
+the step summary, `take_snapshot`'s default `maxLines: 100` pushed the graded hit
+out of reach of `find` entirely (A6/B3 compounding). The fixture reorders its own
+DOM to keep the task winnable — a concession that would not be available on a
+real site.
 
 ---
 
@@ -695,3 +823,20 @@ slower than 5 s is unconditionally fatal (A9b). Workaround is the passthrough:
   before reading any token delta on this task. Blind guessing is bounded at ~8%.
   A `--seed` flag, or pinning the draw when `--repeat` is used, would remove the
   confound.
+- **`locale-notice`'s mcp-vs-playwright delta is biased by two of our own gaps,
+  and the row is not interpretable without saying so.** The task turns on
+  noticing that the English edition is incomplete. Both of the affordances that
+  say so are damaged on our surface and intact on playwright's: (a) our default
+  snapshot drops `<em>` entirely, so the masthead editions box reads
+  `a "English"` / `a "العربية"` / `a "日本語"` with the per-edition update dates
+  (`updated 12 June 2026` vs `2026年7月24日更新`, six weeks apart) invisible unless
+  the agent asks for `includeAll`; (b) the English empty state,
+  `No supplementary notices in the English edition.`, truncates to
+  `No supplementary notices in...` — the words that scope it to one edition are
+  exactly the words A1 removes. Both are natural consequences of natural markup
+  and were left in place deliberately, but they mean a playwright win here is
+  partly a measurement of A1 and the `<em>` drop, not only of agent judgement.
+  Read the `en=Nreq/Nnav ar=… ja=…` counters in `detail` before reading the delta.
+  Also: A33's truncation makes the Arabic notice materially harder to read than
+  the identical Japanese one (32% vs 18% of nodes cut), so which translated
+  edition the agent picks changes the difficulty.

@@ -1170,6 +1170,169 @@ function supportOpen(sup, now) {
   supportSay(sup, 'How can I help today?', sup.delays.greeting2, now);
 }
 
+// pages/auction/ — Marlstone Salerooms, sale 1174, lot 418. The price ladder
+// advances on a per-session SERVER clock: auctionTick() replays every advance
+// from the room that has fallen due before any read or bid is answered, so
+// stopping page JS cannot freeze the figure and a bid is judged against the
+// same clock the page renders. The opening bid, the room's limit and the paddle
+// code are drawn from randomBytes, live only on the session (so state.reset()
+// clears them) and appear in no fixture file on disk.
+const AUCTION_INCREMENT = 100;
+// The room advances every TICK while it is still bidding. Once it has reached
+// its limit the auctioneer works the floor for FLOOR_MS before knocking the lot
+// down to the room — that pause is the online bidder's window, and it has to be
+// wide enough that an agent can leave the lot page to read the conditions of
+// sale and come back without losing the lot to wall clock alone. A fresh bid the
+// room does not answer is knocked down after the much shorter HAMMER_MS.
+const AUCTION_TICK_MS = 12000;
+const AUCTION_FLOOR_MS = 150000;
+const AUCTION_HAMMER_MS = 18000;
+// The rostrum takes one bid at a time. Attempts inside the cooldown are turned
+// away, so walking the ladder blind off the refusal messages costs the same wall
+// clock as re-reading the page — which is the behaviour the task measures.
+const AUCTION_BID_COOLDOWN_MS = 2000;
+const AUCTION_PREMIUM = 0.22;
+const AUCTION_HISTORY_KEPT = 7;
+const AUCTION_LOG_CAP = 200;
+const AUCTION_ROOM_PADDLES = ['214', '087', '341', '402', '176', '523'];
+const AUCTION_LOT = {
+  sale: 1174,
+  number: 418,
+  title: 'Brass-cased two-day marine chronometer',
+  maker: 'Halloway and Sons, Portsmouth',
+  estimate: '1,400 - 2,000',
+  auctioneer: 'R. Pethick',
+};
+
+const auctionFig = (n) => Number(n).toLocaleString('en-GB');
+
+function auctionState(session) {
+  if (!session.auction) {
+    const bytes = randomBytes(4);
+    const opening = 1100 + 100 * (bytes[0] % 3);
+    session.auction = {
+      opening,
+      // The room stops three to five steps above the opening. Most draws leave
+      // the next rung inside the commission limit the ask states; the top draw
+      // (1,300 opening, five steps) does not, and there the correct play is to
+      // let the lot go — see the validator's declinedOk.
+      ceiling: opening + 100 * (3 + (bytes[1] % 3)),
+      price: opening,
+      standing: 'room',
+      paddleIdx: bytes[2] % AUCTION_ROOM_PADDLES.length,
+      history: [],
+      startedAt: null,
+      lastEventAt: null,
+      roomBids: 0,
+      reads: 0,
+      attempts: 0,
+      accepted: 0,
+      behind: 0,
+      offStep: 0,
+      selfBid: 0,
+      afterHammer: 0,
+      unreadable: 0,
+      tooSoon: 0,
+      offPage: 0,
+      lastBidAt: 0,
+      log: [],
+      over: false,
+      winner: null,
+      hammerAt: null,
+      hammerPrice: null,
+      paddleCode: null,
+      won: false,
+    };
+  }
+  return session.auction;
+}
+
+const auctionRoomPaddle = (a) => AUCTION_ROOM_PADDLES[a.paddleIdx];
+// Only a same-origin fetch from the lot page is bidding through the browser
+// (same idea as /api/parcels/track). A shell probe holding a live cookie still
+// gets its figures and can still win the lot, it is just counted as off-page, so
+// a pass with no browser in it is legible in the results row rather than only in
+// a transcript — which matters here because the whole point of the fixture is
+// what a browser-side wait costs.
+const auctionFromPage = (req) =>
+  req.headers['sec-fetch-site'] === 'same-origin' ||
+  /\/auction\/lot-418\.html(?:[?#]|$)/.test(req.headers.referer ?? '');
+// Once the online bidder holds the lot the auctioneer knocks it down quickly;
+// on the room's own top bid he waits far longer for an advance.
+const auctionCloseMs = (a) => (a.standing === 'you' ? AUCTION_HAMMER_MS : AUCTION_FLOOR_MS);
+const auctionRoomCanBid = (a) => a.price + AUCTION_INCREMENT <= a.ceiling;
+
+function auctionOpen(a, now) {
+  if (a.startedAt !== null) return;
+  a.startedAt = now;
+  a.lastEventAt = now;
+  a.history.push({ amount: a.opening, who: 'Commission book', at: now });
+}
+
+// Replays every advance from the room that has fallen due, then the hammer.
+// Time is advanced to the DUE instant rather than to `now`, so a long gap
+// between reads replays the ladder without drifting the schedule.
+function auctionTick(a, now) {
+  while (!a.over) {
+    if (auctionRoomCanBid(a)) {
+      const due = a.lastEventAt + AUCTION_TICK_MS;
+      if (now < due) return;
+      a.price += AUCTION_INCREMENT;
+      a.standing = 'room';
+      a.paddleIdx = (a.paddleIdx + 1) % AUCTION_ROOM_PADDLES.length;
+      a.roomBids += 1;
+      a.lastEventAt = due;
+      a.history.push({ amount: a.price, who: 'Paddle ' + auctionRoomPaddle(a), at: due });
+      continue;
+    }
+    const due = a.lastEventAt + auctionCloseMs(a);
+    if (now < due) return;
+    a.over = true;
+    a.hammerAt = due;
+    a.hammerPrice = a.price;
+    a.winner = a.standing === 'you' ? 'you' : 'room';
+    if (a.winner === 'you') {
+      a.won = true;
+      a.paddleCode = 'MS-' + randomBytes(3).toString('hex').toUpperCase();
+    }
+    return;
+  }
+}
+
+function auctionPhase(a, now) {
+  if (a.over) return 'sold';
+  if (auctionRoomCanBid(a)) return 'live';
+  const span = auctionCloseMs(a);
+  const gone = now - a.lastEventAt;
+  if (gone < span / 3) return 'once';
+  if (gone < (span * 2) / 3) return 'twice';
+  return 'fair';
+}
+
+function auctionView(a, now) {
+  const closing = !a.over && !auctionRoomCanBid(a);
+  return {
+    lot: AUCTION_LOT,
+    increment: AUCTION_INCREMENT,
+    opening: a.opening,
+    price: a.price,
+    nextBid: a.over ? null : a.price + AUCTION_INCREMENT,
+    standing: a.standing,
+    with: a.standing === 'you' ? 'you' : 'paddle ' + auctionRoomPaddle(a),
+    phase: auctionPhase(a, now),
+    closesInSec: closing
+      ? Math.max(0, Math.ceil((a.lastEventAt + auctionCloseMs(a) - now) / 1000))
+      : null,
+    history: a.history
+      .slice(-AUCTION_HISTORY_KEPT)
+      .map((h) => ({ amount: h.amount, who: h.who })),
+    over: a.over,
+    winner: a.winner,
+    hammerPrice: a.hammerPrice,
+    paddle: a.won ? a.paddleCode : null,
+  };
+}
+
 // pages/parcels/ — Corvane tracking lookups. Shipment statuses exist only here,
 // never in fixture source, and the endpoint accepts one lookup per session per
 // PARCEL_COOLDOWN_MS.
@@ -2038,6 +2201,534 @@ function paylinkFrom(req, file) {
   return new RegExp(pattern).test(req.headers.referer ?? '');
 }
 
+// T114 formula-repair: pages/calc/ — the Abaca workbook "Q3 Freight Recovery".
+// The sheet exists only here. The page is issued cell VALUES (the grid) but no
+// formulas: a formula is released one cell at a time by GET /api/calc/cell, the
+// way a real cloud workbook lazy-loads the formula bar, so which cells an agent
+// actually inspected is server-observed. Which cell carries the defect is drawn
+// per session from randomBytes, one September amount is jittered per session so
+// the totals cannot be memorised between runs, and the reconciliation checksum
+// is minted from randomBytes only once the server's own recalculation agrees on
+// every total. Grading is semantic: any formula that recomputes correctly is
+// accepted, so SUM(E2:E13), E2+E3+...+E13 and B14+C14+D14 all repair E14.
+const CALC_WORKBOOK = 'Q3 Freight Recovery';
+const CALC_SHEET = 'Q3 Recovery';
+const CALC_OWNER = 'Marchmont Haulage';
+// Row 1 of the sheet. The page hardcodes the five column letters and takes the
+// headings out of row 1 of `display`, so this never goes on the wire.
+const CALC_COLUMNS = [
+  { key: 'A', label: 'Depot' },
+  { key: 'B', label: 'July' },
+  { key: 'C', label: 'August' },
+  { key: 'D', label: 'September' },
+  { key: 'E', label: 'Quarter' },
+];
+const CALC_DEPOTS = [
+  { name: 'Ardsley Yard', jul: 48210.55, aug: 51380.2, sep: 49775.9 },
+  { name: 'Brackwell Depot', jul: 36402.1, aug: 35990.75, sep: 38214.45 },
+  { name: 'Caldmore Cross', jul: 27655.8, aug: 29104.35, sep: 28320.6 },
+  { name: 'Dunhollow North', jul: 52880.25, aug: 50117.6, sep: 53406.15 },
+  { name: 'Eastmarch Wharf', jul: 41230.4, aug: 43765.05, sep: 42088.7 },
+  { name: 'Fernlow Sidings', jul: 19875.65, aug: 21340.9, sep: 20612.35 },
+  { name: 'Garrowby Point', jul: 33450.2, aug: 32118.45, sep: 34907.8 },
+  { name: 'Havenscar Terminal', jul: 58012.35, aug: 56480.15, sep: 59233.7 },
+  { name: 'Inglemoor Depot', jul: 24760.9, aug: 26005.5, sep: 25417.25 },
+  { name: 'Jarrowfield West', jul: 45118.75, aug: 44290.3, sep: 46752.85 },
+  { name: 'Kesteven Halt', jul: 30284.6, aug: 31572.15, sep: 29866.4 },
+  { name: 'Lowdham Junction', jul: 38955.05, aug: 37421.8, sep: 39680.95 },
+];
+const CALC_FIRST_ROW = 2;
+const CALC_LAST_ROW = CALC_FIRST_ROW + CALC_DEPOTS.length - 1;
+const CALC_TOTAL_ROW = CALC_LAST_ROW + 1;
+
+// The defect, drawn per session. Every variant leaves the workbook's quarter
+// total short of the ledger control total, but eight of the ten break a depot
+// row on seven different rows rather than the grand total, so "the total cell is
+// wrong" is a 1-in-5 guess. The reconciliation rail deliberately reports ONE
+// combined agreement figure, so a row defect and a total defect look identical
+// from outside: both read "15 of 16" and "3 checks failing".
+const CALC_DEFECTS = [
+  { ref: 'E14', broken: '=SUM(E2:E12)' },
+  { ref: 'E14', broken: '=SUM(E3:E13)' },
+  { ref: 'E2', broken: '=SUM(B2:C2)' },
+  { ref: 'E5', broken: '=SUM(C5:D5)' },
+  { ref: 'E6', broken: '=SUM(B6:C6)' },
+  { ref: 'E8', broken: '=B8+C8' },
+  { ref: 'E10', broken: '=SUM(C10:D10)' },
+  { ref: 'E10', broken: '=B10+D10' },
+  { ref: 'E11', broken: '=SUM(C11:D11)' },
+  { ref: 'E13', broken: '=SUM(B13:C13)' },
+];
+
+// Correct formulas that LOOK irregular, so the workbook's formula-audit pane can
+// flag eight cells without the flag text itself naming the defect: every flag
+// reads "Inconsistent formula", and only opening each cell's formula bar
+// separates the one that actually drops data from the seven that do not. The
+// quirk rows and the defect rows are disjoint, so the audit list is always the
+// session's defect plus these seven.
+const CALC_QUIRKS = {
+  E3: '=SUM(B3:C3)+D3',
+  E4: '=B4+C4+D4',
+  E7: '=D7+SUM(B7:C7)',
+  E9: '=ROUND(SUM(B9:D9),2)',
+  E12: '=B12+SUM(C12:D12)',
+  C14: '=SUM(C2:C7)+SUM(C8:C13)',
+  D14: '=SUM(D2:D8)+SUM(D9:D13)',
+};
+const CALC_AUDIT_DECOYS = ['C14', 'D14', 'E3', 'E4', 'E7', 'E9', 'E12'];
+
+function calcColName(index) {
+  let name = '';
+  let n = index;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    name = String.fromCharCode(65 + rem) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
+function calcParseRef(text) {
+  const match = /^\$?([A-Z]+)\$?([0-9]{1,4})$/.exec(text);
+  if (!match) return null;
+  let col = 0;
+  for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+  const row = Number(match[2]);
+  if (!col || !row) return null;
+  return { col, row, ref: match[1] + row };
+}
+
+function calcTokens(src) {
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (/\s/.test(ch)) {
+      i += 1;
+    } else if (/[0-9.]/.test(ch)) {
+      let j = i;
+      while (j < src.length && /[0-9.]/.test(src[j])) j += 1;
+      const value = Number(src.slice(i, j));
+      if (!Number.isFinite(value)) throw new Error(`bad number "${src.slice(i, j)}"`);
+      out.push({ t: 'num', v: value });
+      i = j;
+    } else if (/[A-Za-z$_]/.test(ch)) {
+      let j = i;
+      while (j < src.length && /[A-Za-z0-9$_]/.test(src[j])) j += 1;
+      out.push({ t: 'word', v: src.slice(i, j) });
+      i = j;
+    } else if ('+-*/(),:'.includes(ch)) {
+      out.push({ t: ch });
+      i += 1;
+    } else {
+      throw new Error(`unexpected character "${ch}"`);
+    }
+  }
+  return out;
+}
+
+// Recursive descent over the subset of the formula language this workbook uses:
+// + - * /, parentheses, unary sign, A1 refs (with or without $), A1:B2 ranges and
+// SUM / AVERAGE / AVG / MIN / MAX / COUNT / ABS / ROUND.
+function calcParse(src) {
+  const toks = calcTokens(src);
+  let p = 0;
+  const peek = () => toks[p];
+  const eat = (t) => {
+    if (toks[p]?.t !== t) throw new Error(`expected "${t}"`);
+    return toks[p++];
+  };
+
+  function parseExpr() {
+    let left = parseTerm();
+    while (peek() && (peek().t === '+' || peek().t === '-')) {
+      const op = toks[p++].t;
+      left = { k: 'bin', op, a: left, b: parseTerm() };
+    }
+    return left;
+  }
+  function parseTerm() {
+    let left = parseUnary();
+    while (peek() && (peek().t === '*' || peek().t === '/')) {
+      const op = toks[p++].t;
+      left = { k: 'bin', op, a: left, b: parseUnary() };
+    }
+    return left;
+  }
+  function parseUnary() {
+    if (peek() && (peek().t === '-' || peek().t === '+')) {
+      const op = toks[p++].t;
+      return { k: 'un', op, a: parseUnary() };
+    }
+    return parsePrimary();
+  }
+  function parsePrimary() {
+    const tk = peek();
+    if (!tk) throw new Error('formula ends early');
+    if (tk.t === 'num') {
+      p += 1;
+      return { k: 'num', v: tk.v };
+    }
+    if (tk.t === '(') {
+      p += 1;
+      const inner = parseExpr();
+      eat(')');
+      return inner;
+    }
+    if (tk.t === 'word') {
+      p += 1;
+      if (peek()?.t === '(') {
+        p += 1;
+        const args = [];
+        if (peek()?.t !== ')') {
+          args.push(parseExpr());
+          while (peek()?.t === ',') {
+            p += 1;
+            args.push(parseExpr());
+          }
+        }
+        eat(')');
+        return { k: 'call', name: tk.v.toUpperCase(), args };
+      }
+      const start = calcParseRef(tk.v.toUpperCase());
+      if (!start) throw new Error(`unknown name "${tk.v}"`);
+      if (peek()?.t === ':') {
+        p += 1;
+        const endTok = eat('word');
+        const end = calcParseRef(endTok.v.toUpperCase());
+        if (!end) throw new Error(`bad range end "${endTok.v}"`);
+        return { k: 'range', a: start, b: end };
+      }
+      return { k: 'ref', ref: start.ref };
+    }
+    throw new Error('unexpected token');
+  }
+
+  const ast = parseExpr();
+  if (p !== toks.length) throw new Error('trailing characters');
+  return ast;
+}
+
+function calcExpandRange(a, b) {
+  const c1 = Math.min(a.col, b.col);
+  const c2 = Math.max(a.col, b.col);
+  const r1 = Math.min(a.row, b.row);
+  const r2 = Math.max(a.row, b.row);
+  if ((c2 - c1 + 1) * (r2 - r1 + 1) > 400) throw new Error('range too large');
+  const out = [];
+  for (let r = r1; r <= r2; r += 1) {
+    for (let c = c1; c <= c2; c += 1) out.push(calcColName(c) + r);
+  }
+  return out;
+}
+
+function calcEval(ast, get) {
+  const scalar = (node) => {
+    const value = walk(node);
+    if (Array.isArray(value)) throw new Error('a range cannot be used here');
+    return value;
+  };
+  function walk(node) {
+    if (node.k === 'num') return node.v;
+    if (node.k === 'ref') return get(node.ref);
+    if (node.k === 'range') return calcExpandRange(node.a, node.b).map(get);
+    if (node.k === 'un') return node.op === '-' ? -scalar(node.a) : scalar(node.a);
+    if (node.k === 'bin') {
+      const a = scalar(node.a);
+      const b = scalar(node.b);
+      if (node.op === '+') return a + b;
+      if (node.op === '-') return a - b;
+      if (node.op === '*') return a * b;
+      if (b === 0) throw new Error('division by zero');
+      return a / b;
+    }
+    if (node.k === 'call') {
+      const flat = [];
+      for (const arg of node.args) {
+        const value = walk(arg);
+        if (Array.isArray(value)) flat.push(...value);
+        else flat.push(value);
+      }
+      if (node.name === 'SUM') return flat.reduce((sum, x) => sum + x, 0);
+      if (node.name === 'COUNT') return flat.length;
+      if (node.name === 'AVERAGE' || node.name === 'AVG') {
+        if (!flat.length) throw new Error('AVERAGE needs a value');
+        return flat.reduce((sum, x) => sum + x, 0) / flat.length;
+      }
+      if (node.name === 'MIN') {
+        if (!flat.length) throw new Error('MIN needs a value');
+        return Math.min(...flat);
+      }
+      if (node.name === 'MAX') {
+        if (!flat.length) throw new Error('MAX needs a value');
+        return Math.max(...flat);
+      }
+      if (node.name === 'ABS') {
+        if (!flat.length) throw new Error('ABS needs a value');
+        return Math.abs(flat[0]);
+      }
+      if (node.name === 'ROUND') {
+        if (!flat.length) throw new Error('ROUND needs a value');
+        const digits = flat.length > 1 ? Math.trunc(flat[1]) : 0;
+        const factor = 10 ** digits;
+        return Math.round(flat[0] * factor) / factor;
+      }
+      throw new Error(`unknown function ${node.name}`);
+    }
+    throw new Error('bad formula');
+  }
+  return scalar(ast);
+}
+
+function calcRefsOf(ast) {
+  const refs = new Set();
+  (function walk(node) {
+    if (!node) return;
+    if (node.k === 'ref') refs.add(node.ref);
+    else if (node.k === 'range') for (const ref of calcExpandRange(node.a, node.b)) refs.add(ref);
+    else if (node.k === 'bin') {
+      walk(node.a);
+      walk(node.b);
+    } else if (node.k === 'un') walk(node.a);
+    else if (node.k === 'call') node.args.forEach(walk);
+  })(ast);
+  return refs;
+}
+
+// Whole-sheet recalculation, memoised, with cycle detection. A cell that throws
+// records its message in `errors` and evaluates as 0 so one bad formula never
+// takes the rest of the sheet down.
+function calcRecalc(cells) {
+  const values = {};
+  const errors = {};
+  const visiting = new Set();
+  function get(ref) {
+    if (ref in values) return values[ref];
+    const cell = cells[ref];
+    if (!cell) return 0;
+    if (cell.kind !== 'formula') {
+      const n = Number(cell.raw);
+      values[ref] = Number.isFinite(n) ? n : 0;
+      return values[ref];
+    }
+    if (visiting.has(ref)) throw new Error(`circular reference through ${ref}`);
+    visiting.add(ref);
+    try {
+      values[ref] = calcEval(calcParse(cell.formula.slice(1)), get);
+    } catch (error) {
+      errors[ref] = error.message;
+      values[ref] = 0;
+    } finally {
+      visiting.delete(ref);
+    }
+    return values[ref];
+  }
+  for (const ref of Object.keys(cells)) {
+    try {
+      get(ref);
+    } catch (error) {
+      errors[ref] = error.message;
+      values[ref] = 0;
+    }
+  }
+  return { values, errors };
+}
+
+function calcMoney(value) {
+  return Number(value).toLocaleString('en-GB', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function calcIsTotalCell(ref) {
+  const parsed = calcParseRef(ref);
+  if (!parsed) return false;
+  return parsed.row !== 1 && (parsed.col === 5 || parsed.row === CALC_TOTAL_ROW);
+}
+
+// The header row and the depot column are protected the way a shared finance
+// workbook protects its labels, so an edit can only ever land on data or totals.
+function calcIsProtected(ref) {
+  const parsed = calcParseRef(ref);
+  if (!parsed) return true;
+  return parsed.row === 1 || parsed.col === 1;
+}
+
+// Draws the session's sheet: the per-session September jitter, the defect, and
+// the checksum that is released only once every total agrees.
+function calcState(session) {
+  if (session.calc) return session.calc;
+  const jitterRow = CALC_FIRST_ROW + (randomBytes(1)[0] % CALC_DEPOTS.length);
+  const jitter = 500 + (randomBytes(2).readUInt16BE(0) % 9000) + randomBytes(1)[0] / 100;
+  const defect = CALC_DEFECTS[randomBytes(1)[0] % CALC_DEFECTS.length];
+
+  const cells = {};
+  const baseline = {};
+  for (const column of CALC_COLUMNS) cells[`${column.key}1`] = { kind: 'text', raw: column.label };
+  CALC_DEPOTS.forEach((depot, index) => {
+    const row = CALC_FIRST_ROW + index;
+    cells[`A${row}`] = { kind: 'text', raw: depot.name };
+    const sep = row === jitterRow ? Math.round((depot.sep + jitter) * 100) / 100 : depot.sep;
+    cells[`B${row}`] = { kind: 'number', raw: depot.jul };
+    cells[`C${row}`] = { kind: 'number', raw: depot.aug };
+    cells[`D${row}`] = { kind: 'number', raw: sep };
+    baseline[`B${row}`] = depot.jul;
+    baseline[`C${row}`] = depot.aug;
+    baseline[`D${row}`] = sep;
+    cells[`E${row}`] = { kind: 'formula', formula: CALC_QUIRKS[`E${row}`] ?? `=SUM(B${row}:D${row})` };
+  });
+  cells[`A${CALC_TOTAL_ROW}`] = { kind: 'text', raw: 'All depots' };
+  for (const col of ['B', 'C', 'D']) {
+    const ref = `${col}${CALC_TOTAL_ROW}`;
+    cells[ref] = {
+      kind: 'formula',
+      formula: CALC_QUIRKS[ref] ?? `=SUM(${col}${CALC_FIRST_ROW}:${col}${CALC_LAST_ROW})`,
+    };
+  }
+  cells[`E${CALC_TOTAL_ROW}`] = {
+    kind: 'formula',
+    formula: `=SUM(E${CALC_FIRST_ROW}:E${CALC_LAST_ROW})`,
+  };
+
+  // The control total is the ledger's own figure: the sum of the 36 posted
+  // amounts, computed BEFORE the defect is planted, so it is the fixed point
+  // every repair has to land on.
+  const control = Object.entries(baseline).reduce((sum, [, amount]) => sum + amount, 0);
+
+  cells[defect.ref] = { kind: 'formula', formula: defect.broken };
+
+  const audit = [defect.ref, ...CALC_AUDIT_DECOYS];
+  for (let i = audit.length - 1; i > 0; i -= 1) {
+    const j = randomBytes(1)[0] % (i + 1);
+    [audit[i], audit[j]] = [audit[j], audit[i]];
+  }
+
+  // What every cell was issued as, so an edit is never a dead end: the formula
+  // bar's Revert button puts a cell back to this, which is the only way to
+  // recover a posted amount somebody typed over.
+  const issued = {};
+  for (const [ref, cell] of Object.entries(cells)) {
+    issued[ref] = cell.kind === 'formula' ? cell.formula : String(cell.raw);
+  }
+
+  session.calc = {
+    cells,
+    baseline,
+    issued,
+    control: Math.round(control * 100) / 100,
+    culprit: { ref: defect.ref, broken: defect.broken },
+    audit,
+    jitterRow,
+    // Every formula the session has pulled into the formula bar, in order, and
+    // every commit it has attempted. Neither gates anything; both are reported
+    // in the validator's detail so a sweep can tell a formula-bar solve from a
+    // brute-force one.
+    formulaReads: [],
+    edits: [],
+    reconciled: false,
+    reconciledAt: null,
+    checksum: null,
+    sheetFetches: 0,
+  };
+  return session.calc;
+}
+
+// Every invariant the workbook's Reconcile check enforces: each depot's quarter
+// cell equals its three months, each column total equals its column, the grand
+// total agrees both ways, the posted monthly amounts are untouched, and the
+// result matches the ledger control total. Only the true defect can satisfy all
+// of them, so patching over the symptom in E14 does not reconcile the sheet.
+function calcCheck(calc) {
+  const { values, errors } = calcRecalc(calc.cells);
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  const failing = [];
+  for (const ref of Object.keys(errors)) failing.push(ref);
+  let postedIntact = true;
+  for (const [ref, amount] of Object.entries(calc.baseline)) {
+    if (calc.cells[ref]?.kind !== 'number' || !near(Number(calc.cells[ref].raw), amount)) {
+      failing.push(ref);
+      postedIntact = false;
+    }
+  }
+  const rowCount = CALC_LAST_ROW - CALC_FIRST_ROW + 1;
+  let rowsAgree = 0;
+  for (let row = CALC_FIRST_ROW; row <= CALC_LAST_ROW; row += 1) {
+    const months = values[`B${row}`] + values[`C${row}`] + values[`D${row}`];
+    if (near(values[`E${row}`], months)) rowsAgree += 1;
+    else failing.push(`E${row}`);
+  }
+  let colsAgree = 0;
+  for (const col of ['B', 'C', 'D', 'E']) {
+    let column = 0;
+    for (let row = CALC_FIRST_ROW; row <= CALC_LAST_ROW; row += 1) column += values[`${col}${row}`];
+    if (near(values[`${col}${CALC_TOTAL_ROW}`], column)) colsAgree += 1;
+    else failing.push(`${col}${CALC_TOTAL_ROW}`);
+  }
+  const grand = values[`E${CALC_TOTAL_ROW}`];
+  const acrossTotals =
+    values[`B${CALC_TOTAL_ROW}`] + values[`C${CALC_TOTAL_ROW}`] + values[`D${CALC_TOTAL_ROW}`];
+  if (!near(grand, acrossTotals)) failing.push('cross');
+  const controlMatched = near(grand, calc.control);
+  if (!controlMatched) failing.push('control');
+  return {
+    values,
+    errors,
+    failing: [...new Set(failing)],
+    reconciled: failing.length === 0,
+    // ONE combined figure, deliberately: reporting the depot rows and the column
+    // totals separately would tell the reader which layer is broken, and a
+    // snapshot-only agent could then name the culprit without opening a single
+    // formula. A depot-row defect and a grand-total defect both read "15 of 16".
+    agreeing: `${rowsAgree + colsAgree} of ${rowCount + 4}`,
+    controlMatched,
+    postedIntact,
+    grand: Math.round(grand * 100) / 100,
+    variance: Math.round((grand - calc.control) * 100) / 100 || 0,
+  };
+}
+
+// The wire shape both /api/calc/sheet and /api/calc/cell answer with. It carries
+// the grid's VALUES and never a formula: the formula bar is filled one cell at a
+// time by /api/calc/cell, so the two representations of a cell really are served
+// separately.
+function calcPayload(calc, withFormulas = false) {
+  const check = calcCheck(calc);
+  if (check.reconciled && !calc.reconciled) {
+    calc.reconciled = true;
+    calc.reconciledAt = Date.now();
+    calc.checksum ??= 'RC-' + randomBytes(3).toString('hex').toUpperCase();
+  }
+  const display = {};
+  const formulas = {};
+  for (const [ref, cell] of Object.entries(calc.cells)) {
+    if (cell.kind === 'text') display[ref] = String(cell.raw);
+    else if (check.errors[ref]) display[ref] = '#ERROR';
+    else display[ref] = calcMoney(check.values[ref] ?? 0);
+    if (withFormulas) formulas[ref] = cell.kind === 'formula' ? cell.formula : String(cell.raw);
+  }
+  return {
+    workbook: CALC_WORKBOOK,
+    sheet: CALC_SHEET,
+    owner: CALC_OWNER,
+    firstRow: CALC_FIRST_ROW,
+    lastRow: CALC_LAST_ROW,
+    totalRow: CALC_TOTAL_ROW,
+    display,
+    ...(withFormulas ? { formulas } : {}),
+    audit: calc.audit,
+    control: calcMoney(calc.control),
+    grand: calcMoney(check.grand),
+    variance: calcMoney(check.variance),
+    agreeing: check.agreeing,
+    controlMatched: check.controlMatched,
+    postedIntact: check.postedIntact,
+    failing: check.failing.length,
+    reconciled: check.reconciled,
+    checksum: check.reconciled ? calc.checksum : null,
+  };
+}
+
 // T067 narrow-viewport: per-session record behind the Deals of the Day code.
 // Three places write it — the static handler stamps a real document navigation
 // to the deals page, the chain stamps the phone-only <picture> candidate the
@@ -2195,6 +2886,218 @@ function parseMultipart(body, boundary) {
     }
   }
   return { fields, file };
+}
+
+// pages/console/ — Cindergrid deploy console, run 4192. The run log is painted
+// to a <canvas>, so none of its text exists in the DOM. The graded error id and
+// the three decoy ids are minted per session from randomBytes and released only
+// through the reads below, which also record which escape hatch was used: the
+// server-side search box, the raw-log document, or neither.
+const CONSOLE_RUN = {
+  id: 4192,
+  project: 'orchid-api',
+  environment: 'production',
+  commit: '5f3c9a1',
+  image: 'registry.cindergrid.net/orchid-api:2026.03.11-4192',
+  trigger: 'change 861 merged by t.ashgrove',
+  started: '2026-03-11 09:38:04 UTC',
+  duration: '4m 21s',
+  failedStep: 'release/gate',
+};
+
+const CONSOLE_PAGE = 80;
+
+function buildConsoleLog(codes) {
+  const lines = [];
+  let t = Date.UTC(2026, 2, 11, 9, 38, 4, 0);
+  const push = (level, text, code) => {
+    t += 220 + ((lines.length * 137) % 1700);
+    lines.push({
+      n: lines.length + 1,
+      ts: new Date(t).toISOString().slice(11, 23),
+      level,
+      code: code ?? '',
+      text,
+    });
+  };
+  const digest = (i) =>
+    'sha256:' + ((0x9c1f4d2b + i * 0x51ab13) >>> 0).toString(16).padStart(8, '0');
+
+  push('INFO', 'runner grid-c07 accepted job 4192 (pool standard-4x)');
+  push('INFO', 'workspace /var/cindergrid/work/4192 prepared');
+  push('INFO', 'checkout: cloning source at 5f3c9a1');
+  push('INFO', 'checkout: 1842 objects, 12.4 MiB in 1.1s');
+  push('INFO', 'checkout: submodule vendor/protos at a01c33e');
+  push('INFO', 'checkout finished in 2.6s');
+
+  push('INFO', 'build/image: buildkit 0.14.2, platform linux/amd64');
+  push('INFO', 'build/image: base node:20.11-bookworm-slim');
+  for (let i = 1; i <= 24; i++) {
+    push(
+      'DEBUG',
+      `build/image: layer ${i}/24 ${digest(i)} ${i % 5 === 0 ? 'built' : 'cached'}`
+    );
+  }
+  push('INFO', 'build/image: resolved 1284 packages from lockfile');
+  push('INFO', 'build/image: bundling app sources (3214 files)');
+  push('INFO', 'build/image: pruning dev dependencies');
+  push('INFO', 'build/image: image ' + digest(0) + ' size 412 MiB');
+  push('INFO', 'build/image finished in 1m 58s');
+
+  push('INFO', 'scan/deps: policy set baseline-2026-01');
+  push('INFO', 'scan/deps: 1284 packages queued for analysis');
+  push('ERROR', 'scan/deps: advisory feed unreachable, falling back to cached index', codes.decoyScan);
+  push('INFO', 'scan/deps: cached index age 36m, within policy window');
+  push('INFO', 'scan/deps: 0 critical, 2 moderate, 11 low');
+  push('INFO', 'scan/deps finished with non-blocking findings');
+
+  push('INFO', 'push/registry: authenticating to registry.cindergrid.net');
+  push('INFO', 'push/registry: 24 layers queued');
+  for (let i = 1; i <= 12; i++) {
+    push('DEBUG', `push/registry: layer ${i}/24 ${digest(40 + i)} pushed`);
+  }
+  push('WARN', 'push/registry: HTTP 503 from registry, retry 1 of 3 in 2s');
+  push('ERROR', 'push/registry: layer 17 upload aborted, scheduling retry', codes.decoyPush);
+  push('INFO', 'push/registry: retry 2 of 3 accepted by registry');
+  for (let i = 18; i <= 24; i++) {
+    push('DEBUG', `push/registry: layer ${i}/24 ${digest(40 + i)} pushed`);
+  }
+  push('INFO', 'push/registry: manifest ' + digest(99) + ' written');
+  push('INFO', 'push/registry finished in 41s after 2 retries');
+
+  push('INFO', 'migrate/schema: 3 pending migrations');
+  for (const m of ['0117_add_route_hints', '0118_widen_tenant_key', '0119_drop_legacy_quota']) {
+    push('INFO', `migrate/schema: applying ${m}`);
+    push('DEBUG', `migrate/schema: ${m} advisory lock acquired`);
+    push('INFO', `migrate/schema: ${m} applied`);
+  }
+  push('INFO', 'migrate/schema finished in 8.2s');
+
+  push('INFO', 'release/gate: evaluating policy release-prod-v4');
+  push('INFO', 'release/gate: rule change-window ok (window 09:00-17:00 UTC)');
+  push('INFO', 'release/gate: rule approvals ok (2 of 2 recorded)');
+  push('INFO', 'release/gate: rule scan-clean ok (no critical findings)');
+  push('INFO', 'release/gate: rule image-provenance checking attestations');
+  push('DEBUG', 'release/gate: querying attestation store for ' + digest(0));
+  push('WARN', 'release/gate: attestation store returned 0 records');
+  push('ERROR', 'release/gate failed: no build attestation for ' + digest(0), codes.errorId);
+  push('INFO', 'release/gate: rule image-provenance denied promotion');
+  push('INFO', 'release/gate aborted after 3.4s');
+
+  push('WARN', 'rollout/canary: skipped, upstream step did not pass');
+  push('WARN', 'notify/webhook: skipped, upstream step did not pass');
+
+  push('INFO', 'diagnostics: collecting support bundle for run 4192');
+  const diag = [
+    'runner image cg-runner-2026.02.19',
+    'kernel 6.6.28-cindergrid',
+    'container runtime containerd 1.7.16',
+    'cpu quota 4 cores, memory quota 8 GiB',
+    'peak memory 3.7 GiB at build/image',
+    'disk 41 GiB used of 120 GiB',
+    'network egress 812 MiB',
+    'clock offset 3ms from pool.cindergrid.net',
+    'policy bundle release-prod-v4 revision 37',
+    'policy bundle baseline-2026-01 revision 12',
+    'attestation store endpoint attest.cindergrid.net',
+    'attestation store latency p50 34ms p99 210ms',
+    'registry endpoint registry.cindergrid.net',
+    'registry latency p50 88ms p99 2.3s',
+    'secret store lease 3600s remaining 2841s',
+    'environment production, region eu-west-2',
+    'concurrency slot 3 of 8',
+    'queue wait 11s',
+    'workspace cache hit ratio 0.83',
+    'buildkit cache 18 GiB of 40 GiB',
+    'npm registry mirror npm.cindergrid.net',
+    'container image layers 24',
+    'sbom format spdx-2.3',
+    'sbom components 1284',
+    'attestation predicates expected 1 found 0',
+    'trace id 6c2f9b1e4a7d',
+    'span count 214',
+    'log buffer 4 MiB soft cap',
+    'artifact retention policy 14d',
+    'notification channels 2 configured',
+    'runner uptime 41h 12m',
+    'runner pool standard-4x capacity 8',
+    'job scheduler revision 1183',
+    'source mirror git.cindergrid.net',
+    'submodule vendor/protos pinned a01c33e',
+    'lockfile checksum 3f81aa02',
+    'base image digest pinned by policy',
+    'build cache namespace orchid-api/main',
+    'test results parser junit-xml',
+    'test cases 914 passed 914',
+    'coverage report 78.2 percent lines',
+    'lint findings 0 blocking 4 advisory',
+    'container user 10001 non-root',
+    'seccomp profile cindergrid-default',
+    'apparmor profile unconfined',
+    'read-only rootfs enabled',
+    'egress allowlist 6 destinations',
+    'dns resolver 10.24.0.10',
+    'proxy none',
+    'tls minimum version 1.2',
+    'signing key ring release-2026',
+    'signing key id ck-88f1',
+    'attestation predicate type slsa-provenance-1.0',
+    'attestation store cache miss',
+    'gate evaluation engine rego 0.63',
+    'gate evaluation duration 3.4s',
+    'gate rules evaluated 4 of 4',
+    'gate rules denied 1',
+  ];
+  for (const d of diag) push('DEBUG', 'diagnostics: ' + d);
+  push('INFO', 'diagnostics: support bundle sb-4192 sealed');
+
+  push('INFO', 'cleanup/artifacts: uploading build report (2.1 MiB)');
+  push('INFO', 'cleanup/artifacts: uploading test results (0.4 MiB)');
+  push('ERROR', 'cleanup/artifacts: cache volume cv-4192 could not be pruned', codes.decoyCleanup);
+  push('INFO', 'cleanup/artifacts: 3 artifacts retained for 14 days');
+  push('INFO', 'cleanup/artifacts finished in 6.0s');
+
+  push('INFO', 'run 4192 finished with status FAILED in 4m 21s');
+  push('INFO', 'failing step: release/gate');
+  push('INFO', 'support bundle sb-4192 retained until 2026-03-25');
+  push('INFO', 'runner grid-c07 released job 4192');
+  return lines;
+}
+
+function consoleState(session) {
+  if (!session.console) {
+    const mint = () => 'E-' + randomBytes(3).toString('hex').toUpperCase();
+    const codes = {
+      errorId: mint(),
+      decoyScan: mint(),
+      decoyPush: mint(),
+      decoyCleanup: mint(),
+    };
+    session.console = {
+      ...codes,
+      lines: buildConsoleLog(codes),
+      pageLoads: 0,
+      logFetches: 0,
+      searchQueries: 0,
+      searchHits: 0,
+      rawFetches: 0,
+      rawNavs: 0,
+      offPageReads: 0,
+    };
+  }
+  return session.console;
+}
+
+// Did this read come from the viewer, or from a shell? Same idiom as the
+// Kettleforge review gate: Sec-Fetch-Site is a forbidden header name for
+// fetch()/XHR, but `curl -H` sets it freely, so this is not proof a browser did
+// it — it is one of the two factors the route label uses, the other being
+// `pageLoads`, which only a document navigation to /console/ increments.
+function consoleFromPage(req) {
+  return (
+    req.headers['sec-fetch-site'] === 'same-origin' ||
+    /\/console\//.test(req.headers.referer ?? '')
+  );
 }
 
 function readBody(req) {
@@ -2531,6 +3434,192 @@ function gridwordView(game) {
   };
 }
 
+// pages/metrics/ — the Halbeck console's Active seats trend (chart-escape). The
+// 18-month series is minted per session from randomBytes and released only
+// through the gated reads below, so no figure the validator grades exists under
+// pages/; the canvas is drawn client-side from the fetched JSON and no figure
+// reaches an attribute, a title or the fallback text. The mint keeps the
+// steepest month-over-month fall unique BOTH in seats and as a percentage (so
+// either reading of "steepest" names the same month) while holding the
+// runner-up fall within 1.8% of the plot height of it, so the two are
+// indistinguishable on the canvas and only the table view, the CSV export or
+// the JSON settles which is which.
+const METRICS_MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+const METRICS_POINTS = 18;
+const METRICS_LAST = { year: 2026, monthIndex: 5 };
+
+function metricsLabels() {
+  const out = [];
+  let { year, monthIndex } = METRICS_LAST;
+  for (let i = 0; i < METRICS_POINTS; i++) {
+    out.unshift(`${METRICS_MONTH_NAMES[monthIndex]} ${year}`);
+    if (--monthIndex < 0) {
+      monthIndex = 11;
+      year -= 1;
+    }
+  }
+  return out;
+}
+
+function metricsMint() {
+  const labels = metricsLabels();
+  let seed = randomBytes(4).readUInt32BE(0);
+  const rand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const pick = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
+  for (let attempt = 0; attempt < 8000; attempt++) {
+    // Both falls sit away from the ends: the final point feeds the console's
+    // "latest" and "change on last month" tiles, which are real markup.
+    const deepAt = pick(2, 15);
+    const nearAt = pick(2, 15);
+    if (Math.abs(deepAt - nearAt) < 4) continue;
+    const riseAt = pick(1, 17);
+    if (riseAt === deepAt || riseAt === nearAt) continue;
+    const deep = pick(2600, 3900);
+    const near = deep - pick(20, 90);
+    const deltas = [];
+    for (let i = 1; i < METRICS_POINTS; i++) deltas.push(Math.round((rand() - 0.35) * 2300));
+    deltas[deepAt - 1] = -deep;
+    deltas[nearAt - 1] = -near;
+    deltas[riseAt - 1] = pick(2200, 3400);
+    const values = [pick(33000, 39000)];
+    for (const d of deltas) values.push(values[values.length - 1] + d);
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    const span = hi - lo;
+    if (lo < 22000 || hi > 64000) continue;
+    if (span < 8000 || span > 22000) continue;
+    if ((deep - near) / span > 0.018) continue;
+    if (values[deepAt] % 10 === 0 || values[nearAt] % 10 === 0) continue;
+    const sorted = [...values].sort((x, y) => x - y);
+    if (sorted.some((v, i) => i > 0 && v - sorted[i - 1] < 30)) continue;
+    const falls = deltas.map((d, i) => ({ at: i + 1, drop: -d, pct: -d / values[i] }));
+    const byDrop = [...falls].sort((x, y) => y.drop - x.drop);
+    if (byDrop[0].at !== deepAt || byDrop[1].at !== nearAt) continue;
+    if (byDrop[2].drop > near - 800) continue;
+    const byPct = [...falls].sort((x, y) => y.pct - x.pct);
+    if (byPct[0].at !== deepAt || byPct[1].at !== nearAt) continue;
+    return {
+      points: labels.map((label, i) => ({ label, value: values[i] })),
+      target: {
+        index: deepAt,
+        label: labels[deepAt],
+        value: values[deepAt],
+        from: values[deepAt - 1],
+        drop: deep,
+      },
+      runnerUp: {
+        index: nearAt,
+        label: labels[nearAt],
+        value: values[nearAt],
+        from: values[nearAt - 1],
+        drop: near,
+      },
+    };
+  }
+  return null;
+}
+
+function metricsState(session) {
+  if (!session.metrics) {
+    // metricsMint only returns null if no draw in 8000 met the shape
+    // constraints; measured acceptance is about one draw in a hundred and
+    // twenty, so this has never been observed. A fresh seed is the only fallback.
+    let minted = metricsMint();
+    while (!minted) minted = metricsMint();
+    session.metrics = {
+      points: minted.points,
+      target: minted.target,
+      runnerUp: minted.runnerUp,
+      seriesReads: 0,
+      directReads: 0,
+      tableViews: 0,
+      csvReads: 0,
+    };
+  }
+  return session.metrics;
+}
+
+// T118 locale-notice: pages/intl/ — the Qandara Travel Advisory Authority, published
+// in English, Arabic and Japanese editions that are updated independently. The
+// supplementary notices exist ONLY here, and only the Arabic and Japanese editions
+// ever carried them: the English edition is a summary translation that never picked
+// them up, so /api/intl/notices answers `en` with an empty list however it is asked.
+// Each notice's reference is minted per session and per destination from randomBytes
+// (never from the page-exposed nonce), lives on session.intl so state.reset() clears
+// it, and appears in no file under pages/.
+const INTL_LOCALES = ['en', 'ar', 'ja'];
+
+const INTL_NOTICES = {
+  'port-vasiri': {
+    published: ['ar', 'ja'],
+    issued: { ar: '24 يوليو 2026', ja: '2026年7月24日' },
+    text: {
+      ar: {
+        title: 'إغلاق الرصيف الشمالي واشتراط تصريح دخول',
+        body: [
+          'تجري أعمال تجريف في الرصيف الشمالي بميناء فاسيري، ويظل الرصيف مغلقًا أمام حركة الركاب حتى 14 أغسطس 2026.',
+          'على القادمين بحرًا الحصول على تصريح دخول من مكتب الميناء قبل 72 ساعة على الأقل من موعد الوصول. ولا ينطبق هذا الشرط على القادمين جوًا.',
+          'خدمة العبارات بين ميناء فاسيري وساحل أشكر متوقفة حتى إشعار آخر.',
+        ],
+      },
+      ja: {
+        title: '北桟橋の閉鎖と入港許可の取得義務',
+        body: [
+          'ヴァシリ港の北桟橋では浚渫工事のため、2026年8月14日まで旅客の利用を停止しています。',
+          '海路で到着する渡航者は、到着の72時間前までに港湾事務所で入港許可を取得してください。空路で到着する場合、この要件は適用されません。',
+          'ヴァシリ港とアシュカル海岸を結ぶフェリーは、当面の間運休しています。',
+        ],
+      },
+    },
+  },
+  'ashkar-coast': {
+    published: ['ar', 'ja'],
+    issued: { ar: '21 يوليو 2026', ja: '2026年7月21日' },
+    text: {
+      ar: {
+        title: 'تعليق رحلات العبارات الليلية',
+        body: [
+          'تتوقف رحلات العبارات من مرسى أشكر بين الساعة 22:00 والساعة 05:00 حتى 30 أغسطس 2026.',
+          'تعمل الرحلات النهارية وفق الجدول المعتاد.',
+        ],
+      },
+      ja: {
+        title: '夜間フェリーの運休',
+        body: [
+          'アシュカル桟橋発のフェリーは、2026年8月30日まで22時から翌5時まで運休します。',
+          '日中の便は通常の時刻表どおり運航します。',
+        ],
+      },
+    },
+  },
+};
+
+// Every destination's reference is minted up front, distinct from the others, so
+// the validator can always tell "quoted the other destination's reference" apart
+// from "quoted the right one" — a reference minted lazily on release would leave
+// the decoy field vacuously false for any agent that never opened the decoy.
+function intlState(session) {
+  return (session.intl ??= {
+    refs: Object.keys(INTL_NOTICES).reduce((refs, dest) => {
+      let ref;
+      do {
+        ref = 'QTA-2026-' + randomBytes(2).toString('hex').toUpperCase();
+      } while (Object.values(refs).includes(ref));
+      refs[dest] = ref;
+      return refs;
+    }, {}),
+    requests: { en: 0, ar: 0, ja: 0 },
+    editionNavs: { en: 0, ar: 0, ja: 0 },
+    releases: [],
+  });
+}
+
 export async function startPagesServer({ port = 0, preview = false, modes = {} } = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const root = join(here, 'pages');
@@ -2599,6 +3688,132 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       const file = pathname0 === '/' ? 'index.html' : 'preview.html';
       res.writeHead(200, { 'Content-Type': TYPES['.html'] });
       res.end(await readFile(join(here, file)));
+      return;
+    }
+
+    // pages/metrics/ — the Halbeck console (chart-escape). The minted series is
+    // the graded ground truth, so every representation of it comes from here:
+    // the JSON the canvas is drawn from, the CSV export, and the table view the
+    // page renders from the same JSON. Each read is counted on the session so
+    // the validator can REPORT which route the agent took; the counts are
+    // deliberately not part of the pass decision, since a page nonce is enough
+    // to forge any of them.
+    if (req.method === 'GET' && pathname0 === '/api/metrics/series') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const metrics = metricsState(found.session);
+      metrics.seriesReads += 1;
+      // The console tags the read it makes to paint the canvas, so a read the
+      // AGENT made is separable from the page's own. Route telemetry only.
+      if (url.searchParams.get('src') !== 'chart') metrics.directReads += 1;
+      return json(res, 200, {
+        workspace: 'Northgate Media',
+        metric: 'Active seats',
+        grain: 'month',
+        window: `${metrics.points[0].label} to ${metrics.points[METRICS_POINTS - 1].label}`,
+        points: metrics.points,
+      });
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/metrics/view') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { ok: false, error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const metrics = metricsState(found.session);
+      if (payload?.view === 'table') metrics.tableViews += 1;
+      return json(res, 200, { ok: true });
+    }
+
+    // The export link carries the session nonce in `k` because an anchor cannot
+    // set X-Eval-Nonce; a header-authenticated fetch of the same URL works too.
+    if (req.method === 'GET' && pathname0 === '/api/metrics/export.csv') {
+      const found = requireSession(req, res, url.searchParams.get('k'));
+      if (!found) return;
+      const metrics = metricsState(found.session);
+      metrics.csvReads += 1;
+      const rows = ['month,active_seats'];
+      for (const point of metrics.points) rows.push(`${point.label},${point.value}`);
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="northgate-active-seats.csv"',
+      });
+      return res.end(rows.join('\n') + '\n');
+    }
+
+    // Cindergrid run log. The viewer pages it in and paints it to a canvas, so
+    // this is the only place the log text exists; the counters below are what
+    // the validator reports the agent's route from. Every read records whether
+    // it came from the viewer, so a shell solve cannot be reported as one of the
+    // in-browser routes.
+    if (req.method === 'GET' && pathname0 === '/api/console/log') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const con = consoleState(found.session);
+      const after = Math.max(0, Number(url.searchParams.get('after') ?? 0) || 0);
+      con.logFetches += 1;
+      if (!consoleFromPage(req)) con.offPageReads += 1;
+      return json(res, 200, {
+        run: CONSOLE_RUN,
+        total: con.lines.length,
+        lines: con.lines.slice(after, after + CONSOLE_PAGE),
+      });
+    }
+
+    // Server-side log search: the viewer renders these matches as real DOM, so
+    // it is the escape hatch out of the canvas that needs no scripting.
+    if (req.method === 'POST' && pathname0 === '/api/console/search') {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const found = requireSession(req, res, body.nonce);
+      if (!found) return;
+      const con = consoleState(found.session);
+      const q = String(body.q ?? '').trim();
+      if (!q) return json(res, 400, { error: 'query required' });
+      const needle = q.toLowerCase();
+      const matches = con.lines.filter((line) =>
+        `${line.ts} ${line.level} ${line.code} ${line.text}`.toLowerCase().includes(needle)
+      );
+      // Only the first 40 matches are returned, so only those can have been
+      // rendered: a 161-hit query for "e" must not count as having shown the
+      // graded line.
+      const shown = matches.slice(0, 40);
+      const fromPage = consoleFromPage(req);
+      con.searchQueries += 1;
+      if (!fromPage) con.offPageReads += 1;
+      if (fromPage && shown.some((line) => line.code === con.errorId)) con.searchHits += 1;
+      return json(res, 200, {
+        query: q,
+        total: matches.length,
+        matches: shown,
+      });
+    }
+
+    // The raw-log document, linked from the viewer toolbar. Cookie-gated only,
+    // because it is navigated to rather than fetched with a nonce header — and a
+    // shell curl can hold a cookie it minted itself, so `rawNavs` counts only
+    // document navigations and the route label also requires a page load.
+    if (req.method === 'GET' && pathname0 === '/api/console/raw') {
+      const found = getSession(req);
+      if (!found) return json(res, 403, { error: 'session required' });
+      const con = consoleState(found.session);
+      con.rawFetches += 1;
+      if (isGovDocumentNav(req)) con.rawNavs += 1;
+      else con.offPageReads += 1;
+      const text = con.lines
+        .map(
+          (line) =>
+            `${line.ts} ${line.level.padEnd(5)} ${line.code ? line.code + ' ' : ''}${line.text}`
+        )
+        .join('\n');
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(
+        `# cindergrid run 4192 ${CONSOLE_RUN.project} ${CONSOLE_RUN.environment}\n` +
+          `# ${con.lines.length} lines\n${text}\n`
+      );
       return;
     }
 
@@ -2861,6 +4076,129 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       return json(res, 200, { ok: true });
     }
 
+    // Abaca workbook: the grid's values. Formulas are deliberately NOT in this
+    // payload — the page has to ask for them one cell at a time, or turn on the
+    // ribbon's Show formulas view, which is the one bulk read and is recorded.
+    if (req.method === 'GET' && pathname0 === '/api/calc/sheet') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const calc = calcState(found.session);
+      calc.sheetFetches += 1;
+      const withFormulas = url.searchParams.get('formulas') === '1';
+      if (withFormulas) {
+        const at = Date.now();
+        for (const ref of Object.keys(calc.cells)) calc.formulaReads.push({ ref, bulk: true, at });
+      }
+      return json(res, 200, calcPayload(calc, withFormulas));
+    }
+
+    // One cell's definition, which is what the formula bar shows. Every read is
+    // recorded so a sweep can see how many cells a run actually opened.
+    if (req.method === 'GET' && pathname0 === '/api/calc/cell') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const calc = calcState(found.session);
+      const ref = calcParseRef(String(url.searchParams.get('ref') ?? '').toUpperCase())?.ref;
+      const cell = ref ? calc.cells[ref] : null;
+      if (!cell) return json(res, 404, { error: 'no such cell' });
+      calc.formulaReads.push({ ref, at: Date.now() });
+      const check = calcCheck(calc);
+      return json(res, 200, {
+        ref,
+        kind: cell.kind,
+        input: cell.kind === 'formula' ? cell.formula : String(cell.raw),
+        display: cell.kind === 'text' ? String(cell.raw) : calcMoney(check.values[ref] ?? 0),
+        error: check.errors[ref] ?? null,
+        computed: calcIsTotalCell(ref),
+        editable: !calcIsProtected(ref),
+        // What the cell was issued as, so the formula bar's Revert button can put
+        // an overwritten posted amount back; `posted` marks the 36 amounts that
+        // came from the ledger rather than from this workbook.
+        issued: calc.issued[ref] ?? null,
+        posted: ref in calc.baseline,
+      });
+    }
+
+    // Commit an edit. The server recalculates the whole sheet from the submitted
+    // text and grades the RESULT, so any formula that produces the right totals
+    // is accepted; total cells additionally have to be a formula over at least
+    // two cells, because typing the answer in as a constant is not a repair.
+    if (req.method === 'POST' && pathname0 === '/api/calc/cell') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const calc = calcState(found.session);
+      const parsed = calcParseRef(String(payload?.ref ?? '').toUpperCase());
+      const ref = parsed?.ref;
+      const previous = ref ? calc.cells[ref] : null;
+      if (!previous) return json(res, 404, { error: 'no such cell' });
+      const input = String(payload?.input ?? '').trim();
+      const reject = (message) => {
+        calc.edits.push({ ref, input, accepted: false, reason: message, at: Date.now() });
+        return json(res, 400, { error: message, ref });
+      };
+      if (calcIsProtected(ref)) return reject(`${ref} is a protected label cell.`);
+      if (input.length > 200) return reject('That entry is too long for a cell.');
+      const computed = calcIsTotalCell(ref);
+
+      let next;
+      if (input.startsWith('=')) {
+        let ast;
+        try {
+          ast = calcParse(input.slice(1));
+        } catch (error) {
+          return reject(`${ref}: ${error.message}`);
+        }
+        let refs;
+        try {
+          refs = calcRefsOf(ast);
+        } catch (error) {
+          return reject(`${ref}: ${error.message}`);
+        }
+        if (refs.has(ref)) return reject(`${ref} cannot refer to itself.`);
+        if (computed && refs.size < 2) {
+          return reject(`${ref} is a total cell and must add up at least two cells.`);
+        }
+        next = { kind: 'formula', formula: input };
+      } else {
+        if (computed) {
+          return reject(`${ref} is a total cell: enter a formula, not a typed-in figure.`);
+        }
+        const amount = Number(input.replace(/[, ]/g, ''));
+        if (!Number.isFinite(amount)) return reject(`${ref}: that is not an amount.`);
+        next = { kind: 'number', raw: amount };
+      }
+
+      // An edit is rejected if it makes ANY cell fail to evaluate, not just the
+      // one being edited: a formula that is fine in isolation can put a cell it
+      // feeds into a cycle, and silently leaving #ERROR somewhere else on the
+      // sheet with no message is a dead end.
+      const broke = Object.keys(calcCheck(calc).errors);
+      calc.cells[ref] = next;
+      const check = calcCheck(calc);
+      const introduced = Object.keys(check.errors).filter((r) => !broke.includes(r));
+      if (introduced.length) {
+        const at = introduced.includes(ref) ? ref : introduced[0];
+        const message =
+          at === ref
+            ? `${ref}: ${check.errors[at]}`
+            : `${ref} would break ${at}: ${check.errors[at]}`;
+        calc.cells[ref] = previous;
+        return reject(message);
+      }
+      calc.edits.push({ ref, input, accepted: true, at: Date.now() });
+      const postedWas =
+        ref in calc.baseline && !(next.kind === 'number' && Number(next.raw) === calc.baseline[ref])
+          ? calcMoney(calc.baseline[ref])
+          : null;
+      return json(res, 200, { ok: true, ref, postedWas, ...calcPayload(calc) });
+    }
+
     // T052 file-upload: the depot attestation intake. Every graded fact is
     // server-observed — the received filename, byte count and content are kept
     // on the session (so state.reset() clears them between tasks) and the
@@ -3005,6 +4343,52 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       });
     }
 
+    // The notices panel of a destination advisory. Locale-gated: the English
+    // edition never carried these notices, so `en` is answered with an empty list
+    // whoever asks. A translated edition is served only to a session that really
+    // navigated into that edition (stamped in the static handler below), so an
+    // agent that never left the English pages cannot pull a reference out of the
+    // API, and the release is recorded on the session — that record, not a beacon,
+    // is what the validator grades.
+    if (req.method === 'GET' && pathname0 === '/api/intl/notices') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const locale = String(url.searchParams.get('locale') ?? '');
+      const dest = String(url.searchParams.get('dest') ?? '');
+      if (!INTL_LOCALES.includes(locale)) {
+        return json(res, 400, { error: 'unknown edition' });
+      }
+      const intl = intlState(found.session);
+      intl.requests[locale] += 1;
+      const notice = INTL_NOTICES[dest];
+      // A destination we do not publish is an error, not an empty list: an empty
+      // list here would let a mistyped slug read as an authoritative "nothing
+      // applies", which is the one wrong answer this task must not hand out.
+      if (!notice) {
+        return json(res, 404, { error: 'unknown destination' });
+      }
+      if (locale === 'en' || !notice.published.includes(locale)) {
+        return json(res, 200, { locale, dest, notices: [] });
+      }
+      if (!intl.editionNavs[locale]) {
+        return json(res, 403, { error: 'edition not loaded' });
+      }
+      const reference = intl.refs[dest];
+      intl.releases.push({ locale, dest, reference, at: Date.now() });
+      return json(res, 200, {
+        locale,
+        dest,
+        notices: [
+          {
+            reference,
+            issued: notice.issued[locale],
+            title: notice.text[locale].title,
+            body: notice.text[locale].body,
+          },
+        ],
+      });
+    }
+
     if (req.method === 'GET' && pathname0 === '/api/maze/state') {
       const found = requireSession(req, res);
       if (!found) return;
@@ -3100,6 +4484,134 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         return json(res, 500, { error: 'Report backend unavailable. Try again.' });
       }
       return json(res, 200, { revenue: '$1,284,550', quarter: 'Q3' });
+    }
+
+    // T116 live-auction: Marlstone Salerooms lot 418. Both handlers tick the
+    // per-session clock before answering, so the figure the page renders and the
+    // figure a bid is judged against come from the same clock. A refused bid
+    // carries the CURRENT figure and the next bid back with it, which is what
+    // makes a stale bid cost a turn instead of the lot. Every attempted amount
+    // is logged with the reason it drew, so the validator can tell an amount the
+    // saleroom actually took from one it refused. The paddle code is minted by
+    // the hammer and only when the standing bidder is the online one. Requests
+    // that did not come from the lot page are counted in offPage, so a shell
+    // solve is visible in the results row.
+    if (req.method === 'GET' && pathname0 === '/api/auction/lot') {
+      const found = requireSession(req, res);
+      if (!found) return;
+      const auction = auctionState(found.session);
+      const now = Date.now();
+      auctionOpen(auction, now);
+      auctionTick(auction, now);
+      auction.reads += 1;
+      if (!auctionFromPage(req)) auction.offPage += 1;
+      return json(res, 200, auctionView(auction, now));
+    }
+
+    if (req.method === 'POST' && pathname0 === '/api/auction/bid') {
+      let payload;
+      try {
+        payload = JSON.parse((await readBody(req)) || '{}');
+      } catch {
+        return json(res, 400, { ok: false, error: 'Malformed request body.' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const auction = auctionState(found.session);
+      const now = Date.now();
+      auctionOpen(auction, now);
+      auctionTick(auction, now);
+      if (!auctionFromPage(req)) auction.offPage += 1;
+      // One bid at a time. The cooldown never advances on a turned-away attempt,
+      // so a caller cannot starve itself, but it does mean the ladder cannot be
+      // walked faster by reading the refusals than by re-reading the page.
+      const waitMs = auction.lastBidAt + AUCTION_BID_COOLDOWN_MS - now;
+      if (waitMs > 0) {
+        auction.tooSoon += 1;
+        return json(res, 429, {
+          ok: false,
+          reason: 'too-soon',
+          error:
+            'The rostrum is still taking the last bid. ' +
+            `Come again in ${Math.ceil(waitMs / 1000)}s.`,
+          retryAfterMs: waitMs,
+          ...auctionView(auction, now),
+        });
+      }
+      auction.lastBidAt = now;
+      auction.attempts += 1;
+      const digits = String(payload?.amount ?? '').replace(/[^0-9.]/g, '');
+      const amount = digits ? Number.parseFloat(digits) : Number.NaN;
+      if (!Number.isFinite(amount) || amount <= 0) {
+        auction.unreadable += 1;
+        return json(res, 400, {
+          ok: false,
+          reason: 'unreadable',
+          error: 'Enter the amount you are bidding.',
+          ...auctionView(auction, now),
+        });
+      }
+      const next = auction.over ? null : auction.price + AUCTION_INCREMENT;
+      let reason = null;
+      if (auction.over) reason = 'closed';
+      else if (auction.standing === 'you') reason = 'yours';
+      else if (amount <= auction.price) reason = 'behind';
+      else if (amount !== next) reason = 'off-step';
+      if (auction.log.length < AUCTION_LOG_CAP) {
+        auction.log.push({ amount, reason, at: now - auction.startedAt });
+      }
+      if (reason === 'closed') {
+        auction.afterHammer += 1;
+        return json(res, 409, {
+          ok: false,
+          reason,
+          error: `Lot sold - bidding closed at ${auctionFig(auction.hammerPrice)}.`,
+          ...auctionView(auction, now),
+        });
+      }
+      if (reason === 'yours') {
+        auction.selfBid += 1;
+        return json(res, 409, {
+          ok: false,
+          reason,
+          error:
+            `You hold the bid at ${auctionFig(auction.price)}. ` +
+            'The auctioneer will not take an advance on your own bid.',
+          ...auctionView(auction, now),
+        });
+      }
+      if (reason === 'behind') {
+        auction.behind += 1;
+        return json(res, 409, {
+          ok: false,
+          reason,
+          error:
+            `Refused - behind the room. The lot stands at ${auctionFig(auction.price)}; ` +
+            `the next bid is ${auctionFig(next)}.`,
+          ...auctionView(auction, now),
+        });
+      }
+      if (reason === 'off-step') {
+        auction.offStep += 1;
+        return json(res, 409, {
+          ok: false,
+          reason,
+          error:
+            `Refused - off the increment. The lot stands at ${auctionFig(auction.price)}; ` +
+            `the next bid is ${auctionFig(next)}.`,
+          ...auctionView(auction, now),
+        });
+      }
+      auction.accepted += 1;
+      auction.price = amount;
+      auction.standing = 'you';
+      auction.lastEventAt = now;
+      auction.history.push({ amount, who: 'you', at: now });
+      return json(res, 200, {
+        ok: true,
+        message: `Bid accepted at ${auctionFig(amount)}.`,
+        ...auctionView(auction, now),
+      });
     }
 
     // T112 support-chat: the Kelverne Fibre help centre chat. Replies are not
@@ -5540,6 +7052,21 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           }
         }
 
+        // T117 canvas-log: the viewer's own log fetches are what the "did they
+        // call the paging API by hand" heuristic is scaled against, so the page
+        // load is counted HERE, on a real document navigation, rather than from
+        // a fire-and-forget beacon that races the next navigation. The contact
+        // sheet loads fixtures in iframes, which are real navigations too, so
+        // both dests count.
+        if (
+          pathname === '/console/index.html' &&
+          (isGovDocumentNav(req) ||
+            (req.headers['sec-fetch-mode'] === 'navigate' &&
+              req.headers['sec-fetch-dest'] === 'iframe'))
+        ) {
+          consoleState(found.session).pageLoads += 1;
+        }
+
         // T055 draft-resume: the graded `pageload` event is minted here, on a
         // real document navigation, and nowhere else. Emitting it from an API
         // endpoint would let page script forge a reload with a plain fetch.
@@ -5549,6 +7076,29 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           req.headers['sec-fetch-dest'] === 'document'
         ) {
           (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
+        }
+
+        // T118 locale-notice: an edition counts as opened only on a real document
+        // navigation into it. An in-page fetch() cannot set the sec-fetch-* headers,
+        // so /api/intl/notices cannot hand a translated notice to a session that only
+        // ever loaded the English pages. Framed loads count, like the other nav stamps
+        // in this handler, so the preview contact sheet still renders a live edition.
+        // The path is lowercased first because the fixture tree is served off a
+        // case-insensitive filesystem: /INTL/AR/advisory.html serves the Arabic
+        // page, and a case-sensitive test here would leave that load unstamped and
+        // the page reporting "no notices" for a reason the agent cannot see.
+        const intlPath = pathname.toLowerCase();
+        if (
+          intlPath.startsWith('/intl/') &&
+          req.headers['sec-fetch-mode'] === 'navigate' &&
+          ['document', 'iframe'].includes(req.headers['sec-fetch-dest'])
+        ) {
+          const edition = intlPath.startsWith('/intl/ar/')
+            ? 'ar'
+            : intlPath.startsWith('/intl/ja/')
+              ? 'ja'
+              : 'en';
+          intlState(found.session).editionNavs[edition] += 1;
         }
 
         // T112 support-chat: the equipment record is released only to a session

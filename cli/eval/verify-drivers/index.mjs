@@ -21,6 +21,11 @@ import { DRIVERS as paylink } from './paylink.mjs';
 import { DRIVERS as forge } from './forge.mjs';
 import { DRIVERS as support } from './support.mjs';
 import { DRIVERS as schedule } from './schedule.mjs';
+import { DRIVERS as auction } from './auction.mjs';
+import { DRIVERS as calc } from './calc.mjs';
+import { DRIVERS as metrics } from './metrics.mjs';
+import { DRIVERS as consoleLog } from './console.mjs';
+import { DRIVERS as intl } from './intl.mjs';
 
 const modules = {
   probes,
@@ -40,6 +45,11 @@ const modules = {
   forge,
   support,
   schedule,
+  auction,
+  calc,
+  consoleLog,
+  intl,
+  metrics,
 };
 
 export const DRIVERS = {};
