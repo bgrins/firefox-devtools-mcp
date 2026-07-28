@@ -14,6 +14,28 @@
 // read the answer out of ctx.pages.state unless the task is unsolvable without
 // it (fog-of-war, server-held word) — say so in `note` when you do.
 
+// A second session that never touched the browser: the fixture server mints a
+// cookie and a nonce for any HTML GET, which is how a curl probe (or a re-minted
+// cookie) shadowed the graded session before the winner-selection fixes. Used to
+// keep those false fails from coming back.
+export async function straySession(base, path) {
+  const res = await fetch(base + path, { headers: { accept: 'text/html' } });
+  const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0];
+  const nonce = (await res.text()).match(/const NONCE = '([0-9a-f]+)'/)?.[1] ?? null;
+  if (!cookie || !nonce) throw new Error(`no stray session for ${path}`);
+  return {
+    nonce,
+    async post(apiPath, body) {
+      const r = await fetch(base + apiPath, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ nonce, ...body }),
+      });
+      return r.json();
+    },
+  };
+}
+
 export const DRIVERS = {
   // --- static extraction: no server gate, answer is derived from the page ---
   'dead-images': {
@@ -192,7 +214,37 @@ export const DRIVERS = {
   'phish-pick': {
     canned: true,
     note: 'visits both pages; the verdict prose is canned',
-    wrong: 'Both pages looked legitimate to me.',
+    // wrong[1..2]: the right pick supported only by a description of the LEGITIMATE
+    // page's logo, or the bare word "square" — both scored the logo tell before it
+    // was narrowed. alsoCorrect: contrastive and imperative negations that the
+    // NEG_FRAUD gap and the copula's 'not' used to turn into a denial or into an
+    // accusation of the real bank.
+    wrong: [
+      'Both pages looked legitimate to me.',
+      'The fraudulent page is /bank/vera-bank-login/ and the legitimate one is ' +
+        '/bank/verabank-online/. Two things gave it away: the header logo is not the navy ' +
+        'rounded square a bank would use, and the sign-in form asks for the whole password ' +
+        'on the first screen instead of a two-step flow.',
+      '/bank/vera-bank-login/ is the phishing site; /bank/verabank-online/ is the real one. ' +
+        'The logo shape is wrong (a square where the real page has something else) and the ' +
+        'copy reads like a scam.',
+    ],
+    alsoCorrect: [
+      '/bank/verabank-online/ is not a phishing clone; /bank/vera-bank-login/ is the ' +
+        'fraudulent one. On the fake page the footer legal name reads "VeraBenk Holdings, ' +
+        'N.A." and it paints its own "Verified Secure Connection" SiteTrust seal into the page.',
+      'Do not use /bank/vera-bank-login/ - it is a phishing clone. Sign in only at ' +
+        '/bank/verabank-online/. On the fake, the footer legal name reads "VeraBenk ' +
+        'Holdings, N.A." and there is a "Verified Secure Connection" SiteTrust badge ' +
+        'painted into the page body.',
+      '/bank/vera-bank-login/ is not the legitimate page - /bank/verabank-online/ is. On ' +
+        'the fake, the footer legal name reads "VeraBenk Holdings, N.A.", and it paints its ' +
+        'own "Verified Secure Connection" SiteTrust seal into the page.',
+      'The fake is /bank/vera-bank-login/. /bank/verabank-online/ is not the phishing page ' +
+        '- it is the bank\'s own sign-in. Tells on the fake: the footer legal name reads ' +
+        '"VeraBenk Holdings, N.A.", and it paints its own "Verified Secure Connection" ' +
+        'SiteTrust seal into the page.',
+    ],
     async run({ goto, evaluate }) {
       await goto('/bank/verabank-online/');
       const legit = await evaluate(() => document.body.innerText);

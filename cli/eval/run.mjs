@@ -335,9 +335,45 @@ async function webTasks(base) {
         `Open ${base}/gridword/?day=0 — a word puzzle. Play it until you solve it ` +
         `(you have 6 guesses; use the per-letter feedback shown after each guess to choose ` +
         `your next word). Then report the answer word and how many guesses you used.`,
-      validate: (text) => ({
-        pass: new RegExp(ANSWERS.gridword.day0Word, 'i').test(text),
-      }),
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // Server-observed, exactly like gridword-hard: the day-0 word is held in
+        // server.mjs and every guess goes through /api/gridword/guess, so a solve
+        // has to be played. Grade the session that actually won, so a stray curl
+        // probe cannot shadow the real run. This used to be one unanchored
+        // regex over the answer text with no server gate at all, and the word is
+        // an ordinary English adjective, so "the autumn air was crisp" passed.
+        const games = [...ctx.pages.state.sessions.values()]
+          .map((s) => s.gridwordEasy?.[0])
+          .filter(Boolean);
+        const game = games.find((g) => g.won) ?? games[0];
+        const won = game?.won === true;
+        const used = game?.guesses.length ?? 0;
+        const wordOk = new RegExp(`\\b${ANSWERS.gridword.day0Word}\\b`, 'i').test(text);
+        const SPELLED = [
+          ['zero'],
+          ['one', 'first'],
+          ['two', 'second'],
+          ['three', 'third'],
+          ['four', 'fourth'],
+          ['five', 'fifth'],
+          ['six', 'sixth'],
+        ];
+        // Deliberately lenient, same helper as gridword-hard: digit or word,
+        // cardinal or ordinal. won === true is the real gate; the count is graded
+        // because the ask asks for it and nothing checked it before.
+        const mentions = (n) =>
+          new RegExp(`(^|[^\\d])${n}([^\\d]|$)`).test(text) ||
+          (SPELLED[n] ? new RegExp(`\\b(${SPELLED[n].join('|')})\\b`, 'i').test(text) : false);
+        const countOk = used > 0 && mentions(used);
+        return {
+          pass: won && wordOk && countOk,
+          detail:
+            `sessions=${games.length} won=${won} used=${used} ` +
+            `wordOk=${wordOk} countOk=${countOk} ` +
+            `guesses=${(game?.guesses ?? []).map((g) => g.guess).join(',') || 'none'}`,
+        };
+      },
     },
     {
       id: 'gridword-hard',
@@ -420,14 +456,64 @@ async function webTasks(base) {
         `preferred date: 2026-08-12, time: Morning, and give consent. Leave optional fields alone.\n` +
         `Proceed through the form to the review step and report the reference code shown. ` +
         `IMPORTANT: do NOT press the final Submit button.`,
-      validate: (text, ctx) => {
-        const walked = ctx.pages.state
-          .beaconsOf('form-progress')
-          .some((b) => b.data?.step === 3);
-        const submissions = ctx.pages.state.beaconsOf('form-submit').length;
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // MD- plus 6 hex is minted per session by /api/form-step, so case,
+        // whitespace and unicode dash variants can be normalised away without
+        // losing any discrimination — same tolerance as the file-upload receipt.
+        const flat = (s) => s.toUpperCase().replace(/[\s\u2010-\u2015\u2212-]+/g, '');
+        const flatText = flat(text);
+        const norm = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const want = ANSWERS.form.fields;
+        // The nine values the ask dictates, graded on what the form actually
+        // collected. Without this the task passed with zero fields filled.
+        // Phone is compared digits-only and time by prefix ("Morning" is the
+        // start of the option label "Morning (8am-12pm)"); nothing else needs
+        // tolerance, because the ask states each value verbatim.
+        const wrongFields = (data) => {
+          const d = data ?? {};
+          const same = (a, b) => norm(a) === norm(b);
+          return Object.keys(want).filter((field) => {
+            if (field === 'phone') {
+              return String(d.phone ?? '').replace(/\D/g, '') !== want.phone.replace(/\D/g, '');
+            }
+            if (field === 'time') return !norm(d.time).startsWith(norm(want.time));
+            return !same(d[field], want[field]);
+          });
+        };
+        const walkers = [...ctx.pages.state.sessions.values()].filter(
+          (s) => s.formGauntlet?.refCode
+        );
+        // Grade the session that reached the review step and whose code the
+        // answer names, so a stray curl probe or a re-minted cookie cannot
+        // shadow the real run (same selection as register-errors).
+        const session =
+          walkers.find(
+            (s) =>
+              flatText.includes(flat(s.formGauntlet.refCode)) &&
+              wrongFields(s.formGauntlet.data).length === 0
+          ) ??
+          walkers.find((s) => flatText.includes(flat(s.formGauntlet.refCode))) ??
+          walkers.find((s) => wrongFields(s.formGauntlet.data).length === 0) ??
+          walkers[0];
+        const record = session?.formGauntlet ?? null;
+        const code = record?.refCode ?? null;
+        const reported = !!code && flatText.includes(flat(code));
+        const steps = record?.steps ?? [];
+        const walked = steps.includes(2) && steps.includes(3);
+        const bad = record ? wrongFields(record.data) : Object.keys(ANSWERS.form.fields);
+        const submissions = record?.submits ?? 0;
+        // Beacons are reported and never graded: POST /api/beacon mints any kind
+        // from the page nonce, so a 'form-progress' beacon is a forgery tell in
+        // the results row, not evidence that the form was walked.
+        const beacons = ctx.pages.state.beaconsOf('form-progress').length;
         return {
-          pass: text.includes(ANSWERS.form.refCode) && walked && submissions === 0,
-          detail: `walked=${walked} submissions=${submissions}`,
+          pass: reported && walked && bad.length === 0 && submissions === 0,
+          detail:
+            `sessions=${walkers.length} opens=${record?.opens ?? 0} ` +
+            `steps=${steps.join('>') || 'none'} walked=${walked} ` +
+            `wrongFields=${bad.join(',') || 'none'} code=${code} reported=${reported} ` +
+            `submissions=${submissions} progressBeacons=${beacons}`,
         };
       },
     },
@@ -476,27 +562,60 @@ async function webTasks(base) {
         `- Dara Voss / dara.voss@example.com\n- Lionel Prue / l.prue@example.com\n` +
         `- Mika Tanager / mika.t@example.com\n- Odette Brill / odette.brill@example.com\n` +
         `Submit the form and report the group code shown.`,
-      validate: (text, ctx) => {
+      validate: (rawText, ctx) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
+        // GRP- plus 6 hex is minted per session from randomBytes, so case,
+        // whitespace and unicode dash variants cost no discrimination.
+        const flat = (s) => s.toUpperCase().replace(/[\s\u2010-\u2015\u2212-]+/g, '');
+        const flatText = flat(text);
+        const norm = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
         const expected = [
           ['Dara Voss', 'dara.voss@example.com'],
           ['Lionel Prue', 'l.prue@example.com'],
           ['Mika Tanager', 'mika.t@example.com'],
           ['Odette Brill', 'odette.brill@example.com'],
         ];
-        const submits = ctx.pages.state.beaconsOf('roster-submit');
-        const good = submits.find(
-          (b) =>
-            b.data?.attendees?.length === 4 &&
-            expected.every(([name, email]) =>
-              b.data.attendees.some((a) => a.name === name && a.email === email)
+        // One submission carrying all four attendees. Four one-attendee
+        // submissions never produce it, which is what the old global
+        // submits.length === 1 was reaching for.
+        const complete = (entry) =>
+          entry.attendees?.length === 4 &&
+          expected.every(([name, email]) =>
+            entry.attendees.some(
+              (a) => norm(a.name) === norm(name) && norm(a.email) === norm(email)
             )
+          );
+        const rosters = [...ctx.pages.state.sessions.values()].filter(
+          (s) => (s.roster?.submits ?? []).length > 0
         );
-        const code = good
-          ? 'GRP-' + ctx.pages.state.sessions.get(good.sid).nonce.slice(0, 4).toUpperCase()
-          : null;
+        // Grade the session that registered the delegation and whose code the
+        // answer names (the draft-resume selection). Counting submissions across
+        // ALL sessions used to hard-fail a correct run whenever a probe session
+        // posted, and taking the first matching beacon let that probe's session
+        // supply the graded code.
+        const session =
+          rosters.find(
+            (s) =>
+              s.roster.submits.some(complete) &&
+              s.roster.groupCode &&
+              flatText.includes(flat(s.roster.groupCode))
+          ) ??
+          rosters.find((s) => s.roster.submits.some(complete)) ??
+          rosters[0];
+        const submits = session?.roster.submits ?? [];
+        const good = submits.some(complete);
+        const code = session?.roster.groupCode ?? null;
+        const reported = !!code && flatText.includes(flat(code));
+        // Four rows exist only if "Add attendee" grew the form, so the growth the
+        // ask names is implied by a complete submission; the page's own count is
+        // reported for the results row.
+        const added = session?.roster.rowsAdded ?? 0;
         return {
-          pass: submits.length === 1 && !!good && text.includes(code),
-          detail: `submits=${submits.length} match=${!!good} code=${code}`,
+          pass: good && reported,
+          detail:
+            `sessions=${rosters.length} submits=${submits.length} ` +
+            `rows=${submits.map((s) => s.rows).join(',') || 'none'} added=${added} ` +
+            `complete=${good} code=${code} reported=${reported}`,
         };
       },
     },
@@ -601,7 +720,21 @@ async function webTasks(base) {
         `virtualized list. Find the employee whose badge number starts with "QX-" ` +
         `and report their full name and their floor.`,
       validate: (text, ctx) => {
-        const fetches = ctx.pages.state.beaconsOf('biglist-fetch').length;
+        // Grade the per-session counter /api/biglist/rows maintains, not the
+        // beacon: POST /api/beacon accepts an arbitrary kind, so a
+        // `biglist-fetch` beacon row is forgeable with nothing but the page
+        // nonce, and that beacon was this task's ONLY route evidence. A shell
+        // sweep of the rows endpoint still produces genuine fetches — it cannot
+        // be prohibited without breaking the task, so it is made legible
+        // instead: offPage counts requests that did not come from the page.
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const logOf = (s) => s.biglist ?? { fetches: 0, offsets: [], offPage: 0 };
+        const winner = sessions
+          .filter((s) => logOf(s).fetches > 0)
+          .sort((a, b) => logOf(b).fetches - logOf(a).fetches)[0];
+        const log = winner ? logOf(winner) : { fetches: 0, offsets: [], offPage: 0 };
+        // The needle is row 3418, which only arrives in the batch at offset 3250.
+        const needleBatch = log.offsets.some((o) => o <= 3417 && 3417 < o + 250);
         const name = new RegExp(ANSWERS.biglist.name.replace(' ', '\\s+'), 'i');
         const floorNum = new RegExp(`\\b${ANSWERS.biglist.floor}(?:th)?\\b`, 'i');
         return {
@@ -609,8 +742,12 @@ async function webTasks(base) {
             name.test(text) &&
             /floor/i.test(text) &&
             floorNum.test(text) &&
-            fetches >= 3,
-          detail: `fetches=${fetches}`,
+            log.fetches >= 3 &&
+            needleBatch,
+          detail:
+            `sessions=${sessions.length} fetches=${log.fetches} ` +
+            `batches=${log.offsets.length} needleBatch=${needleBatch} ` +
+            `offPage=${log.offPage} beacons=${ctx.pages.state.beaconsOf('biglist-fetch').length}`,
         };
       },
     },
@@ -642,7 +779,7 @@ async function webTasks(base) {
       ask:
         `Open ${base}/forms/register.html — a partner registration form. Register with:\n` +
         `name: Priya Nair, email: priya@nair-home.example, company: Meridian,\n` +
-        `zip: 60614-2210, referral code: EVAL-7.\n` +
+        `zip: 60614-2210, referral code: RF-7304.\n` +
         `If the server flags problems, correct exactly the flagged fields per the ` +
         `error messages and resubmit. Report the confirmation code.`,
       validate: (text, ctx) => {
@@ -667,7 +804,7 @@ async function webTasks(base) {
           last.zip === ANSWERS.register.corrections.zip &&
           last.name === 'Priya Nair' &&
           last.company === 'Meridian' &&
-          last.referral === 'EVAL-7';
+          last.referral === 'RF-7304';
         const code = winner
           ? 'REG-' + winner.nonce.slice(0, 6).toUpperCase()
           : null;
@@ -1028,20 +1165,27 @@ async function webTasks(base) {
       validate: (text, ctx) => {
         // Grade sessions that completed MFA (correct code accepted at some
         // point); accept any such session's vault word so a re-minted cookie
-        // mid-task cannot fail a correct run.
+        // mid-task cannot fail a correct run. mfaVerified is monotonic and
+        // s.auth is NOT: /api/portal/report clears auth on the third fetch, so
+        // reading auth here failed a correct run that went on to open the
+        // reports area.
         const winners = [...ctx.pages.state.sessions.values()].filter(
-          (s) =>
-            s.auth === 'full' &&
-            !!s.mfaCode &&
-            (s.mfaAttempts ?? []).some((a) => a.ok)
+          (s) => s.mfaVerified === true && (s.mfaAttempts ?? []).some((a) => a.ok)
         );
         const words = winners.map((s) => s.vaultWord).filter(Boolean);
-        const phrase =
-          /welcome back/i.test(text) &&
-          words.some((w) => new RegExp(`\\b${w}\\b`, 'i').test(text));
+        const clean = text.replace(/[*_~`]+/g, '');
+        // The vault word is minted per session and only reachable from the gated
+        // dashboard payload, so it carries the whole discrimination. Also
+        // requiring the literal "welcome back" only failed correct paraphrases —
+        // and the rendered phrase runs past the snapshot's 27-char text cap, so
+        // an agent may legitimately never see those two words together.
+        const word = words.some((w) => new RegExp(`\\b${w}\\b`, 'i').test(clean));
+        const greeted = /welcome|greet/i.test(clean);
         return {
-          pass: winners.length > 0 && phrase,
-          detail: `winners=${winners.length} words=${words.join(',')}`,
+          pass: winners.length > 0 && word,
+          detail:
+            `winners=${winners.length} words=${words.join(',')} ` +
+            `word=${word} greeted=${greeted}`,
         };
       },
     },
@@ -1054,19 +1198,21 @@ async function webTasks(base) {
         `five totals. Your session may expire partway through — if it does, ` +
         `log back in and continue where you left off.`,
       validate: (text, ctx) => {
-        // Grade the session that actually covered all five reports — a curl
-        // probe or re-minted browser session must not shadow the real run.
+        // Report coverage is the UNION over every session that read a report:
+        // signing back in after the expiry can re-mint the cookie, which splits
+        // the five reads across two sessions, and grading a single session
+        // failed that correct run. Unioning cannot manufacture a pass — a report
+        // is only served to a session that authenticated, and the sum still has
+        // to be right.
         const candidates = [...ctx.pages.state.sessions.values()].filter(
           (s) => (s.reportHits ?? []).length > 0
         );
-        const winner =
-          candidates.find((s) =>
-            [1, 2, 3, 4, 5].every((n) => s.reportHits.includes(n))
-          ) ?? candidates[0];
-        const allFive = [1, 2, 3, 4, 5].every((n) =>
-          (winner?.reportHits ?? []).includes(n)
+        const seen = new Set(candidates.flatMap((s) => s.reportHits ?? []));
+        const allFive = [1, 2, 3, 4, 5].every((n) => seen.has(n));
+        const logins = candidates.reduce(
+          (n, s) => n + (s.logins ?? []).filter((l) => l.ok).length,
+          0
         );
-        const logins = (winner?.logins ?? []).filter((l) => l.ok).length;
         const totalRe = new RegExp(
           '\\b' + ANSWERS.portalReports.total.replace(',', '[,\\s]?') + '\\b'
         );
@@ -1075,7 +1221,10 @@ async function webTasks(base) {
           pass: allFive && logins >= 2 && total,
           detail:
             `sessions=${candidates.length} ` +
-            `hits=${(winner?.reportHits ?? []).join(',')} ` +
+            `hits=${[...seen].sort((a, b) => a - b).join(',')} ` +
+            `perSession=[${candidates
+              .map((s) => (s.reportHits ?? []).join('/'))
+              .join(' ')}] ` +
             `logins=${logins} total=${total}`,
         };
       },
@@ -1138,8 +1287,13 @@ async function webTasks(base) {
         const signedOut = winner?.portalSignedOut === true;
         const stillActive = authed.filter((s) => s.portalActive !== false);
         const clean = text.replace(/[*_~`]+/g, '');
+        // The boundary belongs on the number, not in front of an optional '$':
+        // "\b" between the "D" of "USD412.67" and the "4" is not a boundary, so
+        // that (correct) currency form used to fail.
         const balance = new RegExp(
-          '\\$?\\b' + ANSWERS.portal.balance.replace('.', '\\.') + '(?!\\d)'
+          '(?<![\\d.,])\\$?\\s?' +
+            ANSWERS.portal.balance.replace('.', '\\.') +
+            '(?!\\d)'
         ).test(clean);
         return {
           pass: signedOut && balance,
@@ -1449,13 +1603,33 @@ async function webTasks(base) {
         `Open ${base}/news/ — a link-aggregator front page. Open the comment thread ` +
         `for the #1 top post and report: the title of the post and how many top-level ` +
         `(non-reply) comments are shown in the thread.`,
-      validate: (text) => {
+      validate: (rawText) => {
+        const text = rawText.replace(/[*_~`]+/g, '');
         const topLevel = topThread.comments.length;
+        const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+          'eight', 'nine', 'ten', 'eleven', 'twelve'];
+        const NUM = `(?:${topLevel}${WORDS[topLevel] ? `|${WORDS[topLevel]}` : ''})`;
+        // The count has to be BOUND to the comments it counts, and may be
+        // spelled out. It used to be `\b5\b` anywhere in the answer, so "14
+        // top-level comments ... pagetable 5 hours ago" passed while the correct
+        // "five top-level comments" failed.
+        const QUAL = '(?:top[-\\s]?level|non[-\\s]?repl\\w*|root|parent|direct|first[-\\s]?level|un[-\\s]?nested)';
+        const NOUN = '(?:comments?|remarks?|replies|reply|responses?)';
+        // A count is never a duration or a score, which is what kept the stray
+        // "5 hours ago" in a correct-looking wrong answer from counting.
+        const NOT_UNIT = '(?!\\s*(?:hours?|hrs?|minutes?|mins?|days?|weeks?|months?|years?|ago|points?|pts?|upvotes?|votes?))';
+        const N = `(?<![\\d.,])${NUM}${NOT_UNIT}`;
+        const countOk = [
+          // "5 top-level (non-reply) comments"
+          `${N}\\b(?:\\s*\\(?${QUAL}\\)?,?)*\\s*${NOUN}\\b`,
+          // "top-level (non-reply) comments: 5"
+          `${QUAL}[^\\d\\n]{0,20}?${NOUN}\\b[^\\d\\n]{0,12}?${N}(?!\\d)`,
+          // "14 comments in total, but only 5 of them are top-level"
+          `${N}\\b[^\\d\\n]{0,24}?${QUAL}`,
+        ].some((re) => new RegExp(re, 'i').test(text));
         return {
-          pass:
-            text.includes(newsItems[0].title.slice(0, 30)) &&
-            new RegExp(`\\b${topLevel}\\b`).test(text),
-          detail: `expected top-level=${topLevel}`,
+          pass: text.includes(newsItems[0].title.slice(0, 30)) && countOk,
+          detail: `expected top-level=${topLevel} countOk=${countOk}`,
         };
       },
     },
@@ -1481,7 +1655,7 @@ async function webTasks(base) {
         `Open ${base}/ledger/ — a 7-page transaction ledger. Sum the 'amount' ` +
         `column for every transaction tagged 'hardware' across all pages. ` +
         `Report the exact total in dollars and cents.`,
-      validate: (rawText) => {
+      validate: (rawText, ctx) => {
         // Markdown emphasis stripped; NBSP, narrow no-break space and thin
         // space normalised to a plain space so the tokenizer's literal-space
         // thousands separator matches a locale-formatted answer.
@@ -1497,9 +1671,26 @@ async function webTasks(base) {
         const total = amounts.some(
           (n) => Math.abs(n - ANSWERS.ledger.hardwareTotal) < 0.005
         );
+        // Route telemetry, never a gate. Folio 1 ships an Export CSV button
+        // whose hint advertises whole-ledger scope and the default snapshot of
+        // /ledger/ carries no table rows, so summing the export in 4 calls is a
+        // legitimate solve — it just has to be LEGIBLE, or a token comparison on
+        // this task cannot be read as evidence about table handling. Only rows
+        // reported route=table support that reading. The folio beacon is
+        // page-load telemetry and forgeable like any beacon, which is exactly
+        // why it decides nothing.
+        const sessions = [...ctx.pages.state.sessions.values()];
+        const exports = sessions.reduce((n, s) => n + (s.ledgerExports ?? 0), 0);
+        const csvHits = sessions.reduce((n, s) => n + (s.ledgerCsvHits ?? 0), 0);
+        const folios = new Set(
+          ctx.pages.state.beaconsOf('ledger-folio').map((b) => b.data?.page)
+        );
+        const route = csvHits > 0 ? 'csv' : folios.size >= 4 ? 'table' : 'unknown';
         return {
           pass: total,
-          detail: `hardwareTotal=${total} amounts=${amounts.length}`,
+          detail:
+            `hardwareTotal=${total} amounts=${amounts.length} route=${route} ` +
+            `folios=${folios.size}/7 exports=${exports} csvHits=${csvHits}`,
         };
       },
     },
@@ -1814,8 +2005,11 @@ async function webTasks(base) {
         };
         const FRAUD =
           /\b(fake[ds]?|faked|fraud\w*|phish\w*|scam\w*|spoof\w*|lookalike|look-alike|imitat\w*|impersonat\w*|clone[ds]?|cloning|counterfeit|bogus|malicious|typosquat\w*|deceptive|forged|forgery|sham|illegitimate|impostor|imposter|untrustworthy|unsafe)\b|\bnot (the |a )?(legitimate|legit|real|genuine|authentic|official|safe)\b|\b(do ?n[o']?t|does ?n[o']?t|never) (trust|use)\b/i;
+        // The negation window stops at a URL placeholder, as BREAK does: with the
+        // URL inside the gap, 'Do not use <fake> - it is a phishing clone' read as
+        // a DENIAL that the fake is a clone and threw the verdict away.
         const NEG_FRAUD =
-          /\b(not|no|nor|nothing|none|neither|isn'?t|aren'?t|wasn'?t|doesn'?t|didn'?t|never|free of|clean of|without|lacks|lacked|absent)\b[^.;|]{0,25}?\b(fake|fraud\w*|phish\w*|scam\w*|spoof\w*|suspicious|lookalike|imitat\w*|impersonat\w*|clone|counterfeit|bogus|malicious|deceptive|tells?|red flags?)\b/i;
+          /\b(not|no|nor|nothing|none|neither|isn'?t|aren'?t|wasn'?t|doesn'?t|didn'?t|never|free of|clean of|without|lacks|lacked|absent)\b(?:(?!@site[ab]@)[^.;|]){0,25}?\b(fake|fraud\w*|phish\w*|scam\w*|spoof\w*|suspicious|lookalike|imitat\w*|impersonat\w*|clone|counterfeit|bogus|malicious|deceptive|tells?|red flags?)\b/i;
         const LEGIT_MARK =
           /\b(legitimate|legit|genuine|authentic|real|official|trustworthy|trusted|trust|valid|correct|safe)\b/i;
         const NEG_LEGIT =
@@ -1913,10 +2107,15 @@ async function webTasks(base) {
         // non-copular verb never predicates, because correct comparison answers
         // routinely mention one page inside a sentence about the other ('the fake
         // seal is absent from <legit>', '<legit> shows the navy square logo').
+        // The copula must NOT swallow a following 'not': leaving the negation
+        // inside the window is what lets classify() see it. Consuming it graded
+        // '<legit> is not a phishing clone' as an accusation of the real bank,
+        // and 'X is not the legitimate one' still resolves to fraud because
+        // FRAUD itself matches 'not the legitimate'.
         const LINK_AFTER =
-          /^(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:page|site|url|link|one|domain|address)?\s*(?:is|are|was|were|remains?)\s+(?:not\s+)?(?:the\s+|a\s+|an\s+)?|\s*\|\s*)/i;
+          /^(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:page|site|url|link|one|domain|address)?\s*(?:is|are|was|were|remains?)\s+(?:the\s+|a\s+|an\s+)?|\s*\|\s*)/i;
         const LINK_BEFORE =
-          /(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:is|are|was|were|remains?)\s+(?:not\s+)?(?:the\s+|a\s+|an\s+)?|\s*\|\s*)$/i;
+          /(?:[ \t]*(?:[:=]|->)[ \t]*|\s+(?:is|are|was|were|remains?)\s+(?:the\s+|a\s+|an\s+)?|\s*\|\s*)$/i;
         const BREAK = /[.!?;\n\r…]|@site[ab]@/;
         const SENT = /[.!?;\n\r…]/;
         const WIN = 32;
@@ -2366,7 +2565,11 @@ async function webTasks(base) {
           ).test(text);
         };
         // Order-insensitive: a permuted L/W/H yields the same parcel and the
-        // same price, so only the multiset of dimensions is graded.
+        // same price, so only the multiset of dimensions is graded. The tolerance
+        // IS the rounding the page mandates (whole cm, one decimal kg), so the
+        // rounded entry and the exact conversion both pass while 2.5 cm-per-inch
+        // (60/45/30) and a truncated 4.0 kg — both wrong, both formerly accepted
+        // by the 2 cm / 0.5 kg windows — do not.
         const want = [...t.cm].sort((a, b) => b - a);
         const dimsOkOf = (entry) =>
           [entry.l, entry.w, entry.h]
@@ -2486,8 +2689,9 @@ async function webTasks(base) {
       ask:
         `Open ${base}/unsub/. Fully unsubscribe morgan@tealwave.example from the ` +
         `Tealwave newsletter — read each screen carefully, since the flow is ` +
-        `designed to keep you subscribed. Report the confirmation phrase shown ` +
-        `at the end.`,
+        `designed to keep you subscribed. Any control that keeps the subscription ` +
+        `closes the removal request, so if you hit one you have to walk the flow ` +
+        `again from ${base}/unsub/. Report the confirmation phrase shown at the end.`,
       validate: (rawText, ctx) => {
         const text = rawText.replace(/[*_~`]+/g, '');
         const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.unsub);
@@ -2497,26 +2701,36 @@ async function webTasks(base) {
           new RegExp(phrase.replace('-', '[\\s\\u2010-\\u2015-]*'), 'i').test(text);
         // Grade the session that actually finished the flow, so a stray curl
         // session or a re-minted cookie cannot shadow the real run.
-        const finished = sessions.filter((s) => s.unsub.phrase);
+        const finished = sessions.filter((s) => s.unsub.removal);
         const session =
           finished.find((s) => matches(s.unsub.phrase)) ??
           finished[0] ??
           sessions.find((s) => (s.unsub.steps ?? []).length > 0) ??
           sessions[0];
         const unsub = session?.unsub ?? {};
-        const steps = unsub.steps ?? [];
-        const stepsOk = [1, 2, 3].every((n) => steps.includes(n));
-        // Every stay-subscribed control in EVERY session counts: the flow is
-        // only beaten if none of them was ever hit.
+        // ONE server record, written only when the removal was actually performed:
+        // the three screens and the cleared digest opt-in are bound to that event,
+        // so a later click cannot flip a flag the pass was assembled from.
+        const removal = unsub.removal ?? null;
+        const stepsOk = [1, 2, 3].every((n) => (removal?.steps ?? []).includes(n));
+        const digestOff = removal?.digest === false;
+        const phraseOk = matches(unsub.phrase);
+        // A stay-subscribed control costs TURNS, not the task: it closes the
+        // removal request server-side, so the flow has to be walked again and no
+        // amount of clicking assembles a removal. What DOES fail is ending
+        // subscribed — a stay control hit after the removal puts the address back
+        // on the list. (consent-reject documents the same recovery rule.)
         const stays = sessions.flatMap((s) =>
           (s.unsub.stays ?? []).map((h) => h.control)
         );
-        const phraseOk = matches(unsub.phrase);
+        const resubscribed = sessions.some((s) => !!s.unsub.resubscribedAt);
         return {
-          pass: stepsOk && stays.length === 0 && unsub.digest === false && phraseOk,
+          pass: !!removal && stepsOk && digestOff && phraseOk && !resubscribed,
           detail:
-            `sessions=${sessions.length} steps=[${steps}] digestOff=${unsub.digest === false} ` +
-            `stays=[${stays}] phrase=${unsub.phrase ?? 'none'} reported=${phraseOk}`,
+            `sessions=${sessions.length} removalSteps=[${removal?.steps ?? ''}] ` +
+            `digestOff=${digestOff} stays=[${stays}] resubscribed=${resubscribed} ` +
+            `fromPage=${removal?.fromPage ?? 'none'} offPage=${unsub.offPageFinishes ?? 0} ` +
+            `phrase=${unsub.phrase ?? 'none'} reported=${phraseOk}`,
         };
       },
     },
@@ -3688,7 +3902,7 @@ async function webTasks(base) {
         // discrimination — same tolerance as the upload receipt match.
         const flat = (s) => s.toUpperCase().replace(/[\s\u2010-\u2015\u2212-]+/g, '');
         const flatText = flat(clean);
-        const said = (id) => flatText.includes(flat(id));
+        const said = (id, hay = flatText) => hay.includes(flat(id));
         // Grade the session whose server-minted id the answer actually carries;
         // a stray probe session must not shadow the run that read the log.
         const sessions = [...ctx.pages.state.sessions.values()].filter((s) => s.console);
@@ -3719,18 +3933,47 @@ async function webTasks(base) {
         const decoys = con
           ? ['decoyScan', 'decoyPush', 'decoyCleanup'].filter((k) => said(con[k]))
           : [];
+        // Which step logged a given id, read back out of the minted log rather than
+        // hardcoded: "scan/deps", "push/registry", "cleanup/artifacts".
+        const stepRe = (code) => {
+          const line = (con?.lines ?? []).find((l) => l.code === code);
+          const parts = (line ? line.text.split(/[:\s]/)[0] : '')
+            .split('/')
+            .filter((part) => part.length > 3);
+          return parts.length ? new RegExp(parts.join('|'), 'i') : null;
+        };
+        const elsewhere =
+          /\b(?:not|isn'?t|never|no|nothing|non-?blocking|unrelated|other|others|rest|instead|rather|also|another|besides|additionally|apart|aside|decoy|ignore\w*|harmless|retried|retry|recovered|warning|earlier|later|previous)\b/i;
+        const designates = /\b(?:is|are|was|were|answer|reported?|culprit)\b/i;
+        // Telling the four ERROR lines apart is the whole task, and the site's own
+        // escape hatch (searching for ERROR) puts all four on one screen, so the
+        // maximally correct answer attributes each id to its own step — which a blunt
+        // `decoys.length <= 1` failed. What is wrong is offering a decoy AS the failing
+        // step's id, so a decoy only counts against an answer when the clause carrying
+        // it neither names that decoy's own step, nor rules the id out, nor designates
+        // the real id beside it. That also catches a SWAPPED attribution, which the
+        // count let through.
+        const misattributed = decoys.some((k) => {
+          const re = stepRe(con[k]);
+          return clean
+            .split(/[.!?;\n]+/)
+            .filter((clause) => said(con[k], flat(clause)))
+            .some(
+              (clause) =>
+                !(re && re.test(clause)) &&
+                !elsewhere.test(clause) &&
+                !(said(con.errorId, flat(clause)) && designates.test(clause))
+            );
+        });
         return {
-          // Naming two or more of the three decoys is a dump of every id in the
-          // log rather than an answer: the whole task is telling the four ERROR
-          // lines apart. One decoy still passes, so "X, not Y" stays legal.
-          pass: Boolean(graded) && decoys.length <= 1,
+          pass: Boolean(graded) && !misattributed,
           detail:
             `sessions=${sessions.length} route=${route} ` +
             `searches=${con?.searchQueries ?? 0} searchHits=${con?.searchHits ?? 0} ` +
             `raw=${con?.rawFetches ?? 0}/${con?.rawNavs ?? 0} ` +
             `logFetches=${con?.logFetches ?? 0} loads=${con?.pageLoads ?? 0} ` +
             `offPage=${con?.offPageReads ?? 0} ` +
-            `decoysQuoted=${decoys.join('/') || 'none'}`,
+            `decoysQuoted=${decoys.join('/') || 'none'} misattributed=${misattributed}`,
         };
       },
     },
@@ -3948,6 +4191,13 @@ async function webTasks(base) {
         // no receipt at all still reports one.
         const record = rotations.find(carries) ?? rotations[0];
         const receiptOk = carries(record);
+        // The ask dictates the reason to give and the vault stores it verbatim, so it
+        // is a server-observed fact and it is graded — it was computed into `detail`
+        // and never read. The literal word "Scheduled" is not required, because a
+        // synonym ("Planned 90-day rotation") is not a wrong reason; what has to be
+        // there is the 90-day cadence and that this is a rotation.
+        const reasonOk =
+          /\b90[\s-]*day/i.test(record.reason ?? '') && /rotat/i.test(record.reason ?? '');
         const v = record.vault;
         // How the token got out of the vault. Every counter here is forgeable with
         // the page nonce, so this is reporting, never a pass condition — and the
@@ -3968,13 +4218,19 @@ async function webTasks(base) {
           `copyButtonClipboardWrites=${v.copyOk} clipboardRefusals=${v.copyFail} ` +
           `tokenIssues=${v.issues} offConsoleIssues=${v.offPageIssues} ` +
           `refusedRotations=${v.rejected} formEntry=${record.entry} ` +
-          `reason=${JSON.stringify(record.reason ?? '')} ` +
+          `reason=${JSON.stringify(record.reason ?? '')} reasonOk=${reasonOk} ` +
           `rotateFromConsole=${record.fromPage} secFetchSite=${record.secFetchSite ?? 'none'} ` +
           `ua=${/Firefox/.test(record.ua) ? 'firefox' : JSON.stringify(record.ua.slice(0, 48))} ` +
           `rotations=${rotations.length} sessions=${sessions.length} ` +
           `answerCarriesReceipt=${receiptOk}`;
         if (!receiptOk) {
           return { pass: false, detail: `answer does not carry the rotation receipt — ${detail}` };
+        }
+        if (!reasonOk) {
+          return {
+            pass: false,
+            detail: `the rotation was recorded without the reason the ask dictates — ${detail}`,
+          };
         }
         return { pass: true, detail };
       },

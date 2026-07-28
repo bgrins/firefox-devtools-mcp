@@ -238,6 +238,7 @@
       <div>Type any five-letter word and submit it.</div>
       <div>Every letter comes back marked: right letter in the right spot, right letter in the wrong spot, or not in the word at all.</div>
       <div>Use the marks to narrow the answer. You get six tries, and a new puzzle is posted every morning.</div>
+      <div>The games desk does the marking, so an unsolved grid keeps its word until tomorrow.</div>
       <div>Tap the keyboard below or type into the box — either way the guess lands in the same field.</div>
     </div>
 
@@ -297,13 +298,11 @@
 
 <script>
   const NONCE = '__SESSION_NONCE__';
-  // Encoded so casual view-source doesn't spoil the puzzle.
-  const ANSWERS = atob('Q1JJU1AsUExVTUIsR0xJTlQsRlJPTkQsTUlSVEgsUVVBS0UsU1dPT1A=').split(',');
   const params = new URLSearchParams(location.search);
   const DAY = Number(params.get('day') || 0);
   const HARD = params.get('mode') === 'hard';
-  // Hard mode holds no word in the page: the games desk marks every guess.
-  const ANSWER = HARD ? null : (params.get('answer') || ANSWERS[DAY % ANSWERS.length]).toUpperCase();
+  const MODE = HARD ? 'hard' : 'easy';
+  // No word is held in the page in either mode: the games desk marks every guess.
   const WORD_LEN = HARD ? 7 : 5;
   const MAX_GUESSES = HARD ? 5 : 6;
   let guesses = 0;
@@ -431,26 +430,6 @@
     return key;
   }
 
-  function mark(guess) {
-    // Two-pass wordle marking so duplicate letters behave correctly.
-    const result = new Array(WORD_LEN).fill('absent');
-    const remaining = {};
-    for (let i = 0; i < WORD_LEN; i++) {
-      if (guess[i] === ANSWER[i]) {
-        result[i] = 'correct';
-      } else {
-        remaining[ANSWER[i]] = (remaining[ANSWER[i]] || 0) + 1;
-      }
-    }
-    for (let i = 0; i < WORD_LEN; i++) {
-      if (result[i] !== 'correct' && remaining[guess[i]] > 0) {
-        result[i] = 'present';
-        remaining[guess[i]]--;
-      }
-    }
-    return result;
-  }
-
   function updateLetterState(guess, marks) {
     for (let i = 0; i < marks.length; i++) {
       const letter = guess[i];
@@ -534,7 +513,7 @@
       const response = await fetch('/api/gridword/guess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nonce: NONCE, day: DAY, guess }),
+        body: JSON.stringify({ nonce: NONCE, mode: MODE, day: DAY, guess }),
       });
       view = await response.json();
     } catch {
@@ -570,53 +549,44 @@
       status.textContent = 'Already guessed ' + guess + '.';
       return;
     }
-    if (HARD) {
-      sendGuess(guess);
-      return;
-    }
-    seen.add(guess);
-    status.textContent = '';
-    guessInput.value = '';
-    play(guess, mark(guess));
-
-    if (guess === ANSWER) {
-      finish('Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!'), ANSWER);
-    } else if (guesses >= MAX_GUESSES) {
-      finish('Out of guesses.', ANSWER);
-    }
+    sendGuess(guess);
   });
 
   if (HARD) {
     showHints({ fixed: new Array(WORD_LEN).fill(''), reuse: [] });
-    (async () => {
-      let view;
-      try {
-        const response = await fetch('/api/gridword/state?day=' + encodeURIComponent(DAY), {
-          headers: { 'X-Eval-Nonce': NONCE },
-        });
-        view = await response.json();
-      } catch {
-        return;
-      }
-      if (!view || !Array.isArray(view.played) || !view.played.length) return;
-      // Only rehydrate a board that is still empty: if a guess already landed
-      // while this fetch was in flight, replaying would double-render rows and
-      // run off the end of the grid.
-      if (guesses > 0 || done) return;
-      for (const played of view.played) {
-        play(played.guess, played.marks);
-      }
-      showHints(view);
-      if (view.over) {
-        finish(
-          view.won
-            ? 'Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!')
-            : 'Out of guesses.',
-          view.won ? view.played[view.played.length - 1].guess : null
-        );
-      }
-    })();
   }
+
+  // Both modes rehydrate: the games desk holds the game, so a reload must not
+  // show an empty board while the desk still counts the guesses already played.
+  (async () => {
+    let view;
+    try {
+      const response = await fetch(
+        '/api/gridword/state?mode=' + MODE + '&day=' + encodeURIComponent(DAY),
+        { headers: { 'X-Eval-Nonce': NONCE } }
+      );
+      view = await response.json();
+    } catch {
+      return;
+    }
+    if (!view || !Array.isArray(view.played) || !view.played.length) return;
+    // Only rehydrate a board that is still empty: if a guess already landed
+    // while this fetch was in flight, replaying would double-render rows and
+    // run off the end of the grid.
+    if (guesses > 0 || done) return;
+    for (const played of view.played) {
+      play(played.guess, played.marks);
+    }
+    showHints(view);
+    if (view.over) {
+      finish(
+        view.won
+          ? 'Solved in ' + guesses + (guesses === 1 ? ' guess!' : ' guesses!')
+          : 'Out of guesses.',
+        view.won ? view.played[view.played.length - 1].guess : null
+      );
+    }
+  })();
 </script>
 </body>
 </html>

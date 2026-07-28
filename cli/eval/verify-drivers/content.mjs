@@ -221,9 +221,16 @@ export const DRIVERS = {
   // --- structural counting: replies nest inside their parent comment ---
   'news-thread': {
     note: 'clicks through from the front page; title and top-level count read via evaluate',
-    wrong:
-      'The #1 post is "I built a spreadsheet that compiles to WebAssembly" ' +
-      'and its thread shows 14 top-level comments.',
+    wrong: [
+      'The #1 post is "I built a spreadsheet that compiles to WebAssembly" and its thread shows 14 top-level comments.',
+      'The #1 post is "I built a spreadsheet that compiles to WebAssembly" and its thread shows 14 top-level comments. The most recent one is from pagetable 5 hours ago.',
+      'The #1 post is "I built a spreadsheet that compiles to WebAssembly": 14 top-level comments; newest 5 hours ago.',
+    ],
+    alsoCorrect: [
+      'The #1 post is "I built a spreadsheet that compiles to WebAssembly" and the thread has five top-level comments (each of the first three has one nested reply).',
+      'Post: I built a spreadsheet that compiles to WebAssembly\nTop-level (non-reply) comments: 5\nTotal including replies: 14',
+      'The thread for "I built a spreadsheet that compiles to WebAssembly" lists 14 comments in total, but only 5 of them are top-level; the rest are replies nested under those.',
+    ],
     async run(helpers) {
       const { goto, evaluate, sleep } = helpers;
       await goto('/news/');

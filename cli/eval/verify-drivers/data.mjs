@@ -50,7 +50,13 @@ export const DRIVERS = {
   // --- virtualized list behind a session-gated chunk endpoint ---
   'biglist-needle': {
     note: 'streams every batch by scrolling; evaluate scrolls and reads the hit row',
-    wrong: 'Badge QX-4417 belongs to Ingrid Halvorsen, who sits on floor 7.',
+    wrong: [
+      'Badge QX-4417 belongs to Ingrid Halvorsen, who sits on floor 7.',
+      'The QX- badge belongs to Petra Ostrander on floor 14.',
+    ],
+    alsoCorrect: [
+      'The QX- badge (QX-4417) belongs to Ingrid Halvorsen, who works in Research on the 14th floor.',
+    ],
     async run({ goto, evaluate, mcp, snapshot, sleep }) {
       await goto('/biglist/');
       await until(
@@ -92,7 +98,14 @@ export const DRIVERS = {
   // --- 7 paginated tables, summed by tag ---
   'ledger-sum': {
     note: 'walks the pager by clicking Next; the rows are table markup, so evaluate reads them',
-    wrong: 'The hardware postings across the seven folios add up to $26,402.15.',
+    wrong: [
+      'The hardware postings across the seven folios add up to $26,402.15.',
+      'Summing the amount column for every hardware posting across all seven pages gives $7,206.23.',
+    ],
+    alsoCorrect: [
+      'Hardware postings across the seven folios total $29,185.78.',
+      'The hardware tag sums to 29185.780000000002 across pages 1-7.',
+    ],
     async run({ goto, evaluate, mcp, snapshot, sleep }) {
       await goto('/ledger/');
       let total = 0;
@@ -362,10 +375,29 @@ export const DRIVERS = {
 
   // --- client-scored word puzzle ---
   gridword: {
-    note: 'plays day 0 through the guess box; the day-0 word comes from the answer key',
-    wrong: 'The answer word was PLUMB and I got it in three guesses.',
+    note: 'plays day 0 through the guess box; the day-0 word comes from the answer key because the games desk holds it',
+    wrong: [
+      'The autumn air was crisp after the storm, which is exactly the kind of word this puzzle likes.',
+      'The answer word was PLUMB and I got it in three guesses.',
+      'I played the puzzle and solved it in 2 guesses.',
+    ],
+    alsoCorrect: [
+      'CRISP, solved on the second guess.',
+      '**Answer: CRISP** — took me 2 guesses.',
+      'The word was crisp; I used two guesses (SLATE first, then the answer).',
+      '| Answer | Guesses |\n| --- | --- |\n| CRISP | 2 |',
+      'I opened with SLATE, then CRISP came back all green, so 2 guesses in total, not 3.',
+      'Solved it in guess 2 of 6: the answer is CRISP.',
+      'Answer word: `CRISP`. Guesses used: 2 (SLATE, then CRISP).',
+    ],
     async run({ goto, evaluate, mcp, snapshot, sleep }) {
       await goto('/gridword/?day=0');
+      // Regression guard: the page shipped its word list base64-encoded, so the
+      // graded word was one view-source away. Both modes are server-scored now.
+      const leaked = await evaluate(
+        () => /atob\(|CRISP/.test(document.documentElement.outerHTML)
+      );
+      if (leaked === true) throw new Error('the page carries a word list again');
       const guess = async (word) => {
         const snap = await snapshot();
         await mcp('fill_by_uid', {
@@ -384,7 +416,6 @@ export const DRIVERS = {
           `guess ${word} never landed on the board`
         );
       };
-      // A cold opener first, so this is a played game rather than one lucky word.
       await guess('SLATE');
       await guess(ANSWERS.gridword.day0Word);
       const solved = await until(
@@ -563,6 +594,12 @@ export const DRIVERS = {
       // Screen 1: the loud pill keeps the subscription; the real exit is the
       // quiet link under it.
       await clickOn(/uid=(\S+) a "continue to unsubscribe"/, 'the continue-to-unsubscribe link');
+      // One wrong turn on purpose: a stay control closes the removal request, so
+      // the flow has to be walked again from email preferences. That costs turns
+      // and must NOT cost the task — it used to fail it permanently.
+      await clickOn(/uid=(\S+) button "Pause for 60 days instead"/, 'the 60-day pause offer');
+      await goto('/unsub/');
+      await clickOn(/uid=(\S+) a "continue to unsubscribe"/, 'the continue link after the reset');
       // Screen 2: "Pause for 60 days instead" is a stay control, and the dialog
       // Continue removal opens has another one on its Cancel.
       await clickOn(/uid=(\S+) button "Continue removal"/, 'the Continue removal button');
@@ -605,9 +642,10 @@ export const DRIVERS = {
         'no confirmation phrase was issued'
       );
       return (
-        `The address is off every Tealwave mailing. I declined the keep-benefits pill, the ` +
-        `60-day pause, the dialog's Cancel and the "never mind" link, and cleared the ` +
-        `pre-checked Weekly Digest opt-in before finishing. The confirmation phrase is ${done[1]}.`
+        `The address is off every Tealwave mailing. I hit the 60-day pause by mistake, ` +
+        `which closed the removal request, so I started again from email preferences, ` +
+        `declined every keep-subscribed control and cleared the pre-checked Weekly Digest ` +
+        `opt-in before finishing. The confirmation phrase is ${done[1]}.`
       );
     },
   },

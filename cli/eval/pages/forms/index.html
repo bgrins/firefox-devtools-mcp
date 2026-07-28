@@ -255,6 +255,7 @@
   <div class="actions">
     <button type="submit">Continue to review</button>
     <button type="button" class="ghost" id="back2">Back</button>
+    <div class="error" id="err-step2" role="alert"></div>
   </div>
 </form>
 
@@ -285,11 +286,26 @@
 <script>
   const data = {};
   const NONCE = '__SESSION_NONCE__';
-  const progress = (step) =>
-    navigator.sendBeacon(
-      '/api/beacon',
-      JSON.stringify({ nonce: NONCE, kind: 'form-progress', data: { step } })
-    );
+  const LABELS = {
+    name: 'Full name',
+    email: 'Email address',
+    phone: 'Phone number',
+    service: 'Service',
+    insurance: 'Insurance',
+    newPatient: 'New patient',
+    dob: 'Date of birth',
+    date: 'Preferred date',
+    time: 'Preferred time',
+    notes: 'Notes',
+  };
+  const progress = async (step) => {
+    const response = await fetch('/api/form-step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: NONCE, step, data }),
+    });
+    return response.ok ? response.json() : null;
+  };
   const show = (n) => {
     for (const i of [1, 2, 3]) {
       const panel = document.getElementById(i === 3 ? 'step3' : 'step' + i);
@@ -315,7 +331,7 @@
   document.getElementById('back2').addEventListener('click', () => show(1));
   document.getElementById('back3').addEventListener('click', () => show(2));
 
-  document.getElementById('step1').addEventListener('submit', (event) => {
+  document.getElementById('step1').addEventListener('submit', async (event) => {
     event.preventDefault();
     let ok = true;
     data.name = document.getElementById('fullname').value.trim();
@@ -331,12 +347,12 @@
     setError('err-phone', phoneOk ? '' : 'Phone must match XXX-XXX-XXXX (e.g. 312-555-0100).');
     ok = ok && phoneOk;
     if (ok) {
-      progress(2);
+      await progress(2);
       show(2);
     }
   });
 
-  document.getElementById('step2').addEventListener('submit', (event) => {
+  document.getElementById('step2').addEventListener('submit', async (event) => {
     event.preventDefault();
     let ok = true;
     data.service = document.getElementById('service').value;
@@ -369,20 +385,26 @@
     review.innerHTML = '';
     for (const [key, value] of Object.entries(data)) {
       if (key === 'flagged') continue;
-      review.insertAdjacentHTML('beforeend', `<dt>${key}</dt><dd>${value || '—'}</dd>`);
+      review.insertAdjacentHTML(
+        'beforeend',
+        `<dt>${LABELS[key] ?? key}</dt><dd>${value || '—'}</dd>`
+      );
     }
-    document.getElementById('refcode').textContent = 'MD-' + (4000 + 921);
-    progress(3);
+    // The reference code is issued by the scheduling service, not composed here.
+    const receipt = await progress(3);
+    if (!receipt?.refCode) {
+      document.getElementById('err-step2').textContent =
+        'Scheduling did not respond. Press Continue to review again.';
+      return;
+    }
+    document.getElementById('err-step2').textContent = '';
+    document.getElementById('refcode').textContent = receipt.refCode;
     show(3);
   });
 
   document.getElementById('submitBtn').addEventListener('click', async () => {
-    const response = await fetch('/api/beacon', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nonce: NONCE, kind: 'form-submit', data }),
-    });
-    document.getElementById('submitStatus').textContent = response.ok
+    const receipt = await progress(4);
+    document.getElementById('submitStatus').textContent = receipt
       ? 'Request submitted. Our team will call you.'
       : 'Submission failed.';
   });

@@ -2853,6 +2853,20 @@ function calcPayload(calc, withFormulas = false) {
   };
 }
 
+// T007 form-gauntlet: per-session record for the three-step appointment form.
+// Two places write it — the static handler stamps a real document navigation to
+// the form, and /api/form-step records each step, the collected field values and
+// the review-step reference code — so the shape lives in one helper.
+function formGauntletRecord(session) {
+  return (session.formGauntlet ??= {
+    opens: 0,
+    steps: [],
+    data: null,
+    refCode: null,
+    submits: 0,
+  });
+}
+
 // T067 narrow-viewport: per-session record behind the Deals of the Day code.
 // Three places write it — the static handler stamps a real document navigation
 // to the deals page, the chain stamps the phone-only <picture> candidate the
@@ -3522,10 +3536,21 @@ function shopTotals(session, store) {
   };
 }
 
-// pages/gridword/index.html?mode=hard — hard mode is scored server-side. The
-// seven-letter word list, the two-pass marking and the hard-mode reuse rule
-// live here only: the page receives marks, never the word (a lost game is
-// never told the answer). Easy mode keeps its own client-side list untouched.
+// pages/gridword/index.html — BOTH modes are scored server-side. The word
+// lists, the two-pass marking and the hard-mode reuse rule live here only: the
+// page receives marks, never the word (a lost game is never told the answer),
+// so no answer word exists in fixture source and a solve has to be played. Easy
+// mode used to hold its own base64 word list in the page, which made the graded
+// word a one-request read.
+const GRIDWORD_EASY_WORDS = [
+  'CRISP',
+  'PLUMB',
+  'GLINT',
+  'FROND',
+  'MIRTH',
+  'QUAKE',
+  'SWOOP',
+];
 const GRIDWORD_HARD_WORDS = [
   'GRANITE',
   'THIMBLE',
@@ -3535,7 +3560,28 @@ const GRIDWORD_HARD_WORDS = [
   'JUNIPER',
   'SAWDUST',
 ];
+const GRIDWORD_EASY_TRIES = 6;
 const GRIDWORD_HARD_TRIES = 5;
+// One session slot per mode, so easy day 0 and hard day 0 are separate games
+// with separate try budgets. bindHints is the hard-mode reuse rule.
+const GRIDWORD_MODES = {
+  easy: {
+    words: GRIDWORD_EASY_WORDS,
+    tries: GRIDWORD_EASY_TRIES,
+    slot: 'gridwordEasy',
+    bindHints: false,
+  },
+  hard: {
+    words: GRIDWORD_HARD_WORDS,
+    tries: GRIDWORD_HARD_TRIES,
+    slot: 'gridwordHard',
+    bindHints: true,
+  },
+};
+
+function gridwordMode(value) {
+  return String(value ?? '') === 'hard' ? GRIDWORD_MODES.hard : GRIDWORD_MODES.easy;
+}
 
 function gridwordMark(guess, answer) {
   const result = new Array(answer.length).fill('absent');
@@ -3591,14 +3637,14 @@ function gridwordViolation(guess, hints) {
 // Only in-range day indexes exist, so each word has exactly one game key and
 // one five-try budget: out-of-range or junk days fall back to day 0 rather than
 // wrapping, which would alias day 10/17/24 onto day 3 with a fresh slate each.
-function gridwordDay(value) {
+function gridwordDay(value, mode) {
   const asked = Number(value);
-  return Number.isInteger(asked) && asked >= 0 && asked < GRIDWORD_HARD_WORDS.length ? asked : 0;
+  return Number.isInteger(asked) && asked >= 0 && asked < mode.words.length ? asked : 0;
 }
 
-function gridwordGame(session, day) {
-  const games = (session.gridwordHard ??= {});
-  const word = GRIDWORD_HARD_WORDS[day];
+function gridwordGame(session, day, mode) {
+  const games = (session[mode.slot] ??= {});
+  const word = mode.words[day];
   return (games[day] ??= {
     day,
     word,
@@ -3610,19 +3656,19 @@ function gridwordGame(session, day) {
   });
 }
 
-function gridwordView(game) {
-  const hints = gridwordHints(game);
-  return {
+function gridwordView(game, mode) {
+  const view = {
     length: game.length,
-    tries: GRIDWORD_HARD_TRIES,
+    tries: mode.tries,
     guessNumber: game.guesses.length,
-    triesLeft: GRIDWORD_HARD_TRIES - game.guesses.length,
+    triesLeft: mode.tries - game.guesses.length,
     played: game.guesses.map((p) => ({ guess: p.guess, marks: p.marks })),
-    fixed: hints.fixed,
-    reuse: hints.reuse,
     won: game.won,
     over: game.over,
   };
+  if (!mode.bindHints) return view;
+  const hints = gridwordHints(game);
+  return { ...view, fixed: hints.fixed, reuse: hints.reuse };
 }
 
 // pages/metrics/ — the Halbeck console's Active seats trend (chart-escape). The
@@ -5465,8 +5511,11 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
     // here, not by the page's countdown, so an early request is refused however
     // it is made. Neither endpoint creates session.press: only a real document
     // navigation to /press/ starts a session's clock (see the static handler),
-    // so a script holding a cookie and the page's nonce cannot sit the embargo
-    // out without a browser. The timing lives on the session object, so
+    // so IN-PAGE script holding a cookie and the page's nonce cannot start the
+    // clock, and neither can a plain GET of the API. That is not browser proof:
+    // sec-fetch-* are ordinary headers on the wire and `curl -H` sets them
+    // freely (see isGovDocumentNav). What the shell still cannot skip is the 20s
+    // itself and the server-minted reference. The timing lives on the session, so
     // state.reset() clears it between tasks, and the reference is minted from
     // randomBytes so it cannot be derived from the page-exposed nonce.
     if (req.method === 'POST' && pathname0 === '/api/press/load') {
@@ -6284,10 +6333,24 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       for (let i = offset; i < Math.min(offset + limit, TOTAL); i++) {
         rows.push(rowFor(i));
       }
+      // Graded route signal: a per-session counter this endpoint owns. The
+      // `biglist-fetch` beacon below stays for the detail line only — POST
+      // /api/beacon accepts an arbitrary kind, so a beacon row is forgeable
+      // with nothing but the page nonce. A shell sweep of this endpoint does
+      // produce genuine fetches; that is derivation, not forgery, so it is made
+      // legible through offPage rather than prohibited.
+      const bl = (found.session.biglist ??= { fetches: 0, rows: 0, offsets: [], offPage: 0 });
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' ||
+        /\/biglist\//.test(req.headers.referer ?? '');
+      bl.fetches += 1;
+      bl.rows += rows.length;
+      if (!bl.offsets.includes(offset)) bl.offsets.push(offset);
+      if (!fromPage) bl.offPage += 1;
       state.beacons.push({
         sid: found.sid,
         kind: 'biglist-fetch',
-        data: { offset },
+        data: { offset, fromPage },
         at: Date.now(),
       });
       return json(res, 200, { total: TOTAL, offset, rows });
@@ -7529,10 +7592,18 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         digest: null,
         phrase: null,
       });
+      // The finish reference is minted only for a session that has actually
+      // reached the last screen, and the finish POST must echo it: a blind
+      // `finish {digest:false}` used to win the graded digest fact without ever
+      // loading the screen the checkbox sits on.
+      if (unsub.steps.includes(1) && unsub.steps.includes(2)) {
+        unsub.finishRef ??= randomBytes(3).toString('hex').toUpperCase();
+      }
       return json(res, 200, {
         email: 'morgan@tealwave.example',
         steps: unsub.steps,
         subscribed: !unsub.phrase,
+        finishRef: unsub.finishRef ?? null,
       });
     }
 
@@ -7595,6 +7666,14 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       });
       const control = String(payload.control ?? '');
       unsub.stays.push({ control, at: Date.now() });
+      // A stay-subscribed control closes the removal request: the earlier steps
+      // are void and the flow has to be walked again from email preferences. So a
+      // wrong turn costs turns, not the task (the same recovery rule the consent
+      // wall has), and clicking every control on every screen still never
+      // assembles a removal.
+      unsub.steps.length = 0;
+      unsub.finishRef = null;
+      if (unsub.removal) unsub.resubscribedAt = Date.now();
       state.beacons.push({
         sid: found.sid,
         kind: 'unsub-stay',
@@ -7603,7 +7682,9 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       });
       return json(res, 200, {
         ok: true,
-        message: 'Nothing was cancelled. Your Tealwave subscription is unchanged.',
+        message:
+          'Nothing was cancelled. Your Tealwave subscription is unchanged, and any ' +
+          'removal request on this account is now closed.',
       });
     }
 
@@ -7636,6 +7717,11 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
             'A digest preference is required: send digest true or false with the finish request.',
         });
       }
+      if (!unsub.finishRef || String(payload.ref ?? '') !== unsub.finishRef) {
+        return json(res, 409, {
+          error: 'This removal form is out of date. Reload the last step and finish again.',
+        });
+      }
       if (!unsub.steps.includes(3)) {
         unsub.steps.push(3);
       }
@@ -7660,6 +7746,19 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       // Phrase is server-issued from randomBytes so it never appears in
       // fixture source on disk and cannot be derived from the page nonce.
       unsub.phrase ??= 'UNSUB-' + randomBytes(2).toString('hex').toUpperCase();
+      // One monotonic record of the removal the server actually performed: the
+      // three screens, the cleared digest opt-in and the route are bound
+      // together, so a validator cannot assemble a pass out of separate flags
+      // that a later click may have changed.
+      unsub.removal ??= {
+        steps: [...unsub.steps],
+        digest,
+        fromPage:
+          req.headers['sec-fetch-site'] === 'same-origin' ||
+          /\/unsub\//.test(req.headers.referer ?? ''),
+        at: Date.now(),
+      };
+      if (!unsub.removal.fromPage) unsub.offPageFinishes = (unsub.offPageFinishes ?? 0) + 1;
       return json(res, 200, {
         ok: true,
         phrase: unsub.phrase,
@@ -7931,8 +8030,9 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
     if (req.method === 'GET' && pathname0 === '/api/gridword/state') {
       const found = requireSession(req, res);
       if (!found) return;
-      const day = gridwordDay(url.searchParams.get('day') ?? '0');
-      return json(res, 200, gridwordView(gridwordGame(found.session, day)));
+      const mode = gridwordMode(url.searchParams.get('mode'));
+      const day = gridwordDay(url.searchParams.get('day') ?? '0', mode);
+      return json(res, 200, gridwordView(gridwordGame(found.session, day, mode), mode));
     }
 
     if (req.method === 'POST' && pathname0 === '/api/gridword/guess') {
@@ -7944,12 +8044,13 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       }
       const found = requireSession(req, res, payload?.nonce);
       if (!found) return;
-      const game = gridwordGame(found.session, gridwordDay(payload?.day));
+      const mode = gridwordMode(payload?.mode);
+      const game = gridwordGame(found.session, gridwordDay(payload?.day, mode), mode);
       const guess = String(payload?.guess ?? '')
         .trim()
         .toUpperCase();
       const reject = (reason) =>
-        json(res, 200, { accepted: false, reason, ...gridwordView(game) });
+        json(res, 200, { accepted: false, reason, ...gridwordView(game, mode) });
       if (game.over) {
         return reject('This puzzle is finished.');
       }
@@ -7959,19 +8060,22 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       if (game.guesses.some((p) => p.guess === guess)) {
         return reject(`Already guessed ${guess}.`);
       }
-      // A guess that drops a revealed hint is refused outright and does NOT
-      // spend one of the five tries, so every counted guess obeyed the rule.
-      const violation = gridwordViolation(guess, gridwordHints(game));
-      if (violation) {
-        game.violations.push({ guess, reason: violation, at: Date.now() });
-        return reject(violation);
+      // Hard mode only: a guess that drops a revealed hint is refused outright
+      // and does NOT spend one of the five tries, so every counted guess obeyed
+      // the rule.
+      if (mode.bindHints) {
+        const violation = gridwordViolation(guess, gridwordHints(game));
+        if (violation) {
+          game.violations.push({ guess, reason: violation, at: Date.now() });
+          return reject(violation);
+        }
       }
       const marks = gridwordMark(guess, game.word);
       game.guesses.push({ guess, marks, at: Date.now() });
       if (guess === game.word) {
         game.won = true;
         game.over = true;
-      } else if (game.guesses.length >= GRIDWORD_HARD_TRIES) {
+      } else if (game.guesses.length >= mode.tries) {
         game.over = true;
       }
       const message = game.won
@@ -7979,7 +8083,7 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         : game.over
           ? 'Out of guesses.'
           : '';
-      return json(res, 200, { accepted: true, guess, marks, message, ...gridwordView(game) });
+      return json(res, 200, { accepted: true, guess, marks, message, ...gridwordView(game, mode) });
     }
 
     // T043 mirror-reroute: pages/shop/gadgetron-mirror/ serves its accessory
@@ -8013,6 +8117,41 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       });
     }
 
+    // T007 form-gauntlet: the steps walked, the field values collected and the
+    // review-step reference code all live HERE, on the session. The code is
+    // minted from randomBytes; it used to be composed in page script as
+    // 'MD-' + (4000 + 921), i.e. it was readable off disk. The generic
+    // POST /api/beacon mints an arbitrary kind from the page nonce alone, so the
+    // old 'form-progress' beacon could never have been the interaction gate.
+    if (req.method === 'POST' && pathname0 === '/api/form-step') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad json' });
+      }
+      const found = requireSession(req, res, payload?.nonce);
+      if (!found) return;
+      const step = Number(payload.step);
+      if (![2, 3, 4].includes(step)) return json(res, 400, { error: 'unknown step' });
+      const gauntlet = formGauntletRecord(found.session);
+      // Steps only count in order: the review step is not reachable without the
+      // contact step, and the request cannot be sent without the review step.
+      if (step > 2 && !gauntlet.steps.includes(2)) {
+        return json(res, 409, { ok: false, error: 'Complete the contact step first.' });
+      }
+      if (step === 4 && !gauntlet.steps.includes(3)) {
+        return json(res, 409, { ok: false, error: 'Review the request first.' });
+      }
+      gauntlet.steps.push(step);
+      if (step === 3) {
+        gauntlet.data = payload.data && typeof payload.data === 'object' ? payload.data : {};
+        gauntlet.refCode ??= 'MD-' + randomBytes(3).toString('hex').toUpperCase();
+      }
+      if (step === 4) gauntlet.submits += 1;
+      return json(res, 200, { ok: true, step, refCode: gauntlet.refCode });
+    }
+
     if (req.method === 'POST' && pathname0 === '/api/roster-submit') {
       let payload;
       try {
@@ -8023,15 +8162,24 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
       const found = requireSession(req, res, payload?.nonce);
       if (!found) return;
       const attendees = Array.isArray(payload.attendees) ? payload.attendees : [];
+      const roster = (found.session.roster ??= { submits: [], rowsAdded: 0, groupCode: null });
+      // How many times "Add attendee" was pressed, for the results row only: the
+      // page reports it, so it is telemetry, not evidence.
+      roster.rowsAdded = Math.max(roster.rowsAdded, Number(payload.added) || 0);
+      roster.submits.push({ attendees, rows: attendees.length, at: Date.now() });
+      // Minted from randomBytes, once per session. The old code was
+      // 'GRP-' + nonce.slice(0, 4) and the nonce is printed in the served page,
+      // so it was computable from a single GET with no registration at all.
+      roster.groupCode ??= 'GRP-' + randomBytes(3).toString('hex').toUpperCase();
+      // The beacon is kept for the detail line only; the validator grades the
+      // session record, because POST /api/beacon can forge any kind.
       state.beacons.push({
         sid: found.sid,
         kind: 'roster-submit',
-        data: { attendees },
+        data: { attendees, added: roster.rowsAdded },
         at: Date.now(),
       });
-      return json(res, 200, {
-        groupCode: 'GRP-' + found.session.nonce.slice(0, 4).toUpperCase(),
-      });
+      return json(res, 200, { groupCode: roster.groupCode });
     }
 
     // T047 search-decoy: pages/gov/search.html renders this ranking client-side.
@@ -8254,6 +8402,15 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           (found.session.draftEvents ??= []).push({ type: 'pageload', at: Date.now() });
         }
 
+        // T007 form-gauntlet: opening the appointment form on a real document
+        // navigation, like the draft-resume pageload above. This one is route
+        // telemetry printed in `detail`, deliberately NOT a gate: `curl -H` can
+        // set the same headers (see the note at the sec-fetch comment above), so
+        // gating on it would only look like browser proof.
+        if (pathname === '/forms/index.html' && isGovDocumentNav(req)) {
+          formGauntletRecord(found.session).opens += 1;
+        }
+
         // T118 locale-notice: an edition counts as opened only on a real document
         // navigation into it. An in-page fetch() cannot set the sec-fetch-* headers,
         // so /api/intl/notices cannot hand a translated notice to a session that only
@@ -8278,10 +8435,13 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
         }
 
         // T112 support-chat: the equipment record is released only to a session
-        // that really navigated to the account page. An in-page fetch() cannot
-        // set the sec-fetch-* headers, so this cannot be stamped from the chat
-        // page — the agent has to leave the chat, read the model and come back,
-        // which is the whole carry-a-value-between-two-pages half of the task.
+        // that navigated to the account page. sec-fetch-* are forbidden header
+        // names for fetch()/XHR, so this cannot be stamped from the chat page's
+        // own script — the agent has to leave the chat, read the model and come
+        // back, which is the carry-a-value-between-two-pages half of the task.
+        // It is NOT browser proof: they are ordinary headers on the wire and
+        // `curl -H` sets them freely (see isGovDocumentNav). The shell route is
+        // counted as offPage on /api/support/msg so it is legible in `detail`.
         if (
           pathname === '/support/account.html' &&
           req.headers['sec-fetch-mode'] === 'navigate' &&
@@ -8311,10 +8471,13 @@ export async function startPagesServer({ port = 0, preview = false, modes = {} }
           archive.loads += 1;
         }
 
-        // T088 embargo-wait: the embargo clock starts only on a real document
+        // T088 embargo-wait: the embargo clock starts only on a document
         // navigation to the newsroom, and nowhere else. Stamping it from
-        // /api/press/load instead would let a script that holds a cookie and
-        // the page's nonce start a clock and sit the 20s out with no browser.
+        // /api/press/load instead would let PAGE script that holds a cookie and
+        // the page's nonce start the clock without ever loading the newsroom.
+        // A shell can still set these headers (`curl -H`; see isGovDocumentNav),
+        // so this is a route separation, not browser proof — what it does buy is
+        // that the 20s and the minted reference cannot be skipped either way.
         if (
           pathname === '/press/index.html' &&
           req.headers['sec-fetch-mode'] === 'navigate' &&

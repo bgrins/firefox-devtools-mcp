@@ -78,7 +78,24 @@ export const ANSWERS = {
   },
 
   // pages/forms/index.html — reference code shown on the review step.
-  form: { refCode: 'MD-4921' },
+  // pages/forms/index.html — the review-step reference code is minted per
+  // session by POST /api/form-step (randomBytes), so it is not derivable from
+  // fixture source and the validator reads it out of ctx.pages.state. These are
+  // the nine values the ask dictates; the server records what the form actually
+  // collected, so the data-entry half of the task is graded against them.
+  form: {
+    fields: {
+      name: 'Maya Okafor',
+      email: 'maya.okafor@example.com',
+      phone: '312-555-0164',
+      service: 'Cleaning',
+      insurance: 'Self-pay',
+      newPatient: 'Yes',
+      dob: '1990-03-14',
+      date: '2026-08-12',
+      time: 'Morning',
+    },
+  },
 
   // pages/gov/rv7.html; schedule-widget.html (iframe); handbook.html section
   // 22; fee-schedule.html (RV-7 base $185 + 2 months at the $12/mo minimum
@@ -214,14 +231,17 @@ export const ANSWERS = {
   // tariff (volumetric divisor, per-kg rates, handling base) lives in
   // server.mjs, so the quoted price exists nowhere on disk and the validator
   // grades against the session's own server-issued quote. `cm`/`kg` below are
-  // the exact conversion of 24 x 18 x 12 in / 9 lb; tolerances are generous
-  // enough that any sane rounding (61/46/30 cm, 4.0 or 4.1 kg) passes while
-  // imperial figures, millimetres or pounds fail by a wide margin.
+  // the exact conversion of 24 x 18 x 12 in / 9 lb. Each tolerance is exactly
+  // the rounding the page mandates — whole centimetres, one decimal place in kg
+  // — so both the rounded entry (61/46/30 cm, 4.1 kg) and the unrounded exact
+  // conversion pass, while a wrong conversion does not: the old 2 cm window
+  // accepted 60/45/30 (2.5 cm per inch) and the old 0.5 kg window accepted a
+  // truncated 4.0 kg, which made the stated rounding rules ungraded.
   shippingQuote: {
     cm: [60.96, 45.72, 30.48],
     kg: 4.08,
-    cmTolerance: 2,
-    kgTolerance: 0.5,
+    cmTolerance: 0.5,
+    kgTolerance: 0.05,
   },
 
   // pages/forms/beta-signup.html + beta-terms.html — clause 9 of the terms
@@ -676,7 +696,10 @@ export const ANSWERS = {
     tells: [
       { name: 'typo', re: /verabenk/i },
       { name: 'seal', re: /sitetrust|256[\s-]?bit|verified secure/i },
-      { name: 'logo', re: /\b(green|navy|circle|circular|rounded|square)\b/i },
+      // Only the FAKE page's logo counts: 'navy', 'rounded' and 'square'
+      // describe the legitimate page's mark, so an answer that never looked at
+      // the lookalike scored this tell.
+      { name: 'logo', re: /\b(green|circle|circular)\b/i },
       { name: 'urgency', re: /\b24[\s-]?(hours?|hrs?|h)\b|within 24\b/i },
     ],
   },

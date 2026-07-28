@@ -65,6 +65,36 @@ export const DRIVERS = {
         throw new Error(`expected release/gate to be the only failed step, saw ${failed.join(',')}`);
       }
 
+      // Every id is minted per session, so both batteries are built from the log
+      // the search just returned. The alsoCorrect entries are the answer shape the
+      // site's own ERROR search produces — all four ids, each filed under its own
+      // step — which a blunt decoy count used to reject; the wrong entries are an
+      // undesignated dump and a swapped attribution, which it used to accept.
+      const idFor = (step) =>
+        page.match(
+          new RegExp(`text="(E-[0-9A-F]{6})"\\s*\\n\\s*uid=\\S+ span text="${step}`)
+        )?.[1] ?? null;
+      const scan = idFor('scan/deps');
+      const push = idFor('push/registry');
+      const cleanup = idFor('cleanup/artifacts');
+      if (!scan || !push || !cleanup) {
+        throw new Error('the three non-blocking ERROR ids were not all in the search hits');
+      }
+      this.alsoCorrect = [
+        `Error id: ${hit[1]}. The other ERROR lines belong to other steps: scan/deps ` +
+          `logged ${scan}, push/registry logged ${push}, and cleanup/artifacts logged ` +
+          `${cleanup} — all non-blocking.`,
+        `| step | error id |\n| scan/deps | ${scan} |\n| push/registry | ${push} |\n` +
+          `| release/gate | ${hit[1]} |\n| cleanup/artifacts | ${cleanup} |\n` +
+          `release/gate is the Failed step, so the answer is ${hit[1]}.`,
+      ];
+      this.wrong = [
+        'The release/gate step failed with error id E-4B21C7.',
+        `The run log shows ERROR ids ${scan}, ${push}, ${hit[1]} and ${cleanup}.`,
+        `The failing step release/gate recorded error id ${push}; ${hit[1]} was logged by scan/deps.`,
+        `The release/gate step failed. Its error id is ${cleanup}.`,
+      ];
+
       return (
         `Run 4192 stopped at the release/gate step. The run log records error id ` +
         `${hit[1]} on line 88: no build attestation for the image.`

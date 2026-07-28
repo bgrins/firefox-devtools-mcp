@@ -254,6 +254,11 @@
 <script>
   const NONCE = '__SESSION_NONCE__';
   const status = document.getElementById('export-status');
+  fetch('/api/beacon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nonce: NONCE, kind: 'ledger-folio', data: { page: 6 } }),
+  }).catch(() => {});
   document.getElementById('export').addEventListener('click', async () => {
     status.textContent = 'Preparing export...';
     try {

@@ -229,6 +229,15 @@ document.getElementById('clear').addEventListener('click', async (event) => {
   banner.textContent = 'Order list cleared.';
 });
 
+const carried = new URLSearchParams(window.location.search);
+if (carried.get('part')) {
+  document.getElementById('part').value = carried.get('part');
+  const qty = Math.trunc(Number(carried.get('qty')));
+  if (Number.isFinite(qty) && qty >= 1) document.getElementById('qty').value = String(qty);
+  banner.className = 'banner';
+  banner.textContent = 'Carried over from the catalog. Press Add to order list to queue it.';
+}
+
 load();
 </script>
 </body>

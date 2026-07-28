@@ -89,7 +89,7 @@ VOLTRO.products.forEach(([name, size, res, price, rating, reviews, inStock], i) 
       <rect x="56" y="80" width="48" height="4" fill="#666"/>
     </svg>
     <div class="name"><a href="#">${name}</a></div>
-    <div>${size}" ${RES_LABEL[res]} · IPS · ${res === '4K' ? '60Hz' : '144Hz'} · HDMI/DP</div>
+    <div class="attrs">${size}" ${RES_LABEL[res]} · IPS · ${res === '4K' ? '60Hz' : '144Hz'} · HDMI/DP</div>
     <div class="rating" aria-label="${rating} out of 5 stars, ${reviews.toLocaleString()} ratings">
       ${'★'.repeat(Math.round(rating))}${'☆'.repeat(5 - Math.round(rating))}
       <span style="color:#555">${rating} (${reviews.toLocaleString()})</span></div>

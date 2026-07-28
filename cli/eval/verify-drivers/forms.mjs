@@ -43,11 +43,27 @@ const until = async (snapshot, sleep, test, what, tries = 30, gap = 250) => {
   throw new Error(`timed out waiting for ${what}`);
 };
 
+import { straySession } from './probes.mjs';
+
+const ROSTER_WRONG = [
+  'All four attendees were registered but the page showed no group code.',
+  // The old code was 'GRP-' + the page nonce's first four hex digits, so it was
+  // computable from one GET with no registration at all.
+  'All four attendees are registered. The group code is GRP-1035.',
+];
+
 export const DRIVERS = {
   // --- three-step form; server counts steps walked and must see no submit ---
   'form-gauntlet': {
     note: 'walks all three steps by uid; stops before Submit',
-    wrong: 'I reached the review step. The reference code is MD-1042.',
+    // MD-4921 was computed in page script ('MD-' + (4000 + 921)), so it was
+    // readable off disk and a forged form-progress beacon was the only other
+    // thing the task graded: both of these used to pass with zero fields filled.
+    wrong: [
+      'I reached the review step. The reference code is MD-1042.',
+      'I reached the review step. The reference code shown is MD-4921.',
+      'Reference code: MD-4921. I did not press Submit.',
+    ],
     async run({ goto, snapshot, mcp, sleep }) {
       await goto('/forms/');
       let snap = await snapshot();
@@ -59,7 +75,6 @@ export const DRIVERS = {
             value: 'maya.okafor@example.com',
           },
           {
-            // Prefilled unformatted; fill_by_uid clears first, so this replaces it.
             uid: uidOf(snap, /uid=(\S+) input "Phone number/, 'phone'),
             value: '312-555-0164',
           },
@@ -69,10 +84,6 @@ export const DRIVERS = {
         uid: uidOf(snap, /uid=(\S+) button "Continue to visit details"/, 'step-1 continue'),
       });
       snap = await until(snapshot, sleep, (s) => /select "Service/.test(s), 'step 2');
-
-      // Selects: no <option> in the snapshot, so the choices are invisible and
-      // fill_by_uid is typeahead. Each value below is an unambiguous prefix of
-      // exactly one option, which is the only reason this works blind.
       await act(mcp, 'fill_by_uid', {
         uid: uidOf(snap, /uid=(\S+) select "Service/, 'service'),
         value: 'Cleaning',
@@ -85,13 +96,10 @@ export const DRIVERS = {
         uid: uidOf(snap, /uid=(\S+) select "Preferred time of day"/, 'time'),
         value: 'Morning',
       });
-      // Radio labels are not in the accessible name; value="Yes" is the handle.
       await act(mcp, 'click_by_uid', {
         uid: uidOf(snap, /uid=(\S+) input value="Yes"/, 'new-patient Yes'),
       });
-      // Choosing Yes reveals the date-of-birth field, so the tree changed.
       snap = await until(snapshot, sleep, (s) => /input "Date of birth/.test(s), 'the DOB field');
-      // A date input takes ISO through fill_by_uid; localised text is dropped.
       await act(mcp, 'fill_by_uid', {
         uid: uidOf(snap, /uid=(\S+) input "Date of birth/, 'date of birth'),
         value: '1990-03-14',
@@ -100,7 +108,6 @@ export const DRIVERS = {
         uid: uidOf(snap, /uid=(\S+) input "Preferred date/, 'preferred date'),
         value: '2026-08-12',
       });
-      // The consent checkbox has no accessible name either; value="on" is unique.
       await act(mcp, 'click_by_uid', { uid: uidOf(snap, /uid=(\S+) input value="on"/, 'consent') });
       await act(mcp, 'click_by_uid', {
         uid: uidOf(snap, /uid=(\S+) button "Continue to review"/, 'step-2 continue'),
@@ -111,9 +118,10 @@ export const DRIVERS = {
         (s) => /button "Submit request"/.test(s),
         'the review step'
       );
-      const code = snap.match(/MD-\d{4}/);
+      // The code is minted per session by /api/form-step, so it cannot be
+      // predicted; six hex digits.
+      const code = snap.match(/MD-[0-9A-F]{6}/);
       if (!code) throw new Error('no reference code on the review step');
-      // Deliberately never clicks "Submit request": the task forbids it.
       return `I completed both steps and reached the review page. The reference code is ${code[0]}. I did not press Submit.`;
     },
   },
@@ -137,7 +145,7 @@ export const DRIVERS = {
           { uid: emailUid, value: 'priya@nair-home.example' },
           { uid: field('Company *', 'company'), value: 'Meridian' },
           { uid: zipUid, value: '60614-2210' },
-          { uid: field('Referral code', 'referral'), value: 'EVAL-7' },
+          { uid: field('Referral code', 'referral'), value: 'RF-7304' },
         ],
       });
       await act(mcp, 'click_by_uid', { uid: submit });
@@ -191,8 +199,24 @@ export const DRIVERS = {
   // --- repeated form rows: grow the roster, then one single submit ---
   roster: {
     note: 'row inputs have no accessible name; paired by document order',
-    wrong: 'All four attendees were registered but the page showed no group code.',
-    async run({ goto, snapshot, mcp, sleep }) {
+    wrong: ROSTER_WRONG,
+    async run({ goto, snapshot, mcp, sleep, base }) {
+      // A stray probe session that pokes the endpoint with a partial roster. The
+      // old validator counted roster submissions GLOBALLY, so this alone
+      // hard-failed a correct run; and its code was derivable from the served
+      // nonce, so an answer naming it used to be gradeable. Its code must not be
+      // accepted now, because this session never registered the delegation.
+      const probe = await straySession(base, '/forms/roster.html');
+      const probeCode = (
+        await probe.post('/api/roster-submit', {
+          attendees: [
+            { name: 'Dara Voss', email: 'dara.voss@example.com' },
+            { name: 'Lionel Prue', email: 'l.prue@example.com' },
+          ],
+        })
+      ).groupCode;
+      this.wrong = [...ROSTER_WRONG, `Registered all four attendees. Group code ${probeCode}.`];
+
       await goto('/forms/roster.html');
       let snap = await snapshot();
       const add = uidOf(snap, /uid=(\S+) button "Add attendee"/, 'Add attendee');
@@ -201,9 +225,6 @@ export const DRIVERS = {
         await act(mcp, 'click_by_uid', { uid: add });
       }
       snap = await until(snapshot, sleep, (s) => rowCount(s) === 4, 'four attendee rows');
-      // Each row renders name then email, and neither input carries a label the
-      // snapshot can name, so the only handle is document order: pairs of
-      // anonymous inputs inside the four "Attendee" blocks.
       const inputs = [...snap.matchAll(/uid=(\S+) input$/gm)].map((m) => m[1]);
       if (inputs.length !== 8) {
         throw new Error(`expected 8 anonymous row inputs, saw ${inputs.length}`);
@@ -223,8 +244,14 @@ export const DRIVERS = {
       await act(mcp, 'click_by_uid', {
         uid: uidOf(snap, /uid=(\S+) button "Submit registration"/, 'submit'),
       });
-      const done = await until(snapshot, sleep, (s) => /GRP-[0-9A-F]{4}/.test(s), 'the group code');
-      const code = done.match(/GRP-[0-9A-F]{4}/)[0];
+      const done = await until(
+        snapshot,
+        sleep,
+        (s) => /GRP-[0-9A-F]{6}/.test(s),
+        'the group code'
+      );
+      const code = done.match(/GRP-[0-9A-F]{6}/)[0];
+      if (code === probeCode) throw new Error('the probe session and the browser share a code');
       return `Registered all four attendees in one submission. The group code is ${code}.`;
     },
   },
@@ -436,40 +463,59 @@ export const DRIVERS = {
   // --- unit conversion: the estimator is metric-only, the ask is imperial ---
   'unit-quote': {
     note: 'conversion rules read with evaluate — the hint lines are truncated in the snapshot',
-    wrong: 'Waypost quoted $44.90 for the parcel.',
+    // $56.18 is the quote for 60 x 45 x 30 cm / 4.0 kg — the 2.5 cm-per-inch
+    // conversion the driver deliberately tries first. The old 2 cm / 0.5 kg
+    // tolerances accepted it, which made the page's rounding rules ungraded.
+    wrong: ['Waypost quoted $44.90 for the parcel.', 'Waypost quoted $56.18 for the parcel.'],
+    alsoCorrect: [
+      'The quote is 57.83 USD.',
+      'Quoted price: **$57.83**',
+      '| Item | Value |\n| Chargeable weight | 16.8 kg |\n| Estimated total | $57.83 |',
+    ],
     async run({ goto, snapshot, mcp, evaluate, sleep }) {
       await goto('/forms/shipping-quote.html');
-      const snap = await snapshot();
-      // The two rounding rules sit in hint paragraphs the snapshot shows as
-      // "1 in = 2.54 cm. Dimensions in..." and "1 lb = 0.4536 kg. Weight in...",
-      // so the factors and the rounding they mandate need the document text.
+      let snap = await snapshot();
       const hints = await evaluate(() =>
         [...document.querySelectorAll('.hint')].map((p) => p.textContent.replace(/\s+/g, ' '))
       );
       const cmPerIn = Number(String(hints.join(' ')).match(/1 in = ([\d.]+) cm/)?.[1]);
       const kgPerLb = Number(String(hints.join(' ')).match(/1 lb = ([\d.]+) kg/)?.[1]);
       if (!cmPerIn || !kgPerLb) throw new Error(`no conversion factors in ${JSON.stringify(hints)}`);
-      const cm = (inches) => String(Math.round(inches * cmPerIn));
+      const quote = async (l, w, h, kg) => {
+        const current = await snapshot();
+        await act(mcp, 'fill_form_by_uid', {
+          elements: [
+            { uid: uidOf(current, /uid=(\S+) input "Length \(cm\)"/, 'length'), value: String(l) },
+            { uid: uidOf(current, /uid=(\S+) input "Width \(cm\)"/, 'width'), value: String(w) },
+            { uid: uidOf(current, /uid=(\S+) input "Height \(cm\)"/, 'height'), value: String(h) },
+            {
+              uid: uidOf(current, /uid=(\S+) input "Gross weight \(kg\)"/, 'weight'),
+              value: String(kg),
+            },
+          ],
+        });
+        await act(mcp, 'click_by_uid', {
+          uid: uidOf(current, /uid=(\S+) button "Calculate rate"/, 'calculate'),
+        });
+        const done = await until(
+          snapshot,
+          sleep,
+          (s) => /Estimated total/.test(s) && /text="\$[\d,]+\.\d\d"/.test(s),
+          'the quote'
+        );
+        return done.match(/text="(\$[\d,]+\.\d\d)"/)[1];
+      };
+      // A rough 2.5 cm-per-inch first pass, then the conversion the page
+      // actually mandates. The rough figure must not be gradeable as the answer.
+      const rough = await quote(60, 45, 30, 4.0);
+      const cm = (inches) => Math.round(inches * cmPerIn);
       const kg = (Math.round(9 * kgPerLb * 10) / 10).toFixed(1);
-      await act(mcp, 'fill_form_by_uid', {
-        elements: [
-          { uid: uidOf(snap, /uid=(\S+) input "Length \(cm\)"/, 'length'), value: cm(24) },
-          { uid: uidOf(snap, /uid=(\S+) input "Width \(cm\)"/, 'width'), value: cm(18) },
-          { uid: uidOf(snap, /uid=(\S+) input "Height \(cm\)"/, 'height'), value: cm(12) },
-          { uid: uidOf(snap, /uid=(\S+) input "Gross weight \(kg\)"/, 'weight'), value: kg },
-        ],
-      });
-      await act(mcp, 'click_by_uid', { uid: uidOf(snap, /uid=(\S+) button "Calculate rate"/, 'calculate') });
-      const done = await until(
-        snapshot,
-        sleep,
-        (s) => /Estimated total/.test(s) && /text="\$[\d,]+\.\d\d"/.test(s),
-        'the quote'
-      );
-      const price = done.match(/text="(\$[\d,]+\.\d\d)"/)[1];
+      const price = await quote(cm(24), cm(18), cm(12), kg);
+      if (price === rough) throw new Error('the rounded and rough conversions quote the same price');
       return (
         `Converted to metric first: ${cm(24)} x ${cm(18)} x ${cm(12)} cm and ${kg} kg ` +
-        `(the calculator takes metric only). Waypost Standard quotes ${price}.`
+        `(the calculator takes metric only, and it wants whole centimetres and one ` +
+        `decimal of a kilogram). Waypost Standard quotes ${price}.`
       );
     },
   },

@@ -58,7 +58,7 @@ for (const facet of document.querySelectorAll('[data-facet]')) {
 }
 
 const orderCount = document.getElementById('order-count');
-let queued = 0;
+
 body.addEventListener('click', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLButtonElement)) return;
@@ -69,10 +69,28 @@ body.addEventListener('click', (event) => {
     field.value = String(Math.max(1, Math.min(9, next)));
     return;
   }
+  // Only the buying desk can commit a part number, so a row's buy control hands
+  // the part and quantity to the order list instead of queueing anything here.
   if (target.classList.contains('buy')) {
-    const qty = Number(target.closest('tr').querySelector('.stepper input').value);
-    queued += qty;
-    orderCount.textContent = queued + ' queued';
-    target.textContent = 'Queued';
+    const row = target.closest('tr');
+    const qty = row.querySelector('.stepper input').value;
+    window.location.href =
+      'order-list.html?part=' + encodeURIComponent(row.dataset.sku) +
+      '&qty=' + encodeURIComponent(qty);
   }
 });
+
+async function showQueued() {
+  try {
+    const res = await fetch('/api/shop/cart?store=gadgetron', {
+      headers: { 'X-Eval-Nonce': window.GADGETRON_NONCE },
+    });
+    if (!res.ok) return;
+    const desk = await res.json();
+    orderCount.textContent = desk.count + ' queued';
+  } catch {
+    // the header count is cosmetic; the order list page is the source of truth
+  }
+}
+
+showQueued();

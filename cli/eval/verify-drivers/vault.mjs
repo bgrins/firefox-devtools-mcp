@@ -121,6 +121,10 @@ export const DRIVERS = {
         return now.match(/RCP-[0-9A-F]{6}/)?.[0] ?? '';
       }, 'the rotation receipt');
 
+      // The reason is graded off the server's record, so a driver that stopped filling
+      // this field would fail the task rather than silently stop testing it.
+      this.alsoCorrect = [`Rotation receipt: **${receipt}**.`];
+
       return (
         `I copied the current value of sluicegate-api/deploy out of Stavelock with the ` +
         `Copy token button, pasted it into the rotation form and rotated the secret. ` +

@@ -40,7 +40,7 @@ export const DRIVERS = {
       const voltro = await h.evaluate(() =>
         [...document.querySelectorAll('#grid .card')].map((card) => ({
           name: card.querySelector('.name').textContent.trim(),
-          spec: card.children[2].textContent,
+          spec: card.querySelector('.attrs').textContent,
           price: card.querySelector('.price').textContent,
           inStock: !!card.querySelector('.stock-in'),
         }))
@@ -401,6 +401,13 @@ export const DRIVERS = {
   'oos-substitute': {
     note: 'substitution table read with evaluate: the snapshot walker drops tables',
     wrong: 'PixelForge PF-27 was unavailable, so I ordered the ScreenCraft SC-27U HDR instead.',
+    alsoCorrect: [
+      "PF-27 is sold out online, so I followed the approved substitution list and queued BP-27U instead. My order list holds exactly one BrightPanel BP-27U at $311.50, quantity 1.",
+      "The order list ends up with a single BrightPanel monitor, quantity 1 — the approved alternate for the sold-out PixelForge part.",
+      "I did not queue the ScreenCraft SC-27U HDR, which the policy page marks unapproved; the only line on my order list is BP-27U x1.",
+      "| Part no. | Model | Qty |\n| --- | --- | --- |\n| BP-27U | BrightPanel BP-27U | 1 |\n\nPF-27 was refused as sold out online, and BP-27U is its approved alternate.",
+      "PF-27 could not be added (sold out online). Gadgetron's approved substitution list maps it to BP-27U, so I used that row's Buy it now control and confirmed on the order list: one BrightPanel BP-27U, quantity 1.",
+    ],
     async run(h) {
       await h.goto('/shop/gadgetron/');
       await waitFor(h, () => document.querySelectorAll('#rows tr').length, 'catalog rows');
@@ -459,12 +466,48 @@ export const DRIVERS = {
       const [, requested, alternateSku, alternateModel, reason] = row;
       const unapproved = await h.evaluate(() => document.querySelector('.warn')?.textContent ?? '');
 
-      const backSnap = await snapshot(h);
+      // Commit through the catalog row's own buy control: it must carry the part
+      // to the order list instead of relabelling itself "Queued" while the desk
+      // stays empty. Clicked through the DOM because the flattened snapshot
+      // cannot tell one row's "Buy it now" from another's (finding A-grouping).
+      await h.goto('/shop/gadgetron/');
+      await waitFor(h, () => document.querySelectorAll('#rows tr').length, 'catalog rows');
+      const rowClicked = await h.evaluate(
+        `() => {
+          const row = [...document.querySelectorAll('#rows tr')].find(
+            (r) => (r.dataset.sku ?? '').includes('${alternateSku}')
+          );
+          if (!row) return false;
+          row.querySelector('button.buy').click();
+          return true;
+        }`
+      );
+      if (!rowClicked) throw new Error(`no catalog row for ${alternateSku}`);
+      const carried = await waitFor(
+        h,
+        () => {
+          if (!/order-list\.html/.test(location.pathname)) return false;
+          return document.getElementById('part')?.value || false;
+        },
+        `${alternateSku} carried from the catalog to the order list`
+      );
+      if (!String(carried).includes(alternateSku)) {
+        throw new Error(`order list opened with "${carried}" instead of ${alternateSku}`);
+      }
+      const addSnap = await snapshot(h);
       await h.mcp('click_by_uid', {
-        uid: uid(backSnap, /uid=(\S+) a "order list"/i, 'order list link'),
+        uid: uid(addSnap, /uid=(\S+) button "Add to order list"/, 'add to order list button'),
       });
-      await waitFor(h, () => !!document.getElementById('push'), 'order list page');
-      const added = await queue(alternateSku);
+      const added = await waitFor(
+        h,
+        () => {
+          const banner = document.getElementById('banner');
+          const cls = banner?.className ?? '';
+          if (!/\b(good|bad)\b/.test(cls)) return false;
+          return { ok: cls.includes('good'), text: banner.innerText.replace(/\s+/g, ' ').trim() };
+        },
+        `order list banner for ${alternateSku}`
+      );
       if (!added.ok) throw new Error(`alternate ${alternateSku} was refused: "${added.text}"`);
       const lines = await waitFor(
         h,

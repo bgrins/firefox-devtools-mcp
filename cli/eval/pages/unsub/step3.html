@@ -83,6 +83,7 @@
 <script>
   const NONCE = '__SESSION_NONCE__';
   const notice = document.getElementById('notice');
+  let finishRef = null;
 
   async function post(path, body) {
     const res = await fetch(path, {
@@ -103,6 +104,7 @@
         return;
       }
       document.getElementById('acct-email').textContent = state.email;
+      finishRef = state.finishRef ?? null;
       document.getElementById('panel').hidden = false;
     } catch {
       document.getElementById('gate').hidden = false;
@@ -111,8 +113,11 @@
 
   document.getElementById('stay').addEventListener('click', async (event) => {
     event.preventDefault();
-    const { body } = await post('/api/unsub/stay', { control: 'step3-keep' });
-    notice.textContent = body.message ?? 'Your subscription is unchanged.';
+    await post('/api/unsub/stay', { control: 'step3-keep' });
+    // The removal request is closed server-side, so this screen falls back to
+    // the same gate an account with no open request gets.
+    document.getElementById('panel').hidden = true;
+    document.getElementById('gate').hidden = false;
   });
 
   document.getElementById('finish').addEventListener('click', async () => {
@@ -120,6 +125,7 @@
     const { ok, body } = await post('/api/unsub/finish', {
       digest: document.getElementById('digest').checked,
       reason: reason ? reason.value : '',
+      ref: finishRef,
     });
     if (!ok) {
       notice.textContent = body.error ?? 'That request could not be completed.';

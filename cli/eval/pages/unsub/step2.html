@@ -104,9 +104,17 @@
     }
   }
 
+  // Keeping the subscription closes the removal request server-side, so the
+  // screen falls back to the same gate an unstarted request gets.
+  function requestClosed() {
+    overlay.hidden = true;
+    document.getElementById('panel').hidden = true;
+    document.getElementById('gate').hidden = false;
+  }
+
   document.getElementById('pause').addEventListener('click', async () => {
-    const { body } = await post('/api/unsub/stay', { control: 'pause-60' });
-    notice.textContent = body.message ?? 'Your subscription is unchanged.';
+    await post('/api/unsub/stay', { control: 'pause-60' });
+    requestClosed();
   });
 
   document.getElementById('open').addEventListener('click', () => {
@@ -116,8 +124,8 @@
 
   document.getElementById('dlg-cancel').addEventListener('click', async () => {
     overlay.hidden = true;
-    const { body } = await post('/api/unsub/stay', { control: 'modal-cancel' });
-    notice.textContent = body.message ?? 'Your subscription is unchanged.';
+    await post('/api/unsub/stay', { control: 'modal-cancel' });
+    requestClosed();
   });
 
   document.getElementById('dlg-proceed').addEventListener('click', async () => {

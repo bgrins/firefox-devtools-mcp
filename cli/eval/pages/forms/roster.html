@@ -175,6 +175,7 @@ badges are printed from exactly what you type here. Fields marked
   const NONCE = '__SESSION_NONCE__';
   const rows = document.getElementById('rows');
   let seq = 0;
+  let added = 0;
 
   function addRow() {
     seq += 1;
@@ -206,7 +207,10 @@ badges are printed from exactly what you type here. Fields marked
     }
   }
 
-  document.getElementById('add').addEventListener('click', addRow);
+  document.getElementById('add').addEventListener('click', () => {
+    added += 1;
+    addRow();
+  });
   addRow();
 
   document.getElementById('roster').addEventListener('submit', async (event) => {
@@ -226,7 +230,7 @@ badges are printed from exactly what you type here. Fields marked
     const res = await fetch('/api/roster-submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nonce: NONCE, attendees }),
+      body: JSON.stringify({ nonce: NONCE, attendees, added }),
     });
     if (!res.ok) {
       alert('Submission failed — try again.');

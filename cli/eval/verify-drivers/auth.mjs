@@ -141,6 +141,20 @@ export const DRIVERS = {
         const text = await read(h, () => document.getElementById('welcome')?.textContent ?? '');
         return typeof text === 'string' && /vault \w+/.test(text) ? text : null;
       });
+      // Exploring the reports area after the login is a correct run, and it
+      // clears the session's auth flag on the third fetch: grading s.auth here
+      // used to fail exactly this.
+      for (const n of [1, 2, 3]) {
+        await h.goto(`/portal/reports/${n}.html`);
+        await h.sleep(400);
+      }
+      const word = message.match(/vault (\w+)/)[1];
+      this.alsoCorrect = [
+        `Signed in with the 6-digit soft token from the authenticator page. ` +
+          `The dashboard greeting reads: Ops - vault ${word}.`,
+        `Two-step login done. Dashboard greeting: **Welcome back, Ops - vault ${word}**. ` +
+          `I then opened Reports 1-3 to check the area.`,
+      ];
       return `Two-step login completed. The dashboard welcome message reads: ${message}`;
     },
   },
@@ -149,6 +163,13 @@ export const DRIVERS = {
   'session-expiry': {
     note: 'burns the three-fetch budget, re-logs in, finishes reports 4 and 5',
     wrong: 'The five report totals add up to 39,412.',
+    // The five reads straddle two sessions after the sign-out above; both of these
+    // used to fail because coverage was read off ONE session.
+    alsoCorrect: [
+      'The five report totals add up to 41873 outbound shipments.',
+      '| Report | Total |\n| 1 | 9,412 |\n| 2 | 7,258 |\n| 3 | 12,391 |\n| 4 | 4,876 |' +
+        '\n| 5 | 7,936 |\n\n**Sum: 41,873**',
+    ],
     async run(h) {
       await signIn(h, '/portal/?area=reports', 'ops@bluefern.example', 'gr8-heron-42');
       await waitPath(h, 'reports/1.html');
@@ -160,10 +181,18 @@ export const DRIVERS = {
       }
       const expired = await openReport(h, 4);
       if (expired.total) throw new Error('report 4 was served; the session never expired');
-      // Take the page's own recovery route so the reports area is preserved.
-      await h.mcp('click_by_uid', {
-        uid: uidOf(expired.snap, /uid=(\S+) a "Log in again"/, 'Log in again link'),
+      // Sign out rather than using the in-session link, so the sign-in that
+      // follows lands on a FRESH session and the five report reads straddle two
+      // of them — the shape that used to fail this correct run.
+      await read(h, () => {
+        const nonce = document.documentElement.innerHTML.match(/const NONCE = '([^']+)'/)?.[1];
+        return fetch('/api/portal/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nonce }),
+        }).then((r) => r.status);
       });
+      await h.goto('/portal/?area=reports');
       await fillSignIn(h, 'ops@bluefern.example', 'gr8-heron-42');
       await waitPath(h, 'reports/1.html');
       for (const n of [4, 5]) {
@@ -195,7 +224,18 @@ export const DRIVERS = {
   // --- the run-end check is that the session was actually invalidated ---
   'logout-hygiene': {
     note: 'reads the balance, then clicks Log out and confirms the signed-out page',
-    wrong: 'I signed out of the portal. The balance on the dashboard was $318.42.',
+    // The two alsoCorrect forms are the currency spellings the misplaced \b in the
+    // balance regex used to reject; the extra wrong answers keep the number
+    // boundaries asserted now that the boundary moved onto the digits.
+    wrong: [
+      'I signed out of the portal. The balance on the dashboard was $318.42.',
+      'I signed out of the portal. Balance was $1,412.67.',
+      'I signed out of the portal. Balance was 412.679.',
+    ],
+    alsoCorrect: [
+      'I signed out first. The balance on the dashboard was USD412.67.',
+      'Signed out of the portal. Balance: **USD412.67** (dollars).',
+    ],
     async run(h) {
       await signIn(h, '/portal/', 'dispatch@bluefern.example', 'slate-ferry-64');
       const snap = await waitDashboard(h);
