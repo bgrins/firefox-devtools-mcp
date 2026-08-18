@@ -1,12 +1,29 @@
 # Firefox Client Architecture
 
-The MCP server uses **Selenium WebDriver** with WebDriver BiDi to drive Firefox.
+The MCP server uses **Selenium WebDriver** to drive Firefox, over two protocols at once.
 
-## Protocol
+## Protocols
 
 **WebDriver BiDi** — WebSocket, JSON-RPC, [W3C spec](https://w3c.github.io/webdriver-bidi/).
 
-Used for tab management, JavaScript evaluation, console events, network monitoring, screenshots, and page content access. Selenium manages the WebSocket connection; no custom protocol code is needed.
+Carries everything push-based, which WebDriver Classic cannot express: console events, network monitoring, download events, and debugging. It also handles navigation (`browsingContext.navigate`) and JavaScript evaluation via `FirefoxClient.evaluate()` (`script.evaluate`). Selenium opens the WebSocket; `FirefoxCore.sendBiDiCommand()` drives it directly.
+
+**WebDriver Classic** — HTTP, [W3C spec](https://w3c.github.io/webdriver/).
+
+Carries the interaction surface Selenium already makes ergonomic: element lookup and input (`WebElement.click`/`sendKeys`), tab switching (`switchTo().window()`), screenshots (`takeScreenshot()`), and the snapshot UID resolver (`executeScript()` returning a `WebElement`).
+
+Classic is why a geckodriver is always in the loop. A bare `firefox --remote-debugging-port` serves only a BiDi WebSocket and no Classic HTTP endpoint, so it cannot be driven directly; geckodriver provides the Classic session that Firefox alone does not.
+
+## Connection Modes
+
+| Mode | Flag | Browser process |
+|------|------|-----------------|
+| Launch | (default) | geckodriver launches Firefox locally |
+| Attach | `--connect-existing` | local geckodriver attaches over Marionette |
+| Android | `--android-device` | geckodriver drives Firefox over ADB |
+| Remote | `--webdriver-url` | a remote WebDriver endpoint owns both geckodriver and Firefox |
+
+Remote mode skips the local geckodriver entirely: `Builder().usingServer(url)` creates the session against the endpoint, which must support WebDriver BiDi and return a `webSocketUrl` reachable from this machine. `FirefoxCore.connect()` fails with an explicit error when that capability is missing, rather than letting BiDi-backed tools fail later.
 
 ## Module Structure
 

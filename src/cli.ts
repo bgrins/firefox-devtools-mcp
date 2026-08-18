@@ -131,6 +131,16 @@ export const cliOptions = {
       'Connect to an already-running Firefox instance via Marionette instead of launching a new one. Firefox must be started with both --marionette and --remote-debugging-port.',
     default: (process.env.CONNECT_EXISTING ?? 'false') === 'true',
   },
+  webdriverUrl: {
+    type: 'string',
+    description:
+      'Create the session against a remote WebDriver endpoint (for example a hosted browser ' +
+      'service or a geckodriver on another host) instead of launching Firefox locally. The ' +
+      'endpoint must support WebDriver BiDi. Credentials may be embedded as ' +
+      'https://user:secret@host; prefer the WEBDRIVER_URL environment variable so the secret ' +
+      'stays out of the process list. Cannot be combined with --connect-existing or --android-device.',
+    default: process.env.WEBDRIVER_URL,
+  },
   marionettePort: {
     type: 'number',
     description: 'Marionette port to connect to when using --connect-existing (default: 2828)',

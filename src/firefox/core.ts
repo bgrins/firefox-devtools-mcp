@@ -18,6 +18,7 @@ import { homedir } from 'node:os';
 import { join, delimiter } from 'node:path';
 import type { FirefoxLaunchOptions } from './types.js';
 import { log, logDebug } from '../utils/logger.js';
+import { redactUrlCredentials } from '../utils/redact.js';
 import { resolveProfilePath } from './profile.js';
 
 // ---------------------------------------------------------------------------
@@ -167,6 +168,45 @@ export class FirefoxCore {
   async connect(): Promise<void> {
     const isAndroid = this.options.androidDevice !== undefined;
     const androidPackage = this.options.androidPackage ?? 'org.mozilla.firefox';
+    const remoteUrl = this.options.webdriverUrl;
+
+    if (remoteUrl !== undefined) {
+      // Each mode decides who owns the browser process, so they cannot combine:
+      // the remote endpoint launches its own Firefox, Android drives one over ADB,
+      // and connect-existing attaches to one already running on this machine.
+      if (isAndroid) {
+        throw new Error(
+          '--webdriver-url cannot be combined with --android-device: the remote endpoint ' +
+            'launches its own Firefox, so there is no local ADB connection to drive.'
+        );
+      }
+      if (this.options.connectExisting) {
+        throw new Error(
+          '--webdriver-url cannot be combined with --connect-existing: the remote endpoint ' +
+            'launches its own Firefox instead of attaching to one running on this machine.'
+        );
+      }
+
+      // These options configure a locally spawned Firefox, so the remote endpoint
+      // silently ignores them. Name them rather than let the user wonder why a
+      // profile or binary path had no effect.
+      const localOnly = (
+        [
+          ['--firefox-path', this.options.firefoxPath],
+          ['--profile-path', this.options.profilePath],
+          ['--env', this.options.env && Object.keys(this.options.env).length > 0],
+          ['--output-file', this.options.logFile],
+        ] as const
+      )
+        .filter(([, value]) => Boolean(value))
+        .map(([flag]) => flag);
+      if (localOnly.length > 0) {
+        log(
+          `Ignoring ${localOnly.join(', ')}: these configure a locally launched Firefox ` +
+            'and do not apply to a remote WebDriver session.'
+        );
+      }
+    }
 
     if (isAndroid && !this.options.androidWipeAppData) {
       // geckodriver runs "adb shell pm clear <package>" before every Android session
@@ -182,7 +222,9 @@ export class FirefoxCore {
       );
     }
 
-    if (isAndroid) {
+    if (remoteUrl !== undefined) {
+      log(`Connecting to remote WebDriver at ${redactUrlCredentials(remoteUrl)}...`);
+    } else if (isAndroid) {
       log('Launching Firefox for Android via ADB...');
       log(`Wiping all data of ${androidPackage} on the device`);
     } else if (this.options.connectExisting) {
@@ -191,7 +233,16 @@ export class FirefoxCore {
       log('Launching Firefox via Selenium WebDriver BiDi...');
     }
 
-    if (isAndroid) {
+    if (remoteUrl !== undefined) {
+      // The remote endpoint runs its own geckodriver, so no local binary is needed
+      // and no local process is spawned. Firefox-specific launch settings travel
+      // inside moz:firefoxOptions and are applied by the remote geckodriver.
+      this.driver = await new Builder()
+        .forBrowser(Browser.FIREFOX)
+        .usingServer(remoteUrl)
+        .setFirefoxOptions(this.buildRemoteFirefoxOptions())
+        .build();
+    } else if (isAndroid) {
       // Pre-set the geckodriver path so selenium-webdriver skips getBinaryPaths(),
       // which would otherwise discover the desktop Firefox binary and inject it into
       // moz:firefoxOptions.binary — conflicting with androidPackage.
@@ -381,9 +432,15 @@ export class FirefoxCore {
         .build();
     }
 
-    log(
-      this.options.connectExisting ? 'Connected to existing Firefox' : 'Firefox launched with BiDi'
-    );
+    if (remoteUrl !== undefined) {
+      log('Remote WebDriver session created with BiDi');
+    } else {
+      log(
+        this.options.connectExisting
+          ? 'Connected to existing Firefox'
+          : 'Firefox launched with BiDi'
+      );
+    }
 
     // Retrieve the Firefox version from the returned capabilities.
     const driverCapabilities = await this.driver.getCapabilities();
@@ -402,6 +459,16 @@ export class FirefoxCore {
       );
     }
 
+    // Most tools speak BiDi, so a remote endpoint that ignores the webSocketUrl
+    // capability would fail later with confusing errors. Report it here instead.
+    if (remoteUrl !== undefined && !driverCapabilities.get('webSocketUrl')) {
+      throw new Error(
+        `The remote WebDriver session at ${redactUrlCredentials(remoteUrl)} has no WebDriver BiDi ` +
+          'endpoint (missing webSocketUrl capability). The endpoint must support WebDriver BiDi ' +
+          'and return a webSocketUrl reachable from this machine.'
+      );
+    }
+
     // Remember current window handle (browsing context)
     this.currentContextId = await this.driver.getWindowHandle();
     logDebug(`Browsing context ID: ${this.currentContextId}`);
@@ -413,6 +480,40 @@ export class FirefoxCore {
     }
 
     log('Firefox DevTools ready');
+  }
+
+  /**
+   * Build the capabilities for a remote WebDriver session. Only settings the
+   * remote geckodriver can act on are included: prefs, Firefox arguments, window
+   * size and headless mode travel in moz:firefoxOptions. Options that configure a
+   * locally spawned process (binary path, profile, environment) are left out.
+   */
+  buildRemoteFirefoxOptions(): firefox.Options {
+    const firefoxOptions = new firefox.Options();
+    firefoxOptions.enableBidi();
+
+    if (this.options.acceptInsecureCerts) {
+      firefoxOptions.set('acceptInsecureCerts', true);
+    }
+    if (this.options.headless) {
+      firefoxOptions.addArguments('-headless');
+    }
+    if (this.options.viewport) {
+      firefoxOptions.windowSize({
+        width: this.options.viewport.width,
+        height: this.options.viewport.height,
+      });
+    }
+    if (this.options.args && this.options.args.length > 0) {
+      firefoxOptions.addArguments(...this.options.args);
+    }
+    if (this.options.prefs) {
+      for (const [name, value] of Object.entries(this.options.prefs)) {
+        firefoxOptions.setPreference(name, value);
+      }
+    }
+
+    return firefoxOptions;
   }
 
   /**

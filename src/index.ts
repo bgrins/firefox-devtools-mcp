@@ -75,11 +75,17 @@ export function getFirefoxIfRunning(): FirefoxDevTools | null {
 }
 
 export async function getFirefox(): Promise<FirefoxDevTools> {
+  // A lost connection is replaced with a fresh browser below, which silently
+  // discards cookies, logins and open tabs. Report that in the next tool
+  // response so the caller does not read the empty browser as page state.
+  let reconnected = false;
+
   // If we have an existing instance, verify it's still connected
   if (firefox) {
     const isConnected = await firefox.ensureConnected();
     if (!isConnected) {
       log('Firefox connection lost, reconnecting...');
+      reconnected = true;
       await resetFirefox();
     } else {
       return firefox;
@@ -123,6 +129,7 @@ export async function getFirefox(): Promise<FirefoxDevTools> {
       startUrl: args.startUrl ?? undefined,
       acceptInsecureCerts: args.acceptInsecureCerts,
       connectExisting: args.connectExisting,
+      webdriverUrl: args.webdriverUrl ?? undefined,
       marionettePort: args.marionettePort,
       lookupMarionettePort: args.lookupMarionettePort,
       env: envVars,
@@ -140,6 +147,12 @@ export async function getFirefox(): Promise<FirefoxDevTools> {
     await firefox.connect();
     log('Firefox DevTools connection established');
     pendingWarning = firefox.getAndClearProfileWarning();
+    if (reconnected) {
+      const reconnectWarning =
+        'The previous browser session was lost, so this ran against a newly started browser. ' +
+        'Cookies, logins, open tabs and page state from before are gone.';
+      pendingWarning = pendingWarning ? `${reconnectWarning}\n${pendingWarning}` : reconnectWarning;
+    }
     return firefox;
   } catch (error) {
     // Clean up before discarding — ensures the geckodriver process is killed

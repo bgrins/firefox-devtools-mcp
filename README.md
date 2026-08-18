@@ -131,6 +131,7 @@ You can pass flags or environment variables (names on the right):
 - `--accept-insecure-certs` — ignore TLS errors (`ACCEPT_INSECURE_CERTS=true`)
 - `--connect-existing` — attach to an already-running Firefox instead of launching a new one (`CONNECT_EXISTING=true`)
 - `--marionette-port` — Marionette port for connect-existing mode, default 2828 (`MARIONETTE_PORT`)
+- `--webdriver-url` — create the session against a remote WebDriver endpoint instead of launching Firefox locally. See [Connect to a remote WebDriver endpoint](#connect-to-a-remote-webdriver-endpoint). (`WEBDRIVER_URL`)
 - `--pref name=value` — set Firefox preference at startup via `moz:firefoxOptions` (repeatable)
 - `--tool-preset` — select which tool modules to enable: `slim`, `basic` (default), `developer`, `mozilla`, or `all`. See [Tool modules and presets](#tool-modules-and-presets). (`TOOL_PRESET`)
 - `--tools` — explicit list of tool modules to enable, overriding `--tool-preset` entirely (e.g. `--tools pages network script`). See [Tool modules and presets](#tool-modules-and-presets).
@@ -231,6 +232,48 @@ Both flags are required because the MCP uses both WebDriver Classic (`--marionet
 > which can trigger bot detection on sites protected by Cloudflare, Akamai, etc.
 > Only enable Marionette when you need MCP automation, then restart Firefox
 > normally afterward.
+
+### Connect to a remote WebDriver endpoint
+
+Use `--webdriver-url` to run Firefox somewhere other than this machine — a hosted browser service, or a geckodriver on another host. Nothing is launched locally and no local geckodriver is needed:
+
+```bash
+# A geckodriver reachable over the network
+npx @mozilla/firefox-devtools-mcp --webdriver-url http://browser-host:4444
+
+# An endpoint requiring credentials, kept out of the process list
+export WEBDRIVER_URL="https://user:$API_KEY@browser-host/wd"
+npx @mozilla/firefox-devtools-mcp
+```
+
+The endpoint must support WebDriver BiDi and return a `webSocketUrl` capability reachable from this machine, since most tools depend on BiDi. The server checks this at startup and fails with an explicit error rather than letting individual tools break later.
+
+Pass credentials through `WEBDRIVER_URL` rather than the flag. Command-line arguments are visible to other users via the process list, and the server redacts the password wherever it reports the endpoint. Set it in your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "firefox-devtools": {
+      "command": "npx",
+      "args": ["-y", "@mozilla/firefox-devtools-mcp@latest"],
+      "env": {
+        "WEBDRIVER_URL": "https://user:token@browser-host/wd"
+      }
+    }
+  }
+}
+```
+
+`--pref`, `--firefox-arg`, `--viewport`, `--headless`, and `--accept-insecure-certs` all apply, because the remote geckodriver launches Firefox with them. Options that configure a local process do not, and the server logs which ones it ignored:
+
+| Option | Remote behavior |
+|--------|-----------------|
+| `--firefox-path`, `--profile-path`, `--env`, `--output-file` | ignored; the endpoint owns the browser process and its filesystem |
+| `--connect-existing`, `--android-device` | rejected; each mode owns the browser process differently |
+| `get_firefox_output` | unavailable; Firefox stdout/stderr stays on the remote host |
+| Downloaded files | saved on the remote host, not locally |
+
+Privileged tools (`--tool-preset mozilla`) additionally need `MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1` set on the remote host, which the endpoint controls.
 
 ## Tool overview
 

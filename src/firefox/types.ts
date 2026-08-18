@@ -86,6 +86,11 @@ export interface FirefoxLaunchOptions {
   startUrl?: string | undefined;
   acceptInsecureCerts?: boolean | undefined;
   connectExisting?: boolean | undefined;
+  /**
+   * URL of a remote WebDriver endpoint to create the session against, instead of
+   * launching Firefox locally. May embed credentials as https://user:secret@host.
+   */
+  webdriverUrl?: string | undefined;
   marionettePort?: number | undefined;
   /** Lookup the Marionette port from Firefox's AI assistant companion instead of using marionettePort */
   lookupMarionettePort?: boolean | undefined;

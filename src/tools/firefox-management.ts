@@ -5,6 +5,7 @@
 
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { errorResponse, successResponse } from '../utils/response-helpers.js';
+import { redactUrlCredentials } from '../utils/redact.js';
 import { defineModule } from './module.js';
 
 // ============================================================================
@@ -135,9 +136,14 @@ export async function handleGetFirefoxInfo(_input: unknown) {
     info.push('Firefox Instance Configuration');
     info.push('');
 
-    info.push(`Binary: ${options.firefoxPath ?? 'System Firefox (default)'}`);
-    info.push(`Firefox version: ${version ?? '(unknown)'}`);
-    info.push(`Headless: ${options.headless ? 'Yes' : 'No'}`);
+    if (options.webdriverUrl) {
+      info.push(`Remote WebDriver: ${redactUrlCredentials(options.webdriverUrl)}`);
+      info.push(`Firefox version: ${version ?? '(unknown)'}`);
+    } else {
+      info.push(`Binary: ${options.firefoxPath ?? 'System Firefox (default)'}`);
+      info.push(`Firefox version: ${version ?? '(unknown)'}`);
+      info.push(`Headless: ${options.headless ? 'Yes' : 'No'}`);
+    }
 
     if (options.viewport) {
       info.push(`Viewport: ${options.viewport.width}x${options.viewport.height}`);
@@ -338,6 +344,23 @@ export async function handleRestartFirefox(input: unknown) {
       if (currentFirefox) {
         // Had a stale disconnected reference, clean it up
         await resetFirefox();
+      }
+
+      // A remote endpoint owns the browser binary, so restarting only needs the
+      // session options: there is no local Firefox to point at.
+      if (args.webdriverUrl) {
+        const newOptions = {
+          webdriverUrl: args.webdriverUrl,
+          startUrl: startUrl ?? 'about:blank',
+          ...(prefs !== undefined ? { prefs } : {}),
+        };
+        setNextLaunchOptions(newOptions);
+
+        return successResponse(
+          'Will start a new remote WebDriver session on next tool call:\n' +
+            `Remote WebDriver: ${redactUrlCredentials(args.webdriverUrl)}\n` +
+            `Start URL: ${newOptions.startUrl}`
+        );
       }
 
       // Use provided firefoxPath, or fall back to CLI args if available
